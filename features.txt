@@ -1,0 +1,236 @@
+%%bash
+cat << 'EOF' > /mnt/data/full_variables_descriptions.csv
+Variable Name,Description
+EOF
+
+python - << 'EOF'
+import csv
+
+# Список категорий
+categories = [
+    "dom_rem", "cafe", "rent_auto", "transport", "travel", "medicine", "online_shops", "music", "lombards", "zoo",
+    "air_tickets", "hotels", "courier", "souvenirs", "card_transfer", "entertainment", "taxes_fines", "supermarkets",
+    "sport_goods", "sber_services", "gov_services", "art", "pharmacies", "flowers", "train_tickets", "gambling",
+    "digital_goods", "books", "fuel", "yandex_services", "beauty", "cinema", "charity", "money_transfers",
+    "auto_services", "services_consulting", "cash_withdrawal", "other_expenses", "utilities_communication",
+    "electronics", "jewelry", "clothing_shoes", "education", "finance"
+]
+
+# Метрики: trans_count и trans_sum
+metrics = [
+    ("trans_count", "Количество транзакций", "количества транзакций"),
+    ("trans_sum", "Сумма транзакций", "суммы транзакций")
+]
+
+# Базовые периоды
+base_periods = ["1m", "2m", "3m", "4m", "6m", "12m"]
+
+# Отображение периодов в текстовое описание
+period_names = {
+    "1m": "1 месяц",
+    "2m": "2 месяца",
+    "3m": "3 месяца",
+    "4m": "4 месяца",
+    "6m": "6 месяцев",
+    "12m": "12 месяцев"
+}
+
+rows = []
+
+# 1. Базовые переменные
+for cat in categories:
+    for bp in base_periods:
+        for metric_code, metric_title, _ in metrics:
+            var_name = f"{cat}_trans_{metric_code}_{bp}"
+            desc = f"{metric_title} категории \"{cat}\" за {period_names[bp]}"
+            rows.append((var_name, desc))
+
+# 2. Отношения между периодами (фиксированные пары)
+relationships = {
+    "1m_to_2m": ("1m", "2m"),
+    "2m_to_4m": ("2m", "4m"),
+    "2m_to_6m": ("2m", "6m"),
+    "3m_to_12m": ("3m", "12m"),
+    "3m_to_6m": ("3m", "6m"),
+    "6m_to_12m": ("6m", "12m")
+}
+
+for cat in categories:
+    for rel, (p1, p2) in relationships.items():
+        for metric_code, metric_title, _ in metrics:
+            var_name = f"{cat}_trans_{metric_code}_{rel}"
+            desc = (f"Отношение {metric_title.lower()} категории \"{cat}\" за {period_names[p1]} "
+                    f"к {metric_title.lower()} за {period_names[p2]}")
+            rows.append((var_name, desc))
+
+# 3. Отношения к общему числу транзакций ("to_total")
+to_total_pairs = [
+    ("1m", "1m"),
+    ("1m", "2m"),
+    ("2m", "2m"),
+    ("2m", "4m"),
+    ("2m", "6m"),
+    ("3m", "3m"),
+    ("3m", "6m"),
+    ("3m", "12m"),
+    ("6m", "6m"),
+    ("6m", "12m")
+]
+
+for cat in categories:
+    for p_cat, p_total in to_total_pairs:
+        for metric_code, metric_title, _ in metrics:
+            var_name = f"{cat}_trans_{metric_code}_{p_cat}_to_total_{p_total}"
+            if metric_code == "trans_count":
+                desc = (f"Отношение {metric_title.lower()} категории \"{cat}\" за {period_names[p_cat]} "
+                        f"к общему количеству транзакций за {period_names[p_total]}")
+            else:
+                desc = (f"Отношение {metric_title.lower()} категории \"{cat}\" за {period_names[p_cat]} "
+                        f"к общей сумме транзакций за {period_names[p_total]}")
+            rows.append((var_name, desc))
+
+# 4. Переменные с максимальными и минимальными значениями транзакций (по категориям)
+for cat in categories:
+    for bp in base_periods:
+        var_name_max = f"{cat}_trans_max_{bp}"
+        desc_max = f"Максимальное значение транзакции категории \"{cat}\" за {period_names[bp]}"
+        rows.append((var_name_max, desc_max))
+        var_name_min = f"{cat}_trans_min_{bp}"
+        desc_min = f"Минимальное значение транзакции категории \"{cat}\" за {period_names[bp]}"
+        rows.append((var_name_min, desc_min))
+
+with open("/mnt/data/full_variables_descriptions.csv", "a", encoding="utf-8", newline="") as f:
+    writer = csv.writer(f)
+    for row in rows:
+        writer.writerow(row)
+EOF
+
+echo "Файл /mnt/data/full_variables_descriptions.csv успешно создан."
+
+
+%%bash
+cat << 'EOF' > /mnt/data/additional_variables_descriptions.csv
+Variable Name,Description
+EOF
+
+python - << 'EOF'
+import csv
+
+rows = [
+    # Агрегаты за отчетный период
+    ("total_trans_count_1m", "Общее количество транзакций за 1 месяц (с датой транзакции ≥ report_date - 1 месяц)"),
+    ("total_trans_sum_1m", "Общая сумма транзакций за 1 месяц (с датой транзакции ≥ report_date - 1 месяц)"),
+    ("total_trans_count_2m", "Общее количество транзакций за 2 месяца (с датой транзакции ≥ report_date - 2 месяца)"),
+    ("total_trans_sum_2m", "Общая сумма транзакций за 2 месяца (с датой транзакции ≥ report_date - 2 месяца)"),
+    ("total_trans_count_3m", "Общее количество транзакций за 3 месяца (с датой транзакции ≥ report_date - 3 месяца)"),
+    ("total_trans_sum_3m", "Общая сумма транзакций за 3 месяца (с датой транзакции ≥ report_date - 3 месяца)"),
+    ("total_trans_count_4m", "Общее количество транзакций за 4 месяца (с датой транзакции ≥ report_date - 4 месяца)"),
+    ("total_trans_sum_4m", "Общая сумма транзакций за 4 месяца (с датой транзакции ≥ report_date - 4 месяца)"),
+    ("total_trans_count_6m", "Общее количество транзакций за 6 месяцев (с датой транзакции ≥ report_date - 6 месяцев)"),
+    ("total_trans_sum_6m", "Общая сумма транзакций за 6 месяцев (с датой транзакции ≥ report_date - 6 месяцев)"),
+    ("total_trans_count_12m", "Общее количество транзакций за 12 месяцев (с датой транзакции ≥ report_date - 12 месяцев)"),
+    ("total_trans_sum_12m", "Общая сумма транзакций за 12 месяцев (с датой транзакции ≥ report_date - 12 месяцев)"),
+    # Агрегаты за предыдущие 12 месяцев (от 24 до 12 месяцев до отчетной даты)
+    ("total_trans_count_24_12", "Общее количество транзакций за период от 24 до 12 месяцев до отчетной даты"),
+    ("total_trans_sum_24_12", "Общая сумма транзакций за период от 24 до 12 месяцев до отчетной даты"),
+    # Первая и последняя транзакция
+    ("first_trans_dt", "Дата первой транзакции"),
+    ("last_trans_dt", "Дата последней транзакции"),
+    # Максимальные транзакции
+    ("max_trans_1m", "Максимальная сумма транзакции за 1 месяц (с датой транзакции ≥ report_date - 1 месяц)"),
+    ("max_trans_2m", "Максимальная сумма транзакции за 2 месяца (с датой транзакции ≥ report_date - 2 месяца)"),
+    ("max_trans_3m", "Максимальная сумма транзакции за 3 месяца (с датой транзакции ≥ report_date - 3 месяца)"),
+    ("max_trans_4m", "Максимальная сумма транзакции за 4 месяца (с датой транзакции ≥ report_date - 4 месяца)"),
+    ("max_trans_6m", "Максимальная сумма транзакции за 6 месяцев (с датой транзакции ≥ report_date - 6 месяцев)"),
+    ("max_trans_12m", "Максимальная сумма транзакции за 12 месяцев (с датой транзакции ≥ report_date - 12 месяцев)"),
+    ("max_trans_prev_1m", "Максимальная сумма транзакции за предыдущий 1-месячный период (от report_date - 2 месяцев до report_date - 1 месяц)"),
+    ("max_trans_prev_3m", "Максимальная сумма транзакции за предыдущий 3-месячный период (от report_date - 6 месяцев до report_date - 3 месяца)"),
+    ("max_trans_prev_12m", "Максимальная сумма транзакции за предыдущий 12-месячный период (от report_date - 24 месяцев до report_date - 12 месяцев)"),
+    # Минимальные транзакции
+    ("min_trans_1m", "Минимальная сумма транзакции за 1 месяц (с датой транзакции ≥ report_date - 1 месяц)"),
+    ("min_trans_2m", "Минимальная сумма транзакции за 2 месяца (с датой транзакции ≥ report_date - 2 месяца)"),
+    ("min_trans_3m", "Минимальная сумма транзакции за 3 месяца (с датой транзакции ≥ report_date - 3 месяца)"),
+    ("min_trans_4m", "Минимальная сумма транзакции за 4 месяца (с датой транзакции ≥ report_date - 4 месяца)"),
+    ("min_trans_6m", "Минимальная сумма транзакции за 6 месяцев (с датой транзакции ≥ report_date - 6 месяцев)"),
+    ("min_trans_12m", "Минимальная сумма транзакции за 12 месяцев (с датой транзакции ≥ report_date - 12 месяцев)"),
+    ("min_trans_prev_1m", "Минимальная сумма транзакции за предыдущий 1-месячный период (от report_date - 2 месяцев до report_date - 1 месяц)"),
+    ("min_trans_prev_3m", "Минимальная сумма транзакции за предыдущий 3-месячный период (от report_date - 6 месяцев до report_date - 3 месяца)"),
+    ("min_trans_prev_12m", "Минимальная сумма транзакции за предыдущий 12-месячный период (от report_date - 24 месяцев до report_date - 12 месяцев)")
+]
+
+with open("/mnt/data/additional_variables_descriptions.csv", "a", encoding="utf-8", newline="") as f:
+    writer = csv.writer(f)
+    for row in rows:
+        writer.writerow(row)
+EOF
+
+echo "Файл /mnt/data/additional_variables_descriptions.csv успешно создан."
+
+
+%%bash
+cat << 'EOF' > /mnt/data/third_variables_descriptions.csv
+Variable Name,Description
+EOF
+
+python - << 'EOF'
+import csv
+
+rows = [
+    # Средняя транзакция за последний месяц
+    ("avg_trans_1m", "Средняя транзакция за последний месяц, рассчитанная как total_trans_sum_1m / total_trans_count_1m"),
+    # Средняя транзакция за предыдущий месяц (разница между 2-м и 1-м месяцем)
+    ("avg_trans_prev_1m", "Средняя транзакция за предыдущий месяц, рассчитанная как (total_trans_sum_2m - total_trans_sum_1m) / (total_trans_count_2m - total_trans_count_1m)"),
+    # Разница средней транзакции: последний месяц - предыдущий месяц
+    ("diff_avg_trans_1m", "Разница средней транзакции: (total_trans_sum_1m / total_trans_count_1m) - ((total_trans_sum_2m - total_trans_sum_1m) / (total_trans_count_2m - total_trans_count_1m))"),
+    # Средняя транзакция за последние 3 месяца
+    ("avg_trans_3m", "Средняя транзакция за последние 3 месяца, рассчитанная как total_trans_sum_3m / total_trans_count_3m"),
+    # Средняя транзакция за предыдущие 3 месяца (разница между 6-м и 3-м месяцем)
+    ("avg_trans_prev_3m", "Средняя транзакция за предыдущие 3 месяца, рассчитанная как (total_trans_sum_6m - total_trans_sum_3m) / (total_trans_count_6m - total_trans_count_3m)"),
+    # Разница средней транзакции: за последние 3 месяца - предыдущие 3 месяца
+    ("diff_avg_trans_3m", "Разница средней транзакции: (total_trans_sum_3m / total_trans_count_3m) - ((total_trans_sum_6m - total_trans_sum_3m) / (total_trans_count_6m - total_trans_count_3m))"),
+    # Средняя транзакция за последние 12 месяцев
+    ("avg_trans_12m", "Средняя транзакция за последние 12 месяцев, рассчитанная как total_trans_sum_12m / total_trans_count_12m"),
+    # Средняя транзакция за предыдущие 12 месяцев
+    ("avg_trans_prev_12m", "Средняя транзакция за предыдущие 12 месяцев, рассчитанная как total_trans_sum_24_12 / total_trans_count_24_12"),
+    # Разница средней транзакции: за последние 12 месяцев - предыдущие 12 месяцев
+    ("diff_avg_trans_12m", "Разница средней транзакции: (total_trans_sum_12m / total_trans_count_12m) - (total_trans_sum_24_12 / total_trans_count_24_12)"),
+    # Отношения средней транзакции
+    ("ratio_avg_trans_1m", "Отношение средней транзакции за последний месяц к средней транзакции за предыдущий месяц"),
+    ("ratio_avg_trans_12m", "Отношение средней транзакции за последние 12 месяцев к средней транзакции за предыдущие 12 месяцев"),
+    ("ratio_avg_trans_3m", "Отношение средней транзакции за последние 3 месяца к средней транзакции за предыдущие 3 месяца"),
+    # Количество дней с первой и последней транзакции
+    ("days_since_first_trans", "Количество дней от report_date до даты первой транзакции"),
+    ("days_since_last_trans", "Количество дней от report_date до даты последней транзакции"),
+    # Максимальные транзакции (вычисления)
+    ("diff_max_trans_1m", "Разница между максимальной транзакцией за последний месяц и за предыдущий 1-месячный период (max_trans_1m - max_trans_prev_1m)"),
+    ("diff_max_trans_12m", "Разница между максимальной транзакцией за последние 12 месяцев и за предыдущий 12-месячный период (max_trans_12m - max_trans_prev_12m)"),
+    ("diff_max_trans_3m", "Разница между максимальной транзакцией за последние 3 месяца и за предыдущий 3-месячный период (max_trans_3m - max_trans_prev_3m)"),
+    ("max_trans_1m_value", "Значение максимальной транзакции за 1 месяц (max_trans_1m)"),
+    ("max_trans_12m_value", "Значение максимальной транзакции за 12 месяцев (max_trans_12m)"),
+    ("max_trans_3m_value", "Значение максимальной транзакции за 3 месяца (max_trans_3m)"),
+    ("ratio_max_trans_1m", "Отношение максимальной транзакции за 1 месяц к максимальной транзакции за предыдущий 1-месячный период (max_trans_1m / max_trans_prev_1m)"),
+    ("ratio_max_trans_12m", "Отношение максимальной транзакции за 12 месяцев к максимальной транзакции за предыдущий 12-месячный период (max_trans_12m / max_trans_prev_12m)"),
+    ("ratio_max_trans_3m", "Отношение максимальной транзакции за 3 месяца к максимальной транзакции за предыдущий 3-месячный период (max_trans_3m / max_trans_prev_3m)"),
+    # Минимальные транзакции (вычисления)
+    ("diff_min_trans_1m", "Разница между минимальной транзакцией за 1 месяц и за предыдущий 1-месячный период (min_trans_1m - min_trans_prev_1m)"),
+    ("diff_min_trans_12m", "Разница между минимальной транзакцией за 12 месяцев и за предыдущий 12-месячный период (min_trans_12m - min_trans_prev_12m)"),
+    ("diff_min_trans_3m", "Разница между минимальной транзакцией за 3 месяца и за предыдущий 3-месячный период (min_trans_3m - min_trans_prev_3m)"),
+    ("min_trans_1m_value", "Значение минимальной транзакции за 1 месяц (min_trans_1m)"),
+    ("min_trans_12m_value", "Значение минимальной транзакции за 12 месяцев (min_trans_12m)"),
+    ("min_trans_3m_value", "Значение минимальной транзакции за 3 месяца (min_trans_3m)"),
+    ("ratio_min_trans_1m", "Отношение минимальной транзакции за 1 месяц к минимальной транзакции за предыдущий 1-месячный период (min_trans_1m / min_trans_prev_1m)"),
+    ("ratio_min_trans_12m", "Отношение минимальной транзакции за 12 месяцев к минимальной транзакции за предыдущий 12-месячный период (min_trans_12m / min_trans_prev_12m)"),
+    ("ratio_min_trans_3m", "Отношение минимальной транзакции за 3 месяца к минимальной транзакции за предыдущий 3-месячный период (min_trans_3m / min_trans_prev_3m)"),
+    # Разница суммы транзакций
+    ("diff_total_trans_sum_1m", "Разница суммы транзакций за 1 месяц: total_trans_sum_1m - (total_trans_sum_2m - total_trans_sum_1m)"),
+    ("diff_total_trans_sum_12m", "Разница суммы транзакций за 12 месяцев: total_trans_sum_12m - total_trans_sum_24_12"),
+    ("diff_total_trans_sum_3m", "Разница суммы транзакций за 3 месяца: total_trans_sum_3m - (total_trans_sum_6m - total_trans_sum_3m)")
+]
+
+with open("/mnt/data/third_variables_descriptions.csv", "a", encoding="utf-8", newline="") as f:
+    writer = csv.writer(f)
+    for row in rows:
+        writer.writerow(row)
+EOF
+
+echo "Файл /mnt/data/third_variables_descriptions.csv успешно создан."
