@@ -1,3 +1,144 @@
+-- Дом и ремонт (1,410,533 строк) - 1.43%
+SELECT *
+FROM ema_trans_target
+SAMPLE(1.43)
+WHERE dom_rem_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Кафе и рестораны (2,392,514 строк) - 0.84%
+SELECT *
+FROM ema_trans_target
+SAMPLE(0.84)
+WHERE cafe_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Аренда авто (16,082 строк) - 100% (недостаточно данных)
+SELECT *
+FROM ema_trans_target
+WHERE rent_auto_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Транспорт (1,102,524 строк) - 1.83%
+SELECT *
+FROM ema_trans_target
+SAMPLE(1.83)
+WHERE transport_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Путешествия (77,893 строк) - 25.9%
+SELECT *
+FROM ema_trans_target
+SAMPLE(25.9)
+WHERE travel_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Медицина (485,784 строк) - 4.15%
+SELECT *
+FROM ema_trans_target
+SAMPLE(4.15)
+WHERE medicine_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Онлайн магазины (448,437 строк) - 4.5%
+SELECT *
+FROM ema_trans_target
+SAMPLE(4.5)
+WHERE online_shops_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Музыка (2,957 строк) - 100% (недостаточно данных)
+SELECT *
+FROM ema_trans_target
+WHERE music_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Ломбарды (6,613 строк) - 100% (недостаточно данных)
+SELECT *
+FROM ema_trans_target
+WHERE lombards_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Зоомагазины (296,288 строк) - 6.8%
+SELECT *
+FROM ema_trans_target
+SAMPLE(6.8)
+WHERE zoo_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Авиабилеты (42,628 строк) - 47.3%
+SELECT *
+FROM ema_trans_target
+SAMPLE(47.3)
+WHERE air_tickets_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Гостиницы (84,513 строк) - 23.9%
+SELECT *
+FROM ema_trans_target
+SAMPLE(23.9)
+WHERE hotels_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Услуги курьера (106,480 строк) - 18.9%
+SELECT *
+FROM ema_trans_target
+SAMPLE(18.9)
+WHERE courier_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Сувениры (71,403 строк) - 28.2%
+SELECT *
+FROM ema_trans_target
+SAMPLE(28.2)
+WHERE souvenirs_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Перевод на карту (29,088 строк) - 69.3%
+SELECT *
+FROM ema_trans_target
+SAMPLE(69.3)
+WHERE card_transfer_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Развлечения (493,286 строк) - 4.1%
+SELECT *
+FROM ema_trans_target
+SAMPLE(4.1)
+WHERE fun_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
 -- Налоги и штрафы (167480 строк) - 12.0%
 SELECT *
 FROM ema_trans_target
