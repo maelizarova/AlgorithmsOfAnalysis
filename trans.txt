@@ -1,98 +1,242 @@
-import pandas as pd
+-- Налоги и штрафы (167480 строк) - 12.0%
+SELECT *
+FROM ema_trans_target
+SAMPLE(12.0)
+WHERE taxes_fines_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
 
-def analyze_missing_values(df, 
-                          missing_threshold=0.3, 
-                          group_by_col=None,
-                          ascending=False,
-                          show_all=False):
-    """
-    Анализирует пропуски в DataFrame и выводит колонки, где процент пропусков > missing_threshold.
-    Возможна группировка по другой колонке.
+UNION ALL
 
-    Параметры:
-    -----------
-    df : pd.DataFrame
-        Входной DataFrame для анализа
-    missing_threshold : float, optional (default=0.3)
-        Порог для фильтрации колонок (от 0 до 1)
-    group_by_col : str, optional (default=None)
-        Колонка для группировки при анализе пропусков
-    ascending : bool, optional (default=False)
-        Сортировать результаты по возрастанию процента пропусков
-    show_all : bool, optional (default=False)
-        Показывать все колонки, даже если процент пропусков ниже порога
+-- Супермаркеты (4304859 строк) - 0.47%
+SELECT *
+FROM ema_trans_target
+SAMPLE(0.47)
+WHERE supermarkets_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
 
-    Возвращает:
-    -----------
-    pd.DataFrame
-        DataFrame с результатами анализа пропусков
-    """
-    
-    if group_by_col:
-        # Анализ пропусков с группировкой
-        if group_by_col not in df.columns:
-            raise ValueError(f"Колонка для группировки '{group_by_col}' не найдена в DataFrame")
-            
-        results = []
-        for group_name, group_df in df.groupby(group_by_col):
-            missing_percent = group_df.isnull().mean().sort_values(ascending=ascending)
-            missing_percent = missing_percent[missing_percent > 0]
-            
-            if not show_all:
-                missing_percent = missing_percent[missing_percent > missing_threshold]
-            
-            if len(missing_percent) > 0:
-                missing_df = pd.DataFrame({
-                    'group': group_name,
-                    'column': missing_percent.index,
-                    'missing_percent': missing_percent.values.round(4)
-                })
-                results.append(missing_df)
-        
-        if not results:
-            print(f"Нет колонок с пропусками > {missing_threshold*100}% ни в одной группе")
-            return None
-            
-        result_df = pd.concat(results).reset_index(drop=True)
-        
-    else:
-        # Анализ пропусков без группировки
-        missing_percent = df.isnull().mean().sort_values(ascending=ascending)
-        missing_percent = missing_percent[missing_percent > 0]
-        
-        if not show_all:
-            missing_percent = missing_percent[missing_percent > missing_threshold]
-        
-        if len(missing_percent) == 0:
-            print(f"Нет колонок с пропусками > {missing_threshold*100}%")
-            return None
-            
-        result_df = pd.DataFrame({
-            'column': missing_percent.index,
-            'missing_percent': missing_percent.values.round(4)
-        })
-    
-    return result_df
+UNION ALL
 
+-- Спорттовары (150526 строк) - 13.4%
+SELECT *
+FROM ema_trans_target
+SAMPLE(13.4)
+WHERE sport_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
 
-# Пример использования
-if __name__ == "__main__":
-    # Создаем тестовый датафрейм
-    data = {
-        'client_id': [1, 2, 3, 4, 5, 6],
-        'age': [25, 32, None, 45, 28, None],
-        'income': [50000, None, None, 80000, 60000, 75000],
-        'gender': ['M', 'F', 'M', None, 'F', 'M'],
-        'region': ['East', 'West', 'East', 'West', None, 'East'],
-        'product': ['A', 'B', 'A', 'B', 'A', None]
-    }
-    df = pd.DataFrame(data)
-    
-    print("Анализ пропусков без группировки:")
-    print(analyze_missing_values(df, missing_threshold=0.1))
-    
-    print("\nАнализ пропусков с группировкой по региону:")
-    print(analyze_missing_values(df, group_by_col='region', missing_threshold=0.1))
-    
-    print("\nПолный анализ пропусков с группировкой по продукту:")
-    print(analyze_missing_values(df, group_by_col='product', show_all=True))
+UNION ALL
+
+-- Сервисы Сбера (11 строк) - все доступные
+SELECT *
+FROM ema_trans_target
+WHERE ser_trans_count_tgt_1m > 0
+
+UNION ALL
+
+-- Госуслуги (73057 строк) - 27.6%
+SELECT *
+FROM ema_trans_target
+SAMPLE(27.6)
+WHERE gosuslugi_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Искусство (19851 строк) - все доступные
+SELECT *
+FROM ema_trans_target
+WHERE art_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Аптеки (2004108 строк) - 1.0%
+SELECT *
+FROM ema_trans_target
+SAMPLE(1.0)
+WHERE pharmacies_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Цветы и растения (289694 строк) - 7.0%
+SELECT *
+FROM ema_trans_target
+SAMPLE(7.0)
+WHERE flowers_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Ж/д билеты (422197 строк) - 4.8%
+SELECT *
+FROM ema_trans_target
+SAMPLE(4.8)
+WHERE train_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Азартные игры (32510 строк) - 62.0%
+SELECT *
+FROM ema_trans_target
+SAMPLE(62.0)
+WHERE gambling_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Цифровые товары (346510 строк) - 5.8%
+SELECT *
+FROM ema_trans_target
+SAMPLE(5.8)
+WHERE digital_goods_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Книги (202357 строк) - 10.0%
+SELECT *
+FROM ema_trans_target
+SAMPLE(10.0)
+WHERE books_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Топливо (1299672 строк) - 1.55%
+SELECT *
+FROM ema_trans_target
+SAMPLE(1.55)
+WHERE fuel_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Сервисы Яндекса (675 строк) - все доступные
+SELECT *
+FROM ema_trans_target
+WHERE yandex_trans_count_tgt_1m > 0
+
+UNION ALL
+
+-- Красота (657487 строк) - 3.1%
+SELECT *
+FROM ema_trans_target
+SAMPLE(3.1)
+WHERE beauty_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Кино (123966 строк) - 16.3%
+SELECT *
+FROM ema_trans_target
+SAMPLE(16.3)
+WHERE cinema_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Благотворительность (72235 строк) - 28.0%
+SELECT *
+FROM ema_trans_target
+SAMPLE(28.0)
+WHERE charity_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Денежные переводы (23 строки) - все доступные
+SELECT *
+FROM ema_trans_target
+WHERE money_transfers_trans_count_tgt_1m > 0
+
+UNION ALL
+
+-- Автоуслуги (627592 строк) - 3.2%
+SELECT *
+FROM ema_trans_target
+SAMPLE(3.2)
+WHERE auto_services_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Услуги и консультации (422728 строк) - 4.8%
+SELECT *
+FROM ema_trans_target
+SAMPLE(4.8)
+WHERE consulting_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Снятие наличных (1923027 строк) - 1.05%
+SELECT *
+FROM ema_trans_target
+SAMPLE(1.05)
+WHERE cash_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Прочие расходы (633372 строк) - 3.2%
+SELECT *
+FROM ema_trans_target
+SAMPLE(3.2)
+WHERE other_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- ЖКУ, связь (762540 строк) - 2.65%
+SELECT *
+FROM ema_trans_target
+SAMPLE(2.65)
+WHERE utilities_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Техника и электроника (153498 строк) - 13.1%
+SELECT *
+FROM ema_trans_target
+SAMPLE(13.1)
+WHERE tech_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Ювелирные изделия (48538 строк) - 41.5%
+SELECT *
+FROM ema_trans_target
+SAMPLE(41.5)
+WHERE jewelry_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Одежда и обувь (994409 строк) - 2.05%
+SELECT *
+FROM ema_trans_target
+SAMPLE(2.05)
+WHERE clothes_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Образование (109176 строк) - 18.5%
+SELECT *
+FROM ema_trans_target
+SAMPLE(18.5)
+WHERE education_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100
+
+UNION ALL
+
+-- Финансы (51048 строк) - 39.5%
+SELECT *
+FROM ema_trans_target
+SAMPLE(39.5)
+WHERE finance_trans_count_tgt_1m > 0
+AND ROWNUM <= 20100;
