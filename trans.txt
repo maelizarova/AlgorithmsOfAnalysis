@@ -1,98 +1,66 @@
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from typing import Tuple, Union, Optional
-
-def split_train_test_oot(
-    data: pd.DataFrame,
-    test_size: float = 0.2,
-    oot_size: float = 0.1,
-    split_by_date: bool = False,
-    date_col: Optional[str] = None,
-    oot_date: Optional[Union[str, pd.Timestamp]] = None,
-    random_state: int = 42
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def remove_columns_by_missing(df, 
+                            missing_analysis_result=None,
+                            missing_threshold=0.3,
+                            group_by_col=None,
+                            group_threshold=None,
+                            inplace=False):
     """
-    Разделяет датасет на train, test и OOT (Out-of-Time) выборки.
+    Удаляет столбцы на основе анализа пропусков. 
+    Если переданный анализ не покрывает новый порог - автоматически перезапускает анализ.
     
     Параметры:
     -----------
-    data : pd.DataFrame
-        Исходный датасет.
-    test_size : float, default=0.2
-        Доля test (если split_by_date=False) или размер тестовой выборки (если split_by_date=True).
-    oot_size : float, default=0.1
-        Доля OOT (если split_by_date=False) или дата начала OOT (если split_by_date=True).
-    split_by_date : bool, default=False
-        Если True, разделение по дате, иначе — случайное по процентам.
-    date_col : str, optional
-        Название колонки с датой (требуется, если split_by_date=True).
-    oot_date : str or pd.Timestamp, optional
-        Дата, с которой начинается OOT (например, '2023-01-01'). Требуется, если split_by_date=True.
-    random_state : int, default=42
-        Seed для воспроизводимости случайного разделения.
-        
+    df : pd.DataFrame
+        Входной DataFrame
+    missing_analysis_result : pd.DataFrame, optional
+        Предварительный анализ от analyze_missing_values()
+    missing_threshold : float, default=0.3
+        Порог для удаления (если не используется группировка)
+    group_by_col : str, optional
+        Колонка для группировки (если нужен групповой анализ)
+    group_threshold : float, optional
+        Порог для группового удаления (приоритетнее missing_threshold)
+    inplace : bool, default=False
+        Изменять ли исходный DataFrame
+    
     Возвращает:
     -----------
-    Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
-        train, test, oot
-        
-    Примеры:
-    --------
-    1. Разделение по процентам:
-    >>> train, test, oot = split_train_test_oot(data, test_size=0.2, oot_size=0.1)
-    
-    2. Разделение по дате (OOT — последние 30 дней):
-    >>> train, test, oot = split_train_test_oot(
-    ...     data,
-    ...     split_by_date=True,
-    ...     date_col='date',
-    ...     oot_date='2023-12-01',
-    ...     test_size=30  # дней между train и test
-    ... )
+    pd.DataFrame
+        Очищенный DataFrame
     """
-    if split_by_date:
-        if date_col is None:
-            raise ValueError("При split_by_date=True необходимо указать date_col.")
-        if oot_date is None:
-            raise ValueError("При split_by_date=True необходимо указать oot_date.")
+    
+    if not inplace:
+        df = df.copy()
+    
+    # Определяем актуальный порог
+    actual_threshold = group_threshold if group_threshold is not None else missing_threshold
+    
+    # Если анализ не передан или его порог менее строгий чем требуется
+    if (missing_analysis_result is None or 
+        (group_by_col and 'group' not in missing_analysis_result.columns) or
+        (not group_by_col and 'group' in missing_analysis_result.columns) or
+        (missing_analysis_result['missing_percent'].min() - 1e-6 > actual_threshold)):
         
-        # Преобразуем в datetime, если нужно
-        data[date_col] = pd.to_datetime(data[date_col])
-        oot_date = pd.to_datetime(oot_date)
-        
-        # OOT выборка — всё, что >= oot_date
-        oot = data[data[date_col] >= oot_date]
-        remaining_data = data[data[date_col] < oot_date]
-        
-        # Разделяем оставшиеся данные на train и test
-        if isinstance(test_size, (int, float)) and test_size < 1:
-            # Если test_size — доля (например, 0.2)
-            train, test = train_test_split(
-                remaining_data,
-                test_size=test_size,
-                random_state=random_state
-            )
-        else:
-            # Если test_size — количество дней (например, 30)
-            test_cutoff = remaining_data[date_col].max() - pd.Timedelta(days=test_size)
-            test = remaining_data[remaining_data[date_col] > test_cutoff]
-            train = remaining_data[remaining_data[date_col] <= test_cutoff]
-    else:
-        # Разделение по процентам
-        if not (0 < test_size + oot_size < 1):
-            raise ValueError("Сумма test_size и oot_size должна быть меньше 1.")
-        
-        # Сначала выделяем OOT
-        train_test, oot = train_test_split(
-            data,
-            test_size=oot_size,
-            random_state=random_state
-        )
-        # Затем разделяем train и test
-        train, test = train_test_split(
-            train_test,
-            test_size=test_size / (1 - oot_size),
-            random_state=random_state
+        print(f"Перезапускаем анализ с порогом {actual_threshold:.0%}")
+        missing_analysis_result = analyze_missing_values(
+            df, 
+            missing_threshold=actual_threshold,
+            group_by_col=group_by_col
         )
     
-    return train, test, oot
+    # Удаляем колонки из анализа
+    if missing_analysis_result is not None:
+        if 'group' in missing_analysis_result.columns:
+            cols_to_drop = missing_analysis_result['column'].unique().tolist()
+        else:
+            cols_to_drop = missing_analysis_result['column'].tolist()
+        
+        existing_cols_to_drop = [col for col in cols_to_drop if col in df.columns]
+        
+        if existing_cols_to_drop:
+            df.drop(columns=existing_cols_to_drop, inplace=True)
+            print(f"Удалены колонки: {existing_cols_to_drop}")
+        else:
+            print("Нет колонок для удаления")
+    
+    return df
