@@ -1,383 +1,98 @@
--- Дом и ремонт (1,410,533 строк) - 1.43%
-SELECT *
-FROM ema_trans_target
-SAMPLE(1.43)
-WHERE dom_rem_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Кафе и рестораны (2,392,514 строк) - 0.84%
-SELECT *
-FROM ema_trans_target
-SAMPLE(0.84)
-WHERE cafe_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Аренда авто (16,082 строк) - 100% (недостаточно данных)
-SELECT *
-FROM ema_trans_target
-WHERE rent_auto_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Транспорт (1,102,524 строк) - 1.83%
-SELECT *
-FROM ema_trans_target
-SAMPLE(1.83)
-WHERE transport_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Путешествия (77,893 строк) - 25.9%
-SELECT *
-FROM ema_trans_target
-SAMPLE(25.9)
-WHERE travel_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Медицина (485,784 строк) - 4.15%
-SELECT *
-FROM ema_trans_target
-SAMPLE(4.15)
-WHERE medicine_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Онлайн магазины (448,437 строк) - 4.5%
-SELECT *
-FROM ema_trans_target
-SAMPLE(4.5)
-WHERE online_shops_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Музыка (2,957 строк) - 100% (недостаточно данных)
-SELECT *
-FROM ema_trans_target
-WHERE music_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Ломбарды (6,613 строк) - 100% (недостаточно данных)
-SELECT *
-FROM ema_trans_target
-WHERE lombards_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Зоомагазины (296,288 строк) - 6.8%
-SELECT *
-FROM ema_trans_target
-SAMPLE(6.8)
-WHERE zoo_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Авиабилеты (42,628 строк) - 47.3%
-SELECT *
-FROM ema_trans_target
-SAMPLE(47.3)
-WHERE air_tickets_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Гостиницы (84,513 строк) - 23.9%
-SELECT *
-FROM ema_trans_target
-SAMPLE(23.9)
-WHERE hotels_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Услуги курьера (106,480 строк) - 18.9%
-SELECT *
-FROM ema_trans_target
-SAMPLE(18.9)
-WHERE courier_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Сувениры (71,403 строк) - 28.2%
-SELECT *
-FROM ema_trans_target
-SAMPLE(28.2)
-WHERE souvenirs_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Перевод на карту (29,088 строк) - 69.3%
-SELECT *
-FROM ema_trans_target
-SAMPLE(69.3)
-WHERE card_transfer_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Развлечения (493,286 строк) - 4.1%
-SELECT *
-FROM ema_trans_target
-SAMPLE(4.1)
-WHERE fun_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Налоги и штрафы (167480 строк) - 12.0%
-SELECT *
-FROM ema_trans_target
-SAMPLE(12.0)
-WHERE taxes_fines_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Супермаркеты (4304859 строк) - 0.47%
-SELECT *
-FROM ema_trans_target
-SAMPLE(0.47)
-WHERE supermarkets_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Спорттовары (150526 строк) - 13.4%
-SELECT *
-FROM ema_trans_target
-SAMPLE(13.4)
-WHERE sport_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Сервисы Сбера (11 строк) - все доступные
-SELECT *
-FROM ema_trans_target
-WHERE ser_trans_count_tgt_1m > 0
-
-UNION ALL
-
--- Госуслуги (73057 строк) - 27.6%
-SELECT *
-FROM ema_trans_target
-SAMPLE(27.6)
-WHERE gosuslugi_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Искусство (19851 строк) - все доступные
-SELECT *
-FROM ema_trans_target
-WHERE art_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Аптеки (2004108 строк) - 1.0%
-SELECT *
-FROM ema_trans_target
-SAMPLE(1.0)
-WHERE pharmacies_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Цветы и растения (289694 строк) - 7.0%
-SELECT *
-FROM ema_trans_target
-SAMPLE(7.0)
-WHERE flowers_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Ж/д билеты (422197 строк) - 4.8%
-SELECT *
-FROM ema_trans_target
-SAMPLE(4.8)
-WHERE train_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Азартные игры (32510 строк) - 62.0%
-SELECT *
-FROM ema_trans_target
-SAMPLE(62.0)
-WHERE gambling_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Цифровые товары (346510 строк) - 5.8%
-SELECT *
-FROM ema_trans_target
-SAMPLE(5.8)
-WHERE digital_goods_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Книги (202357 строк) - 10.0%
-SELECT *
-FROM ema_trans_target
-SAMPLE(10.0)
-WHERE books_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Топливо (1299672 строк) - 1.55%
-SELECT *
-FROM ema_trans_target
-SAMPLE(1.55)
-WHERE fuel_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Сервисы Яндекса (675 строк) - все доступные
-SELECT *
-FROM ema_trans_target
-WHERE yandex_trans_count_tgt_1m > 0
-
-UNION ALL
-
--- Красота (657487 строк) - 3.1%
-SELECT *
-FROM ema_trans_target
-SAMPLE(3.1)
-WHERE beauty_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Кино (123966 строк) - 16.3%
-SELECT *
-FROM ema_trans_target
-SAMPLE(16.3)
-WHERE cinema_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Благотворительность (72235 строк) - 28.0%
-SELECT *
-FROM ema_trans_target
-SAMPLE(28.0)
-WHERE charity_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Денежные переводы (23 строки) - все доступные
-SELECT *
-FROM ema_trans_target
-WHERE money_transfers_trans_count_tgt_1m > 0
-
-UNION ALL
-
--- Автоуслуги (627592 строк) - 3.2%
-SELECT *
-FROM ema_trans_target
-SAMPLE(3.2)
-WHERE auto_services_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Услуги и консультации (422728 строк) - 4.8%
-SELECT *
-FROM ema_trans_target
-SAMPLE(4.8)
-WHERE consulting_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Снятие наличных (1923027 строк) - 1.05%
-SELECT *
-FROM ema_trans_target
-SAMPLE(1.05)
-WHERE cash_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Прочие расходы (633372 строк) - 3.2%
-SELECT *
-FROM ema_trans_target
-SAMPLE(3.2)
-WHERE other_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- ЖКУ, связь (762540 строк) - 2.65%
-SELECT *
-FROM ema_trans_target
-SAMPLE(2.65)
-WHERE utilities_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Техника и электроника (153498 строк) - 13.1%
-SELECT *
-FROM ema_trans_target
-SAMPLE(13.1)
-WHERE tech_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Ювелирные изделия (48538 строк) - 41.5%
-SELECT *
-FROM ema_trans_target
-SAMPLE(41.5)
-WHERE jewelry_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Одежда и обувь (994409 строк) - 2.05%
-SELECT *
-FROM ema_trans_target
-SAMPLE(2.05)
-WHERE clothes_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Образование (109176 строк) - 18.5%
-SELECT *
-FROM ema_trans_target
-SAMPLE(18.5)
-WHERE education_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100
-
-UNION ALL
-
--- Финансы (51048 строк) - 39.5%
-SELECT *
-FROM ema_trans_target
-SAMPLE(39.5)
-WHERE finance_trans_count_tgt_1m > 0
-AND ROWNUM <= 20100;
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from typing import Tuple, Union, Optional
+
+def split_train_test_oot(
+    data: pd.DataFrame,
+    test_size: float = 0.2,
+    oot_size: float = 0.1,
+    split_by_date: bool = False,
+    date_col: Optional[str] = None,
+    oot_date: Optional[Union[str, pd.Timestamp]] = None,
+    random_state: int = 42
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Разделяет датасет на train, test и OOT (Out-of-Time) выборки.
+    
+    Параметры:
+    -----------
+    data : pd.DataFrame
+        Исходный датасет.
+    test_size : float, default=0.2
+        Доля test (если split_by_date=False) или размер тестовой выборки (если split_by_date=True).
+    oot_size : float, default=0.1
+        Доля OOT (если split_by_date=False) или дата начала OOT (если split_by_date=True).
+    split_by_date : bool, default=False
+        Если True, разделение по дате, иначе — случайное по процентам.
+    date_col : str, optional
+        Название колонки с датой (требуется, если split_by_date=True).
+    oot_date : str or pd.Timestamp, optional
+        Дата, с которой начинается OOT (например, '2023-01-01'). Требуется, если split_by_date=True.
+    random_state : int, default=42
+        Seed для воспроизводимости случайного разделения.
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
+        train, test, oot
+        
+    Примеры:
+    --------
+    1. Разделение по процентам:
+    >>> train, test, oot = split_train_test_oot(data, test_size=0.2, oot_size=0.1)
+    
+    2. Разделение по дате (OOT — последние 30 дней):
+    >>> train, test, oot = split_train_test_oot(
+    ...     data,
+    ...     split_by_date=True,
+    ...     date_col='date',
+    ...     oot_date='2023-12-01',
+    ...     test_size=30  # дней между train и test
+    ... )
+    """
+    if split_by_date:
+        if date_col is None:
+            raise ValueError("При split_by_date=True необходимо указать date_col.")
+        if oot_date is None:
+            raise ValueError("При split_by_date=True необходимо указать oot_date.")
+        
+        # Преобразуем в datetime, если нужно
+        data[date_col] = pd.to_datetime(data[date_col])
+        oot_date = pd.to_datetime(oot_date)
+        
+        # OOT выборка — всё, что >= oot_date
+        oot = data[data[date_col] >= oot_date]
+        remaining_data = data[data[date_col] < oot_date]
+        
+        # Разделяем оставшиеся данные на train и test
+        if isinstance(test_size, (int, float)) and test_size < 1:
+            # Если test_size — доля (например, 0.2)
+            train, test = train_test_split(
+                remaining_data,
+                test_size=test_size,
+                random_state=random_state
+            )
+        else:
+            # Если test_size — количество дней (например, 30)
+            test_cutoff = remaining_data[date_col].max() - pd.Timedelta(days=test_size)
+            test = remaining_data[remaining_data[date_col] > test_cutoff]
+            train = remaining_data[remaining_data[date_col] <= test_cutoff]
+    else:
+        # Разделение по процентам
+        if not (0 < test_size + oot_size < 1):
+            raise ValueError("Сумма test_size и oot_size должна быть меньше 1.")
+        
+        # Сначала выделяем OOT
+        train_test, oot = train_test_split(
+            data,
+            test_size=oot_size,
+            random_state=random_state
+        )
+        # Затем разделяем train и test
+        train, test = train_test_split(
+            train_test,
+            test_size=test_size / (1 - oot_size),
+            random_state=random_state
+        )
+    
+    return train, test, oot
