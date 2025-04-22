@@ -1,66 +1,38 @@
-def remove_columns_by_missing(df, 
-                            missing_analysis_result=None,
-                            missing_threshold=0.3,
-                            group_by_col=None,
-                            group_threshold=None,
-                            inplace=False):
+def remove_columns_by_stoplist(df, stoplist, inplace=False, verbose=True):
     """
-    Удаляет столбцы на основе анализа пропусков. 
-    Если переданный анализ не покрывает новый порог - автоматически перезапускает анализ.
+    Удаляет колонки из датафрейма, которые присутствуют в стоп-листе.
     
     Параметры:
     -----------
     df : pd.DataFrame
-        Входной DataFrame
-    missing_analysis_result : pd.DataFrame, optional
-        Предварительный анализ от analyze_missing_values()
-    missing_threshold : float, default=0.3
-        Порог для удаления (если не используется группировка)
-    group_by_col : str, optional
-        Колонка для группировки (если нужен групповой анализ)
-    group_threshold : float, optional
-        Порог для группового удаления (приоритетнее missing_threshold)
-    inplace : bool, default=False
-        Изменять ли исходный DataFrame
-    
+        Входной датафрейм
+    stoplist : list или set
+        Список колонок для удаления
+    inplace : bool, optional (default=False)
+        Изменять ли исходный датафрейм
+    verbose : bool, optional (default=True)
+        Выводить ли информацию об удаленных колонках
+        
     Возвращает:
     -----------
     pd.DataFrame
-        Очищенный DataFrame
+        Дадафрейм с удаленными колонками (если inplace=False)
     """
     
     if not inplace:
         df = df.copy()
     
-    # Определяем актуальный порог
-    actual_threshold = group_threshold if group_threshold is not None else missing_threshold
+    # Преобразуем стоп-лист в set для быстрого поиска
+    stoplist = set(stoplist)
     
-    # Если анализ не передан или его порог менее строгий чем требуется
-    if (missing_analysis_result is None or 
-        (group_by_col and 'group' not in missing_analysis_result.columns) or
-        (not group_by_col and 'group' in missing_analysis_result.columns) or
-        (missing_analysis_result['missing_percent'].min() - 1e-6 > actual_threshold)):
-        
-        print(f"Перезапускаем анализ с порогом {actual_threshold:.0%}")
-        missing_analysis_result = analyze_missing_values(
-            df, 
-            missing_threshold=actual_threshold,
-            group_by_col=group_by_col
-        )
+    # Находим колонки, которые есть и в датафрейме, и в стоп-листе
+    columns_to_drop = [col for col in df.columns if col in stoplist]
     
-    # Удаляем колонки из анализа
-    if missing_analysis_result is not None:
-        if 'group' in missing_analysis_result.columns:
-            cols_to_drop = missing_analysis_result['column'].unique().tolist()
-        else:
-            cols_to_drop = missing_analysis_result['column'].tolist()
-        
-        existing_cols_to_drop = [col for col in cols_to_drop if col in df.columns]
-        
-        if existing_cols_to_drop:
-            df.drop(columns=existing_cols_to_drop, inplace=True)
-            print(f"Удалены колонки: {existing_cols_to_drop}")
-        else:
-            print("Нет колонок для удаления")
+    if columns_to_drop:
+        df.drop(columns=columns_to_drop, inplace=True)
+        if verbose:
+            print(f"Удалены колонки: {columns_to_drop}")
+    elif verbose:
+        print("Нет колонок для удаления (стоп-лист не совпадает с колонками датафрейма)")
     
     return df
