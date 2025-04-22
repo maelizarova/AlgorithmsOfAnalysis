@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Union, Any, Tuple, Optional
+from typing import Dict, List, Union, Any, Optional
 from sklearn.base import BaseEstimator
 from sklearn.metrics import get_scorer
 from sklearn.preprocessing import OrdinalEncoder
@@ -9,12 +9,12 @@ def select_top_features_with_eval_set(
     data: pd.DataFrame,
     targets: List[str],
     model: BaseEstimator,
+    eval_set: Optional[pd.DataFrame] = None,  # Передаём целиком датафрейм
     n_top: int = 10,
     categorical_features: Optional[List[str]] = None,
     preprocess_categorical: bool = True,
     metric: Optional[Union[str, callable]] = None,
     greater_is_better: Optional[bool] = None,
-    eval_set: Optional[Tuple[pd.DataFrame, pd.Series]] = None,
     early_stopping_rounds: Optional[int] = None,
     random_state: int = 42,
     verbose: bool = False,
@@ -22,23 +22,20 @@ def select_top_features_with_eval_set(
 ) -> Dict[str, List[str]]:
     """
     Отбирает топ-N фичей для каждого таргета с поддержкой:
-    - Явной передачи eval_set
-    - Ранней остановки (early_stopping_rounds)
+    - eval_set как датафрейма (разбивается автоматически)
     - Категориальных фичей
+    - Ранней остановки (early_stopping_rounds)
     - Любых моделей (LightGBM, CatBoost, XGBoost, etc.)
 
     Параметры:
     ----------
-    eval_set : Tuple[X_valid, y_valid], optional
-        Валидационный набор в формате (X, y).
-    early_stopping_rounds : int, optional
-        Количество раундов без улучшения для остановки.
-    **fit_params : Any
-        Доп. параметры для model.fit() (например, eval_metric для LightGBM).
+    eval_set : pd.DataFrame, optional
+        Валидационный датафрейм (должен содержать все фичи и таргеты из `data`).
     """
     top_features = {}
     
     for target in targets:
+        # Подготовка данных
         X = data.drop(columns=targets)
         y = data[target]
         
@@ -49,15 +46,17 @@ def select_top_features_with_eval_set(
         if preprocess_categorical and categorical_features:
             encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
             X[categorical_features] = encoder.fit_transform(X[categorical_features])
-            if eval_set is not None:
-                X_valid, y_valid = eval_set
-                X_valid[categorical_features] = encoder.transform(X_valid[categorical_features])
-        
-        # Подготовка eval_set
+            
+        # Подготовка eval_set (если передан)
         if eval_set is not None:
-            X_valid, y_valid = eval_set
+            X_valid = eval_set.drop(columns=targets)
+            y_valid = eval_set[target]
+            
+            if preprocess_categorical and categorical_features:
+                X_valid[categorical_features] = encoder.transform(X_valid[categorical_features])
+            
+            # Для моделей, поддерживающих eval_set
             if hasattr(model, 'fit'):
-                # Для LightGBM/XGBoost/CatBoost
                 fit_params['eval_set'] = [(X_valid, y_valid)]
                 if early_stopping_rounds:
                     fit_params['early_stopping_rounds'] = early_stopping_rounds
@@ -65,7 +64,7 @@ def select_top_features_with_eval_set(
         # Обучение модели
         model.set_params(random_state=random_state)
         if verbose:
-            print(f"Training for target: {target}")
+            print(f"Обучение для таргета: {target}")
         
         model.fit(X, y, **fit_params)
         
@@ -89,23 +88,17 @@ def select_top_features_with_eval_set(
     return top_features
 
 from lightgbm import LGBMRegressor
-from sklearn.model_selection import train_test_split
 
-# Подготовка данных
-X_train, X_val, y_train, y_val = train_test_split(
-    data.drop(columns=['sales', 'revenue']),
-    data['sales'],
-    test_size=0.2,
-    random_state=42
-)
-
-# Модель и вызов функции
 model = LGBMRegressor(n_estimators=1000)
 selected_features = select_top_features_with_eval_set(
-    data=data,  # Весь датасет (для обучения)
-    targets=['sales', 'revenue'],
+    data=train_data,          # Тренировочные данные
+    targets=targets,
     model=model,
-    eval_set=(X_val, y_val),  # Передаем явно
+    eval_set=eval_data,       # Передаём весь датафрейм
+    categorical_features=["product_category", "region"],
     early_stopping_rounds=50,
-    fit_params={'eval_metric': 'rmse', 'verbose': 10}
+    fit_params={"eval_metric": "rmse", "verbose": 10}
 )
+
+print(selected_features)
+# {'sales': ['feature1', 'feature2', ...], 'revenue': ['feature3', ...]}
