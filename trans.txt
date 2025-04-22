@@ -1,101 +1,81 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from typing import Tuple, Union, Optional
+import numpy as np
+from lightgbm import LGBMRegressor
+from sklearn.metrics import mean_squared_error
 
-def split_train_test_oot(
+def select_top_features_by_target(
     data: pd.DataFrame,
-    test_size: Union[float, str, pd.Timestamp] = 0.2,
-    oot_size: Union[float, str, pd.Timestamp] = 0.1,
-    split_by_date: bool = False,
-    date_col: Optional[str] = None,
+    targets: list,
+    n_top: int = 10,
+    model_params: dict = None,
+    importance_type: str = 'gain',
     random_state: int = 42,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> dict:
     """
-    Разделяет датасет на train, test и OOT. Поддерживает оба варианта:
-    - По процентам (например, test_size=0.2, oot_size=0.1)
-    - По датам (например, test_size='2023-01-01', oot_size='2023-02-01')
+    Отбирает топ-N самых важных фичей для каждого целевого признака (target) 
+    с помощью LightGBM Regressor.
 
     Параметры:
-    -----------
+    ----------
     data : pd.DataFrame
-        Исходный датасет.
-    test_size : float или str/pd.Timestamp
-        Если split_by_date=False — доля test (например, 0.2).
-        Если split_by_date=True — конечная дата test (например, '2023-01-01').
-    oot_size : float или str/pd.Timestamp
-        Если split_by_date=False — доля OOT (например, 0.1).
-        Если split_by_date=True — начальная дата OOT (например, '2023-02-01').
-    split_by_date : bool, default=False
-        True — разделение по датам, False — по процентам.
-    date_col : str, optional
-        Название колонки с датой (обязательно при split_by_date=True).
-    random_state : int, default=42
-        Для воспроизводимости при случайном разделении.
+        Датасет с фичами и таргетами.
+    targets : list
+        Список целевых переменных (названия колонок).
+    n_top : int, optional (default=10)
+        Сколько фичей отбирать для каждого таргета.
+    model_params : dict, optional
+        Дополнительные параметры для LGBMRegressor (если None, используются дефолтные).
+    importance_type : str, optional (default='gain')
+        Тип важности фичей ('split' или 'gain').
+    random_state : int, optional (default=42)
+        Seed для воспроизводимости.
 
     Возвращает:
     -----------
-    Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
-        train, test, oot
-
-    Примеры:
-    --------
-    1. Разделение по процентам:
-    >>> train, test, oot = split_train_test_oot(
-    ...     data,
-    ...     test_size=0.2,
-    ...     oot_size=0.1,
-    ...     split_by_date=False
-    ... )
-
-    2. Разделение по датам:
-    >>> train, test, oot = split_train_test_oot(
-    ...     data,
-    ...     test_size='2023-01-01',
-    ...     oot_size='2023-02-01',
-    ...     split_by_date=True,
-    ...     date_col='date'
-    ... )
+    dict
+        Словарь вида {target: list_of_top_features}.
     """
-    if split_by_date:
-        if date_col is None:
-            raise ValueError("При split_by_date=True укажите date_col.")
-        
-        # Преобразуем даты в pd.Timestamp
-        data[date_col] = pd.to_datetime(data[date_col])
-        test_date = pd.to_datetime(test_size)
-        oot_date = pd.to_datetime(oot_size)
+    if model_params is None:
+        model_params = {
+            'n_estimators': 100,
+            'random_state': random_state,
+            'importance_type': importance_type,
+        }
 
-        # Проверка порядка дат
-        if oot_date <= test_date:
-            raise ValueError("Дата OOT должна быть позже даты test.")
+    top_features = {}
 
-        # Train: всё до test_date
-        train = data[data[date_col] < test_date]
-        
-        # Test: между test_date и oot_date
-        test = data[
-            (data[date_col] >= test_date) & 
-            (data[date_col] < oot_date)
-        ]
-        
-        # OOT: всё начиная с oot_date
-        oot = data[data[date_col] >= oot_date]
-    else:
-        # Разделение по процентам
-        if not (0 < test_size + oot_size < 1):
-            raise ValueError("Сумма test_size и oot_size должна быть < 1.")
-        
-        # Сначала выделяем OOT
-        train_test, oot = train_test_split(
-            data,
-            test_size=oot_size,
-            random_state=random_state
-        )
-        # Затем разделяем train и test
-        train, test = train_test_split(
-            train_test,
-            test_size=test_size / (1 - oot_size),
-            random_state=random_state
-        )
-    
-    return train, test, oot
+    for target in targets:
+        # Разделяем на X и y (удаляем другие таргеты, чтобы они не попали в фичи)
+        X = data.drop(columns=targets)
+        y = data[target]
+
+        # Обучаем модель
+        model = LGBMRegressor(**model_params)
+        model.fit(X, y)
+
+        # Получаем важность фичей и сортируем
+        importance = pd.DataFrame({
+            'feature': X.columns,
+            'importance': model.feature_importances_
+        }).sort_values('importance', ascending=False)
+
+        # Сохраняем топ-N фичей
+        top_features[target] = importance['feature'].head(n_top).tolist()
+
+    return top_features
+
+# Допустим, у нас есть датасет `df` с фичами и несколькими таргетами ['target1', 'target2']
+targets = ['target1', 'target2']
+
+# Вызываем функцию
+selected_features = select_top_features_by_target(
+    data=df,
+    targets=targets,
+    n_top=5,
+    model_params={'n_estimators': 200, 'max_depth': 5},
+    importance_type='gain'
+)
+
+# Результат — словарь с топ-5 фичами для каждого таргета
+print(selected_features)
+# {'target1': ['feat_A', 'feat_B', ...], 'target2': ['feat_C', 'feat_D', ...]}
