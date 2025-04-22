@@ -1,36 +1,40 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Union, Any, Tuple
+from typing import Dict, List, Union, Any, Tuple, Optional
 from sklearn.base import BaseEstimator
 from sklearn.metrics import get_scorer
-from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OrdinalEncoder
 
-def select_top_features(
+def select_top_features_with_eval_set(
     data: pd.DataFrame,
     targets: List[str],
     model: BaseEstimator,
     n_top: int = 10,
-    categorical_features: List[str] = None,
+    categorical_features: Optional[List[str]] = None,
     preprocess_categorical: bool = True,
-    metric: Union[str, callable] = None,
-    greater_is_better: bool = None,
-    eval_set_size: float = 0.2,
-    early_stopping_rounds: int = None,
+    metric: Optional[Union[str, callable]] = None,
+    greater_is_better: Optional[bool] = None,
+    eval_set: Optional[Tuple[pd.DataFrame, pd.Series]] = None,
+    early_stopping_rounds: Optional[int] = None,
     random_state: int = 42,
     verbose: bool = False,
     **fit_params: Any
 ) -> Dict[str, List[str]]:
     """
-    Отбирает топ-N фичей для каждого целевого признака с поддержкой eval_set и ранней остановки.
+    Отбирает топ-N фичей для каждого таргета с поддержкой:
+    - Явной передачи eval_set
+    - Ранней остановки (early_stopping_rounds)
+    - Категориальных фичей
+    - Любых моделей (LightGBM, CatBoost, XGBoost, etc.)
 
     Параметры:
     ----------
-    eval_set_size : float, optional (default=0.2)
-        Размер валидационного набора (если 0, eval_set не используется).
+    eval_set : Tuple[X_valid, y_valid], optional
+        Валидационный набор в формате (X, y).
     early_stopping_rounds : int, optional
-        Количество раундов без улучшения для остановки (требуется eval_set).
-    verbose : bool, optional (default=False)
-        Вывод логов обучения.
+        Количество раундов без улучшения для остановки.
+    **fit_params : Any
+        Доп. параметры для model.fit() (например, eval_metric для LightGBM).
     """
     top_features = {}
     
@@ -43,41 +47,27 @@ def select_top_features(
             categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
         
         if preprocess_categorical and categorical_features:
-            X_cat = X[categorical_features].copy()
-            if not hasattr(model, 'set_categorical_feature'):
-                from sklearn.preprocessing import OrdinalEncoder
-                encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
-                X[categorical_features] = encoder.fit_transform(X_cat)
+            encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+            X[categorical_features] = encoder.fit_transform(X[categorical_features])
+            if eval_set is not None:
+                X_valid, y_valid = eval_set
+                X_valid[categorical_features] = encoder.transform(X_valid[categorical_features])
         
-        # Разделение на train/valid (если eval_set_size > 0)
-        eval_set = None
-        if eval_set_size > 0:
-            X_train, X_valid, y_train, y_valid = train_test_split(
-                X, y, test_size=eval_set_size, random_state=random_state
-            )
-            eval_set = [(X_valid, y_valid)]
-            
-            # Для CatBoost/LightGBM в fit_params
+        # Подготовка eval_set
+        if eval_set is not None:
+            X_valid, y_valid = eval_set
             if hasattr(model, 'fit'):
-                fit_params.setdefault('eval_set', eval_set)
+                # Для LightGBM/XGBoost/CatBoost
+                fit_params['eval_set'] = [(X_valid, y_valid)]
                 if early_stopping_rounds:
                     fit_params['early_stopping_rounds'] = early_stopping_rounds
-        else:
-            X_train, y_train = X, y
         
         # Обучение модели
-        if hasattr(model, 'set_categorical_feature') and categorical_features:
-            model.set_categorical_feature(categorical_features)
-        
         model.set_params(random_state=random_state)
-        
         if verbose:
-            print(f"Обучение модели для target: {target}")
+            print(f"Training for target: {target}")
         
-        if hasattr(model, 'fit'):
-            model.fit(X_train, y_train, **fit_params)
-        else:
-            raise ValueError("Модель должна иметь метод fit!")
+        model.fit(X, y, **fit_params)
         
         # Получение важности фичей
         if hasattr(model, 'feature_importances_'):
@@ -85,42 +75,37 @@ def select_top_features(
         elif metric is not None:
             from sklearn.inspection import permutation_importance
             scorer = get_scorer(metric) if isinstance(metric, str) else metric
-            result = permutation_importance(
-                model, X_train, y_train, scoring=scorer, n_repeats=5, random_state=random_state
-            )
+            result = permutation_importance(model, X, y, scoring=scorer, n_repeats=5, random_state=random_state)
             importance = result.importances_mean
         else:
-            raise ValueError(
-                "У модели нет feature_importances_ и не указана метрика. "
-                "Используйте permutation_importance, передав metric."
-            )
+            raise ValueError("Model has no feature_importances_ and no metric provided.")
         
-        # Сортировка фичей
-        feature_importance = pd.DataFrame({
+        # Топ-N фичей
+        top_features[target] = pd.DataFrame({
             'feature': X.columns,
             'importance': importance
-        }).sort_values('importance', ascending=not greater_is_better if greater_is_better else True)
-        
-        top_features[target] = feature_importance['feature'].head(n_top).tolist()
+        }).sort_values('importance', ascending=False).head(n_top)['feature'].tolist()
     
     return top_features
 
 from lightgbm import LGBMRegressor
+from sklearn.model_selection import train_test_split
 
+# Подготовка данных
+X_train, X_val, y_train, y_val = train_test_split(
+    data.drop(columns=['sales', 'revenue']),
+    data['sales'],
+    test_size=0.2,
+    random_state=42
+)
+
+# Модель и вызов функции
 model = LGBMRegressor(n_estimators=1000)
-targets = ['sales', 'revenue']
-categoricals = ['product_category', 'region']
-
-selected_features = select_top_features(
-    data=df,
-    targets=targets,
+selected_features = select_top_features_with_eval_set(
+    data=data,  # Весь датасет (для обучения)
+    targets=['sales', 'revenue'],
     model=model,
-    categorical_features=categoricals,
-    eval_set_size=0.2,
+    eval_set=(X_val, y_val),  # Передаем явно
     early_stopping_rounds=50,
-    verbose=True,
-    fit_params={
-        'eval_metric': 'rmse',  # Метрика для валидации
-        'callbacks': [log_evaluation(10)]  # Вывод логов каждые 10 итераций
-    }
+    fit_params={'eval_metric': 'rmse', 'verbose': 10}
 )
