@@ -1,56 +1,100 @@
-def remove_columns_by_stoplist_pattern(df, stoplist, case_sensitive=False, inplace=False):
+import pandas as pd
+import numpy as np
+
+def find_constant_features(df, ignore_na=True, threshold=0.95, exclude_columns=None, verbose=True):
     """
-    Удаляет колонки по стоп-листу с возможностью частичного совпадения и подтверждением.
+    Находит колонки с постоянными или почти постоянными значениями.
     
     Параметры:
     -----------
     df : pd.DataFrame
-        Входной датафрейм
-    stoplist : list
-        Список строк для поиска в названиях колонок
-    case_sensitive : bool, optional (default=False)
-        Учитывать ли регистр при поиске
-    inplace : bool, optional (default=False)
-        Изменять ли исходный датафрейм
+        Входной DataFrame для анализа
+    ignore_na : bool, optional (default=True)
+        Игнорировать ли NaN значения при проверке
+    threshold : float, optional (default=0.95)
+        Порог для определения почти постоянных фичей (0.95 = 95% одинаковых значений)
+    exclude_columns : list, optional
+        Список колонок для исключения из проверки
+    verbose : bool, optional (default=True)
+        Выводить ли информацию о найденных фичах
         
     Возвращает:
     -----------
-    pd.DataFrame
-        Очищенный датафрейм (если inplace=False)
+    dict
+        Словарь с результатами:
+        {
+            'constant': список полностью постоянных фичей,
+            'near_constant': список почти постоянных фичей,
+            'constant_values': значения постоянных фичей
+        }
     """
     
-    if not inplace:
-        df = df.copy()
+    if exclude_columns is None:
+        exclude_columns = []
     
-    # Формируем список колонок для удаления
-    columns_to_drop = []
-    stoplist = [s.lower() for s in stoplist] if not case_sensitive else stoplist
+    constant_features = []
+    near_constant_features = []
+    constant_values = {}
     
     for col in df.columns:
-        col_test = col.lower() if not case_sensitive else col
-        if any(stop_word in col_test for stop_word in stoplist):
-            columns_to_drop.append(col)
-    
-    if not columns_to_drop:
-        print("Не найдено колонок для удаления по стоп-листу.")
-        return df
-    
-    # Выводим предложение на удаление
-    print("\nНайдены колонки для удаления:")
-    for i, col in enumerate(columns_to_drop, 1):
-        print(f"{i}. {col}")
-    
-    # Запрос подтверждения
-    while True:
-        response = input("\nУдалить все эти колонки? (y/n): ").strip().lower()
-        if response in ['y', 'н']:  # 'н' для русской раскладки
-            df.drop(columns=columns_to_drop, inplace=True)
-            print(f"Удалено {len(columns_to_drop)} колонок.")
-            break
-        elif response in ['n', 'т']:  # 'т' для русской раскладки
-            print("Удаление отменено.")
-            break
+        if col in exclude_columns:
+            continue
+            
+        # Игнорируем NaN если нужно
+        if ignore_na:
+            values = df[col].dropna()
         else:
-            print("Пожалуйста, введите 'y' (да) или 'n' (нет).")
+            values = df[col]
+            
+        # Пропускаем пустые колонки
+        if len(values) == 0:
+            continue
+            
+        # Проверка на полностью постоянную фичу
+        unique_values = values.nunique()
+        if unique_values == 1:
+            constant_features.append(col)
+            constant_values[col] = values.iloc[0]
+            continue
+            
+        # Проверка на почти постоянную фичу
+        most_common_perc = values.value_counts(normalize=True).iloc[0]
+        if most_common_perc >= threshold:
+            near_constant_features.append(col)
+            constant_values[col] = values.mode().iloc[0]
     
-    return df
+    if verbose:
+        if constant_features:
+            print("Полностью постоянные фичи:")
+            for col in constant_features:
+                print(f"- {col}: {constant_values[col]}")
+                
+        if near_constant_features:
+            print(f"\nПочти постоянные фичи (порог {threshold:.0%}):")
+            for col in near_constant_features:
+                print(f"- {col}: {constant_values[col]} (частота {df[col].value_counts(normalize=True).iloc[0]:.1%})")
+                
+        if not constant_features and not near_constant_features:
+            print("Постоянные фичи не обнаружены.")
+    
+    return {
+        'constant': constant_features,
+        'near_constant': near_constant_features,
+        'constant_values': constant_values
+    }
+
+# Пример использования
+if __name__ == "__main__":
+    # Создаем тестовый датафрейм
+    data = {
+        'id': [1, 2, 3, 4, 5],
+        'constant_feature': ['A', 'A', 'A', 'A', 'A'],
+        'near_constant_feature': ['B', 'B', 'B', 'B', 'C'],
+        'normal_feature': [10, 20, 30, 40, 50],
+        'empty_feature': [np.nan, np.nan, np.nan, np.nan, np.nan],
+        'binary_feature': [0, 0, 0, 1, 1]
+    }
+    df = pd.DataFrame(data)
+    
+    # Анализируем фичи
+    result = find_constant_features(df, exclude_columns=['id'])
