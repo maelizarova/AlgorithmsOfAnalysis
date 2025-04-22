@@ -1,38 +1,56 @@
-def remove_columns_by_stoplist(df, stoplist, inplace=False, verbose=True):
+def remove_columns_by_stoplist_pattern(df, stoplist, case_sensitive=False, inplace=False):
     """
-    Удаляет колонки из датафрейма, которые присутствуют в стоп-листе.
+    Удаляет колонки по стоп-листу с возможностью частичного совпадения и подтверждением.
     
     Параметры:
     -----------
     df : pd.DataFrame
         Входной датафрейм
-    stoplist : list или set
-        Список колонок для удаления
+    stoplist : list
+        Список строк для поиска в названиях колонок
+    case_sensitive : bool, optional (default=False)
+        Учитывать ли регистр при поиске
     inplace : bool, optional (default=False)
         Изменять ли исходный датафрейм
-    verbose : bool, optional (default=True)
-        Выводить ли информацию об удаленных колонках
         
     Возвращает:
     -----------
     pd.DataFrame
-        Дадафрейм с удаленными колонками (если inplace=False)
+        Очищенный датафрейм (если inplace=False)
     """
     
     if not inplace:
         df = df.copy()
     
-    # Преобразуем стоп-лист в set для быстрого поиска
-    stoplist = set(stoplist)
+    # Формируем список колонок для удаления
+    columns_to_drop = []
+    stoplist = [s.lower() for s in stoplist] if not case_sensitive else stoplist
     
-    # Находим колонки, которые есть и в датафрейме, и в стоп-листе
-    columns_to_drop = [col for col in df.columns if col in stoplist]
+    for col in df.columns:
+        col_test = col.lower() if not case_sensitive else col
+        if any(stop_word in col_test for stop_word in stoplist):
+            columns_to_drop.append(col)
     
-    if columns_to_drop:
-        df.drop(columns=columns_to_drop, inplace=True)
-        if verbose:
-            print(f"Удалены колонки: {columns_to_drop}")
-    elif verbose:
-        print("Нет колонок для удаления (стоп-лист не совпадает с колонками датафрейма)")
+    if not columns_to_drop:
+        print("Не найдено колонок для удаления по стоп-листу.")
+        return df
+    
+    # Выводим предложение на удаление
+    print("\nНайдены колонки для удаления:")
+    for i, col in enumerate(columns_to_drop, 1):
+        print(f"{i}. {col}")
+    
+    # Запрос подтверждения
+    while True:
+        response = input("\nУдалить все эти колонки? (y/n): ").strip().lower()
+        if response in ['y', 'н']:  # 'н' для русской раскладки
+            df.drop(columns=columns_to_drop, inplace=True)
+            print(f"Удалено {len(columns_to_drop)} колонок.")
+            break
+        elif response in ['n', 'т']:  # 'т' для русской раскладки
+            print("Удаление отменено.")
+            break
+        else:
+            print("Пожалуйста, введите 'y' (да) или 'n' (нет).")
     
     return df
