@@ -1,81 +1,114 @@
 import pandas as pd
 import numpy as np
-from lightgbm import LGBMRegressor
-from sklearn.metrics import mean_squared_error
+from typing import Dict, List, Union, Any
+from sklearn.base import BaseEstimator
+from sklearn.metrics import get_scorer
 
-def select_top_features_by_target(
+def select_top_features(
     data: pd.DataFrame,
-    targets: list,
+    targets: List[str],
+    model: BaseEstimator,
     n_top: int = 10,
-    model_params: dict = None,
-    importance_type: str = 'gain',
+    categorical_features: List[str] = None,
+    preprocess_categorical: bool = True,
+    metric: Union[str, callable] = None,
+    greater_is_better: bool = None,
     random_state: int = 42,
-) -> dict:
+    **fit_params: Any
+) -> Dict[str, List[str]]:
     """
-    Отбирает топ-N самых важных фичей для каждого целевого признака (target) 
-    с помощью LightGBM Regressor.
+    Отбирает топ-N фичей для каждого целевого признака, используя указанную модель.
+    Поддерживает обработку категориальных фичей и различные метрики.
 
     Параметры:
     ----------
     data : pd.DataFrame
         Датасет с фичами и таргетами.
-    targets : list
+    targets : List[str]
         Список целевых переменных (названия колонок).
+    model : BaseEstimator
+        Модель (например, LGBMRegressor, CatBoostRegressor, RandomForestRegressor).
     n_top : int, optional (default=10)
         Сколько фичей отбирать для каждого таргета.
-    model_params : dict, optional
-        Дополнительные параметры для LGBMRegressor (если None, используются дефолтные).
-    importance_type : str, optional (default='gain')
-        Тип важности фичей ('split' или 'gain').
+    categorical_features : List[str], optional
+        Список категориальных фичей. Если None, автоматически определяются по dtype.
+    preprocess_categorical : bool, optional (default=True)
+        Нужно ли предварительно обрабатывать категориальные фичи (Ordinal Encoding).
+    metric : str или callable, optional
+        Метрика для оценки важности фичей (если модель не имеет feature_importances_).
+    greater_is_better : bool, optional
+        Указывает, лучше ли большее значение метрики (нужно для пользовательских метрик).
     random_state : int, optional (default=42)
         Seed для воспроизводимости.
+    **fit_params : Any
+        Дополнительные параметры для model.fit().
 
     Возвращает:
     -----------
-    dict
+    Dict[str, List[str]]
         Словарь вида {target: list_of_top_features}.
     """
-    if model_params is None:
-        model_params = {
-            'n_estimators': 100,
-            'random_state': random_state,
-            'importance_type': importance_type,
-        }
-
     top_features = {}
-
+    
     for target in targets:
-        # Разделяем на X и y (удаляем другие таргеты, чтобы они не попали в фичи)
         X = data.drop(columns=targets)
         y = data[target]
-
-        # Обучаем модель
-        model = LGBMRegressor(**model_params)
-        model.fit(X, y)
-
-        # Получаем важность фичей и сортируем
-        importance = pd.DataFrame({
+        
+        # Обработка категориальных фичей
+        if categorical_features is None:
+            # Автовыбор категориальных колонок (object, category)
+            categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        if preprocess_categorical and categorical_features:
+            X_cat = X[categorical_features].copy()
+            # Ordinal Encoding для моделей, которые не поддерживают категории
+            if not hasattr(model, 'set_categorical_feature'):
+                from sklearn.preprocessing import OrdinalEncoder
+                encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+                X[categorical_features] = encoder.fit_transform(X_cat)
+        
+        # Обучение модели
+        if hasattr(model, 'set_categorical_feature') and categorical_features:
+            # Для CatBoost и LightGBM (если категории не закодированы)
+            model.set_categorical_feature(categorical_features)
+        
+        model.set_params(random_state=random_state)
+        model.fit(X, y, **fit_params)
+        
+        # Получение важности фичей
+        if hasattr(model, 'feature_importances_'):
+            importance = model.feature_importances_
+        elif metric is not None:
+            # Важность через перестановочный тест (медленно, но универсально)
+            from sklearn.inspection import permutation_importance
+            scorer = get_scorer(metric) if isinstance(metric, str) else metric
+            result = permutation_importance(model, X, y, scoring=scorer, n_repeats=5, random_state=random_state)
+            importance = result.importances_mean
+        else:
+            raise ValueError(
+                "У модели нет feature_importances_ и не указана метрика. "
+                "Используйте permutation_importance, передав metric."
+            )
+        
+        # Сортировка фичей
+        feature_importance = pd.DataFrame({
             'feature': X.columns,
-            'importance': model.feature_importances_
-        }).sort_values('importance', ascending=False)
-
-        # Сохраняем топ-N фичей
-        top_features[target] = importance['feature'].head(n_top).tolist()
-
+            'importance': importance
+        }).sort_values('importance', ascending=not greater_is_better if greater_is_better else True)
+        
+        top_features[target] = feature_importance['feature'].head(n_top).tolist()
+    
     return top_features
 
-# Допустим, у нас есть датасет `df` с фичами и несколькими таргетами ['target1', 'target2']
-targets = ['target1', 'target2']
+model = LGBMRegressor(n_estimators=200)
+targets = ['sales_quantity', 'revenue']
+categoricals = ['product_category', 'region']
 
-# Вызываем функцию
-selected_features = select_top_features_by_target(
+selected_features = select_top_features(
     data=df,
     targets=targets,
-    n_top=5,
-    model_params={'n_estimators': 200, 'max_depth': 5},
-    importance_type='gain'
+    model=model,
+    categorical_features=categoricals,
+    preprocess_categorical=False  # LightGBM сам обработает категории
 )
 
-# Результат — словарь с топ-5 фичами для каждого таргета
-print(selected_features)
-# {'target1': ['feat_A', 'feat_B', ...], 'target2': ['feat_C', 'feat_D', ...]}
