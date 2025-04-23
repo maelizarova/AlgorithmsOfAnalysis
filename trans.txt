@@ -1,3 +1,8 @@
+import pandas as pd
+from typing import Dict, List, Optional, Union
+from sklearn.base import BaseEstimator
+from sklearn.preprocessing import OrdinalEncoder
+
 def select_top_features_with_eval_set(
     data: pd.DataFrame,
     targets: List[str],
@@ -6,46 +11,42 @@ def select_top_features_with_eval_set(
     n_top: int = 10,
     categorical_features: Optional[List[str]] = None,
     preprocess_categorical: bool = True,
-    metric: Optional[Union[str, callable]] = None,
-    greater_is_better: Optional[bool] = None,
     early_stopping_rounds: Optional[int] = None,
     random_state: int = 42,
-    verbose: bool = False,
-    **fit_params: Any
+    fit_params: Optional[dict] = None
 ) -> Dict[str, List[str]]:
     """
-    Отбирает топ-N фичей для каждого таргета с поддержкой:
-    - Явной передачи eval_set
-    - Ранней остановки (early_stopping_rounds)
-    - Категориальных фичей
-    - Любых моделей (LightGBM, CatBoost, XGBoost, etc.)
-
+    Универсальная функция для отбора фичей с явным словарем fit_params.
+    
     Параметры:
     ----------
-    eval_set : Tuple[X_valid, y_valid], optional
-        Валидационный набор в формате (X, y).
-    early_stopping_rounds : int, optional
-        Количество раундов без улучшения для остановки.
-    **fit_params : Any
-        Доп. параметры для model.fit() (например, eval_metric для LightGBM).
+    fit_params : dict, optional
+        Словарь параметров для метода fit() модели.
+        Пример: {'eval_metric': 'rmse', 'verbose': True}
     """
     top_features = {}
+    
+    # Инициализация словаря параметров
+    if fit_params is None:
+        fit_params = {}
     
     for target in targets:
         # Подготовка данных
         X = data.drop(columns=targets)
         y = data[target]
         
-        # Обработка категориальных фичей
+        # Определение категориальных фичей
         if categorical_features is None:
             categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
         
+        # Кодирование категорий
         if preprocess_categorical and categorical_features:
             encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
             X[categorical_features] = encoder.fit_transform(X[categorical_features])
             
         # Подготовка eval_set
-        eval_tuple = None
+        current_fit_params = fit_params.copy()
+        
         if eval_set is not None:
             X_valid = eval_set.drop(columns=targets)
             y_valid = eval_set[target]
@@ -53,36 +54,28 @@ def select_top_features_with_eval_set(
             if preprocess_categorical and categorical_features:
                 X_valid[categorical_features] = encoder.transform(X_valid[categorical_features])
             
-            eval_tuple = [(X_valid, y_valid)]
-        
-        # Создаем копию fit_params для каждого таргета
-        current_fit_params = fit_params.copy()
-        
-        # Добавляем eval_set и early_stopping ТОЛЬКО если они не переданы в fit_params
-        if eval_tuple is not None and 'eval_set' not in current_fit_params:
-            current_fit_params['eval_set'] = eval_tuple
+            current_fit_params['eval_set'] = [(X_valid, y_valid)]
+            
             if early_stopping_rounds is not None:
                 current_fit_params['early_stopping_rounds'] = early_stopping_rounds
         
         # Обучение модели
         model.set_params(random_state=random_state)
-        if verbose:
-            print(f"Обучение для таргета: {target}")
-        
         model.fit(X, y, **current_fit_params)
         
-        # Получение важности фичей (прежний код)
+        # Получение важности фичей
         if hasattr(model, 'feature_importances_'):
             importance = model.feature_importances_
-        elif metric is not None:
-            from sklearn.inspection import permutation_importance
-            scorer = get_scorer(metric) if isinstance(metric, str) else metric
-            result = permutation_importance(model, X, y, scoring=scorer, n_repeats=5, random_state=random_state)
-            importance = result.importances_mean
         else:
-            raise ValueError("Model has no feature_importances_ and no metric provided.")
+            from sklearn.inspection import permutation_importance
+            metric = current_fit_params.get('eval_metric', 'rmse')
+            scorer = get_scorer(metric) if isinstance(metric, str) else metric
+            result = permutation_importance(
+                model, X, y, scoring=scorer, n_repeats=5, random_state=random_state
+            )
+            importance = result.importances_mean
         
-        # Топ-N фичей
+        # Сохранение результатов
         top_features[target] = pd.DataFrame({
             'feature': X.columns,
             'importance': importance
@@ -92,27 +85,20 @@ def select_top_features_with_eval_set(
 
 from lightgbm import LGBMRegressor
 
-# Инициализация модели с параметрами
-model = LGBMRegressor(
-    n_estimators=1000,
-    random_state=42,
-    learning_rate=0.05,
-    metric='rmse'  # Метрика для обучения
-)
+model = LGBMRegressor(n_estimators=1000)
+fit_params = {
+    'eval_metric': 'rmse',
+    'verbose': 10,
+    'callbacks': [early_stopping(50)]
+}
 
-# Вызов функции
 selected_features = select_top_features_with_eval_set(
     data=train_data,
-    targets=targets,
+    targets=['sales'],
     model=model,
-    eval_set=eval_data,
-    categorical_features=["product_category", "region"],
+    eval_set=valid_data,
+    categorical_features=['category'],
+    preprocess_categorical=False,
     early_stopping_rounds=50,
-    verbose=True,
-    # Эти параметры попадут в model.fit():
-    fit_params={
-        "eval_metric": "rmse",  # Метрика для валидации
-        "callbacks": [lgb.log_evaluation(10)],
-        "verbose": 10
-    }
+    fit_params=fit_params
 )
