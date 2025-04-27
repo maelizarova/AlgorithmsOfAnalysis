@@ -18,3 +18,85 @@ def filter_selected_features(selected_features: Dict[str, List[str]],
             if feature not in features_to_remove
         ]
     return filtered_results
+
+from catboost import CatBoost, Pool, select_features
+import numpy as np
+
+def feature_selection_shap(
+    data: pd.DataFrame,
+    targets: List[str],
+    selected_features: Dict[str, List[str]],
+    categorical_features: List[str] = None,
+    eval_set: pd.DataFrame = None,
+    num_features_to_select: int = 20,
+    threads: int = -1
+) -> Dict[str, List[str]]:
+    """
+    Дополнительный отбор фичей с помощью catboost.select_features
+    
+    Параметры:
+        data: DataFrame с данными
+        targets: Список таргетов
+        selected_features: Результаты первичного отбора
+        categorical_features: Список категориальных фичей
+        eval_set: Валидационный набор
+        num_features_to_select: Количество фичей для отбора
+        threads: Количество потоков (-1 = все ядра)
+    
+    Возвращает:
+        Словарь с финальным отбором фичей для каждого таргета
+    """
+    final_features = {}
+    
+    for target in targets:
+        # Получаем предварительно отобранные фичи для текущего таргета
+        features = selected_features[target]
+        
+        # Создаем Pool для обучения
+        train_pool = Pool(
+            data=data[features],
+            label=data[target],
+            cat_features=categorical_features
+        )
+        
+        # Создаем eval_pool если есть eval_set
+        eval_pool = None
+        if eval_set is not None:
+            eval_pool = Pool(
+                data=eval_set[features],
+                label=eval_set[target],
+                cat_features=categorical_features
+            )
+        
+        # Выполняем отбор фичей
+        summary = select_features(
+            train_pool=train_pool,
+            eval_pool=eval_pool,
+            num_features_to_select=num_features_to_select,  
+            steps=3,  # Количество итераций
+            algorithm=EFeaturesSelectionAlgorithm.RecursiveByLossFunctionChange,
+            shap_calc_type=EShapCalcType.Regular,
+            train_final_model=False,
+            logging_level='Silent',
+            thread_count=threads
+        )
+        
+        # Получаем отобранные фичи
+        selected = summary['selected_features_names']
+        final_features[target] = selected
+        
+        print(f"Таргет: {target}")
+        print(f"Исходное количество фичей: {len(features)}")
+        print(f"Отобранные фичи: {selected}")
+        print("------")
+    
+    return final_features
+
+final_selected_features = feature_selection_shap(
+    data=train_data,
+    targets=['sales', 'revenue'],
+    selected_features=selected_features_100,
+    categorical_features=['region', 'product_type'],
+    eval_set=valid_data,
+    threads=4
+)
