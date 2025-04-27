@@ -1,39 +1,20 @@
-import numpy as np
-import pandas as pd
-
-def calculate_psi(actual, expected, bin_num=10):
-    try:
-        # Проверяем, являются ли данные категориальными (нечисловыми)
-        if not np.issubdtype(actual.dtype, np.number) or not np.issubdtype(expected.dtype, np.number):
-            # Для категориальных данных считаем частоты каждой категории
-            actual_pct = actual.value_counts(normalize=True)
-            expected_pct = expected.value_counts(normalize=True)
-            
-            # Объединяем все возможные категории из обоих наборов
-            all_categories = set(actual_pct.index).union(set(expected_pct.index))
-            
-            # Приводим оба распределения к одному набору категорий
-            actual_pct = actual_pct.reindex(all_categories, fill_value=0.0001)
-            expected_pct = expected_pct.reindex(all_categories, fill_value=0.0001)
-        else:
-            # Для числовых данных используем первоначальную логику с бинингом
-            max_bins = min(bin_num, len(np.unique(actual)), len(np.unique(expected)))
-            bins = np.linspace(min(actual.min(), expected.min()), 
-                              max(actual.max(), expected.max()), 
-                              max_bins + 1)
-            actual_pct = pd.cut(actual.astype('float32'), bins=bins, include_lowest=True).value_counts(normalize=True)
-            expected_pct = pd.cut(expected.astype('float32'), bins=bins, include_lowest=True).value_counts(normalize=True)
-        
-        # Добавляем небольшое значение, чтобы избежать деления на ноль и логарифма от нуля
-        actual_pct = actual_pct + 0.0001
-        expected_pct = expected_pct + 0.0001
-        
-        # Вычисляем PSI
-        psi = np.sum((actual_pct - expected_pct) * np.log(actual_pct / expected_pct))
-        
-        return psi
-        
-    except ValueError as e:
-        if 'Bin edges must be unique' in str(e):
-            return -1
-        raise e
+def filter_selected_features(selected_features: Dict[str, List[str]], 
+                          features_to_remove: List[str]) -> Dict[str, List[str]]:
+    """
+    Удаляет указанные фичи из результатов отбора
+    
+    Параметры:
+        selected_features: Словарь {таргет: список_фичей}
+        features_to_remove: Список фичей для удаления
+    
+    Возвращает:
+        Отфильтрованный словарь с результатами
+    """
+    filtered_results = {}
+    for target, features in selected_features.items():
+        # Оставляем только фичи, которых нет в списке для удаления
+        filtered_results[target] = [
+            feature for feature in features 
+            if feature not in features_to_remove
+        ]
+    return filtered_results
