@@ -1,88 +1,39 @@
-def select_top_features_with_eval_set(
-    data: pd.DataFrame,
-    targets: List[str],
-    model: BaseEstimator,
-    eval_set: Optional[pd.DataFrame] = None,
-    n_top: int = 10,
-    categorical_features: Optional[List[str]] = None,
-    preprocess_categorical: bool = True,
-    early_stopping_rounds: Optional[int] = None,
-    random_state: int = 42,
-    fit_params: Optional[dict] = None
-) -> Dict[str, List[str]]:
-    """
-    Функция с исправленной обработкой категориальных признаков.
-    """
-    top_features = {}
-    
-    if fit_params is None:
-        fit_params = {}
-    
-    for target in targets:
-        # Подготовка данных
-        X = data.drop(columns=targets)
-        y = data[target]
-        
-        # Определение категориальных фичей
-        if categorical_features is None:
-            categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
-        
-        # Обработка категориальных признаков
-        if categorical_features:
-            if preprocess_categorical:
-                # Кодирование категорий для моделей, которые не поддерживают их напрямую
-                encoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
-                X[categorical_features] = encoder.fit_transform(X[categorical_features])
-            else:
-                # Для LightGBM/CatBoost преобразуем в category
-                for col in categorical_features:
-                    X[col] = X[col].astype('category')
-        
-        # Подготовка eval_set
-        current_fit_params = fit_params.copy()
-        
-        if eval_set is not None:
-            X_valid = eval_set.drop(columns=targets)
-            y_valid = eval_set[target]
+import numpy as np
+import pandas as pd
+
+def calculate_psi(actual, expected, bin_num=10):
+    try:
+        # Проверяем, являются ли данные категориальными (нечисловыми)
+        if not np.issubdtype(actual.dtype, np.number) or not np.issubdtype(expected.dtype, np.number):
+            # Для категориальных данных считаем частоты каждой категории
+            actual_pct = actual.value_counts(normalize=True)
+            expected_pct = expected.value_counts(normalize=True)
             
-            if categorical_features:
-                if preprocess_categorical:
-                    X_valid[categorical_features] = encoder.transform(X_valid[categorical_features])
-                else:
-                    for col in categorical_features:
-                        X_valid[col] = X_valid[col].astype('category')
+            # Объединяем все возможные категории из обоих наборов
+            all_categories = set(actual_pct.index).union(set(expected_pct.index))
             
-            current_fit_params['eval_set'] = [(X_valid, y_valid)]
-            
-            if early_stopping_rounds:
-                if 'LGBM' in model.__class__.__name__:
-                    current_fit_params['callbacks'] = [early_stopping(early_stopping_rounds)]
-                else:
-                    current_fit_params['early_stopping_rounds'] = early_stopping_rounds
-        
-        # Для LightGBM явно указываем категориальные признаки
-        if 'LGBM' in model.__class__.__name__ and not preprocess_categorical:
-            current_fit_params['categorical_feature'] = categorical_features
-        
-        # Обучение модели
-        model.set_params(random_state=random_state)
-        model.fit(X, y, **current_fit_params)
-        
-        # Получение важности фичей
-        if hasattr(model, 'feature_importances_'):
-            importance = model.feature_importances_
+            # Приводим оба распределения к одному набору категорий
+            actual_pct = actual_pct.reindex(all_categories, fill_value=0.0001)
+            expected_pct = expected_pct.reindex(all_categories, fill_value=0.0001)
         else:
-            from sklearn.inspection import permutation_importance
-            metric = current_fit_params.get('eval_metric', 'rmse')
-            scorer = get_scorer(metric) if isinstance(metric, str) else metric
-            result = permutation_importance(
-                model, X, y, scoring=scorer, n_repeats=5, random_state=random_state
-            )
-            importance = result.importances_mean
+            # Для числовых данных используем первоначальную логику с бинингом
+            max_bins = min(bin_num, len(np.unique(actual)), len(np.unique(expected)))
+            bins = np.linspace(min(actual.min(), expected.min()), 
+                              max(actual.max(), expected.max()), 
+                              max_bins + 1)
+            actual_pct = pd.cut(actual.astype('float32'), bins=bins, include_lowest=True).value_counts(normalize=True)
+            expected_pct = pd.cut(expected.astype('float32'), bins=bins, include_lowest=True).value_counts(normalize=True)
         
-        top_features[target] = pd.DataFrame({
-            'feature': X.columns,
-            'importance': importance
-        }).sort_values('importance', ascending=False).head(n_top)['feature'].tolist()
-    
-    return top_features
+        # Добавляем небольшое значение, чтобы избежать деления на ноль и логарифма от нуля
+        actual_pct = actual_pct + 0.0001
+        expected_pct = expected_pct + 0.0001
+        
+        # Вычисляем PSI
+        psi = np.sum((actual_pct - expected_pct) * np.log(actual_pct / expected_pct))
+        
+        return psi
+        
+    except ValueError as e:
+        if 'Bin edges must be unique' in str(e):
+            return -1
+        raise e
