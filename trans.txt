@@ -1,102 +1,28 @@
-def filter_selected_features(selected_features: Dict[str, List[str]], 
-                          features_to_remove: List[str]) -> Dict[str, List[str]]:
-    """
-    Удаляет указанные фичи из результатов отбора
-    
-    Параметры:
-        selected_features: Словарь {таргет: список_фичей}
-        features_to_remove: Список фичей для удаления
-    
-    Возвращает:
-        Отфильтрованный словарь с результатами
-    """
-    filtered_results = {}
-    for target, features in selected_features.items():
-        # Оставляем только фичи, которых нет в списке для удаления
-        filtered_results[target] = [
-            feature for feature in features 
-            if feature not in features_to_remove
-        ]
-    return filtered_results
+def calculate_metrics(model, X, y_true, dataset_name):
+    """Вычисляет метрики для датасета"""
+    y_pred = model.predict(X)
+    return {
+        'dataset': dataset_name,
+        'R2': r2_score(y_true, y_pred),
+        'MAE': mean_absolute_error(y_true, y_pred),
+        'RMSE': mean_squared_error(y_true, y_pred, squared=False)
+    }
 
-from catboost import CatBoost, Pool, select_features
-import numpy as np
 
-def feature_selection_shap(
-    data: pd.DataFrame,
-    targets: List[str],
-    selected_features: Dict[str, List[str]],
-    categorical_features: List[str] = None,
-    eval_set: pd.DataFrame = None,
-    num_features_to_select: int = 20,
-    threads: int = -1
-) -> Dict[str, List[str]]:
-    """
-    Дополнительный отбор фичей с помощью catboost.select_features
-    
-    Параметры:
-        data: DataFrame с данными
-        targets: Список таргетов
-        selected_features: Результаты первичного отбора
-        categorical_features: Список категориальных фичей
-        eval_set: Валидационный набор
-        num_features_to_select: Количество фичей для отбора
-        threads: Количество потоков (-1 = все ядра)
-    
-    Возвращает:
-        Словарь с финальным отбором фичей для каждого таргета
-    """
-    final_features = {}
-    
-    for target in targets:
-        # Получаем предварительно отобранные фичи для текущего таргета
-        features = selected_features[target]
-        
-        # Создаем Pool для обучения
-        train_pool = Pool(
-            data=data[features],
-            label=data[target],
-            cat_features=categorical_features
-        )
-        
-        # Создаем eval_pool если есть eval_set
-        eval_pool = None
-        if eval_set is not None:
-            eval_pool = Pool(
-                data=eval_set[features],
-                label=eval_set[target],
-                cat_features=categorical_features
-            )
-        
-        # Выполняем отбор фичей
-        summary = select_features(
-            train_pool=train_pool,
-            eval_pool=eval_pool,
-            num_features_to_select=num_features_to_select,  
-            steps=3,  # Количество итераций
-            algorithm=EFeaturesSelectionAlgorithm.RecursiveByLossFunctionChange,
-            shap_calc_type=EShapCalcType.Regular,
-            train_final_model=False,
-            logging_level='Silent',
-            thread_count=threads
-        )
-        
-        # Получаем отобранные фичи
-        selected = summary['selected_features_names']
-        final_features[target] = selected
-        
-        print(f"Таргет: {target}")
-        print(f"Исходное количество фичей: {len(features)}")
-        print(f"Отобранные фичи: {selected}")
-        print("------")
-    
-    return final_features
+# Результирующий DataFrame
+metrics_df = pd.DataFrame()
 
-final_selected_features = feature_selection_shap(
-    data=train_data,
-    targets=['sales', 'revenue'],
-    selected_features=selected_features_100,
-    categorical_features=['region', 'product_type'],
-    eval_set=valid_data,
-    threads=4
-)
+
+# Сбор метрик
+    metrics = [
+        calculate_metrics(model, train_pool, train_data[target], 'train'),
+        calculate_metrics(model, val_pool, val_data[target], 'val'),
+        calculate_metrics(model, test_pool, test_data[target], 'test')
+    ]
+    
+    # Добавление в общий DataFrame
+    target_metrics = pd.DataFrame(metrics)
+    target_metrics['target'] = target
+    metrics_df = pd.concat([metrics_df, target_metrics], ignore_index=True)
+
+metrics_df = metrics_df[['target', 'dataset', 'R2', 'MAE', 'RMSE']]
