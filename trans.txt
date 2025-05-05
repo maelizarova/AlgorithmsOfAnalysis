@@ -2,10 +2,12 @@ from typing import Dict, List, Union, Any, Optional
 import pandas as pd
 import numpy as np
 import os
-from lightgbm import LGBMRegressor, LGBMClassifier, early_stopping, log_evaluation
+from sklearn.base import BaseEstimator
 from sklearn.model_selection import GridSearchCV
 from sklearn2pmml import sklearn2pmml, make_pmml_pipeline
 from sklearn.metrics import get_scorer
+from lightgbm import early_stopping, log_evaluation
+
 
 def grid_search_with_splits(
     train_data: pd.DataFrame,
@@ -13,8 +15,9 @@ def grid_search_with_splits(
     oot_data: pd.DataFrame,
     targets: List[str],
     final_selected_features: Dict[str, List[str]],
-    model_type: str = 'regression',
+    model: BaseEstimator,
     categorical_features: Optional[List[str]] = None,
+    task_type: str = 'classification',
     param_grid: Optional[Dict[str, List[Any]]] = None,
     scoring: Optional[Union[str, List[str], Dict[str, Any]]] = None,
     cv: int = 5,
@@ -24,7 +27,7 @@ def grid_search_with_splits(
     verbose: int = 0
 ) -> Dict[str, Dict[str, Any]]:
     """
-    Универсальная функция для подбора моделей LightGBM без использования Pipeline
+    Универсальная функция для подбора моделей без использования Pipeline
     
     Параметры:
         train_data: Тренировочные данные
@@ -32,8 +35,9 @@ def grid_search_with_splits(
         oot_data: Out-of-time данные
         targets: Список целевых переменных
         final_selected_features: Словарь {target: [фичи]}
-        model_type: 'regression' или 'classification'
+        model: Экземпляр модели (sklearn-совместимый)
         categorical_features: Список категориальных фичей
+        task_type: 'classification' или 'regression'
         param_grid: Сетка параметров
         scoring: Метрики оценки
         cv: Число фолдов
@@ -45,7 +49,7 @@ def grid_search_with_splits(
     # Инициализация параметров
     categorical_features = categorical_features or []
     param_grid = param_grid or {}
-    scoring = scoring or ('roc_auc' if model_type == 'classification' else 'neg_mean_squared_error')
+    scoring = scoring or ('roc_auc' if task_type == 'classification' else 'neg_mean_squared_error')
     results = {}
 
     for target in targets:
@@ -55,30 +59,38 @@ def grid_search_with_splits(
         features = final_selected_features[target]
         cat_features = [f for f in categorical_features if f in features]
         
-        # 2. Создание модели
-        if model_type == 'classification':
-            model = LGBMClassifier(random_state=42, verbose=-1, n_jobs=threads)
-        else:
-            model = LGBMRegressor(random_state=42, verbose=-1, n_jobs=threads)
+        # 2. Определение типа модели
+        model_type = type(model).__name__.lower()
+        is_lgbm = 'lgbm' in model_type
+        is_catboost = 'catboost' in model_type
         
-        # 3. Указание категориальных фичей
-        if cat_features:
+        # 3. Обработка категориальных признаков
+        if cat_features and (is_lgbm or is_catboost):
             for df in [train_data, test_data, oot_data]:
                 for col in cat_features:
                     df[col] = df[col].astype('category')
             
-            # Для LightGBM нужно передать индексы категориальных фичей
-            cat_indices = [i for i, f in enumerate(features) if f in cat_features]
-            model.set_params(**{'categorical_feature': cat_indices})
+            if is_lgbm:
+                # Для LightGBM передаем индексы категориальных фичей
+                cat_indices = [features.index(f) for f in cat_features]
+                model.set_params(**{'categorical_feature': cat_indices})
+            elif is_catboost:
+                # Для CatBoost передаем имена фичей
+                model.set_params(cat_features=cat_features)
 
         # 4. Настройка параметров обучения
         fit_params = {}
-        if early_stopping_rounds:
+        if early_stopping_rounds and (is_lgbm or is_catboost):
             fit_params['eval_set'] = [(test_data[features], test_data[target])]
-            fit_params['callbacks'] = [
-                early_stopping(early_stopping_rounds, verbose=verbose),
-                log_evaluation(verbose) if verbose > 0 else None
-            ]
+            
+            if is_lgbm:
+                fit_params['callbacks'] = [
+                    early_stopping(early_stopping_rounds, verbose=verbose),
+                    log_evaluation(verbose) if verbose > 0 else None
+                ]
+                fit_params['eval_metric'] = 'binary_logloss' if task_type == 'classification' else 'l2'
+            elif is_catboost:
+                fit_params['early_stopping_rounds'] = early_stopping_rounds
 
         # 5. Настройка GridSearch
         grid_search = GridSearchCV(
@@ -86,12 +98,13 @@ def grid_search_with_splits(
             param_grid=param_grid,
             scoring=scoring,
             cv=cv,
-            n_jobs=1 if threads != 1 else threads,
-            verbose=verbose
+            n_jobs=1 if threads != 1 else threads,  # Осторожно с многопоточностью
+            verbose=verbose,
+            error_score='raise'
         )
 
         # 6. Обучение модели
-        print(f"Обучение на {len(features)} фичах...")
+        print(f"Обучение модели {model_type} на {len(features)} фичах...")
         grid_search.fit(train_data[features], train_data[target], **fit_params)
         
         # 7. Получение лучшей модели
@@ -103,7 +116,9 @@ def grid_search_with_splits(
             X, y = df[features], df[target]
             pred = best_model.predict(X)
             
-            if model_type == 'classification':
+            if task_type == 'classification':
+                from sklearn.metrics import (accuracy_score, precision_score, 
+                                          recall_score, f1_score, roc_auc_score)
                 metrics[name] = {
                     'accuracy': accuracy_score(y, pred),
                     'precision': precision_score(y, pred),
@@ -112,10 +127,13 @@ def grid_search_with_splits(
                     'roc_auc': roc_auc_score(y, pred)
                 }
             else:
+                from sklearn.metrics import (mean_squared_error, mean_absolute_error,
+                                          mean_absolute_percentage_error, r2_score)
                 metrics[name] = {
                     'mse': mean_squared_error(y, pred),
                     'rmse': np.sqrt(mean_squared_error(y, pred)),
                     'mae': mean_absolute_error(y, pred),
+                    'mape': mean_absolute_percentage_error(y, pred),
                     'r2': r2_score(y, pred)
                 }
 
@@ -124,7 +142,7 @@ def grid_search_with_splits(
             os.makedirs(pmml_output_path, exist_ok=True)
             output_file = f"{pmml_output_path}/{target}_{model_type}.pmml"
             
-            # Создаем минимальный PMML pipeline
+            # Создаем минимальный PMML pipeline для экспорта
             pmml_pipeline = make_pmml_pipeline(best_model)
             sklearn2pmml(pmml_pipeline, output_file, with_repr=True)
             
@@ -136,7 +154,8 @@ def grid_search_with_splits(
             'metrics': metrics,
             'best_params': grid_search.best_params_,
             'features': features,
-            'categorical_features': cat_features
+            'categorical_features': cat_features,
+            'model_type': model_type
         }
 
         # 11. Вывод результатов
