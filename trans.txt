@@ -2,15 +2,10 @@ from typing import Dict, List, Union, Any, Optional
 import pandas as pd
 import numpy as np
 import os
-from sklearn.base import BaseEstimator
+from lightgbm import LGBMRegressor, LGBMClassifier, early_stopping, log_evaluation
 from sklearn.model_selection import GridSearchCV
-from sklearn2pmml import sklearn2pmml, PMMLPipeline
-from sklearn.metrics import (accuracy_score, precision_score, recall_score,
-                           f1_score, roc_auc_score, log_loss,
-                           mean_squared_error, mean_absolute_error,
-                           mean_absolute_percentage_error, r2_score)
-from lightgbm import early_stopping, log_evaluation
-
+from sklearn2pmml import sklearn2pmml, make_pmml_pipeline
+from sklearn.metrics import get_scorer
 
 def grid_search_with_splits(
     train_data: pd.DataFrame,
@@ -18,9 +13,8 @@ def grid_search_with_splits(
     oot_data: pd.DataFrame,
     targets: List[str],
     final_selected_features: Dict[str, List[str]],
-    model: BaseEstimator,
+    model_type: str = 'regression',
     categorical_features: Optional[List[str]] = None,
-    task_type: str = 'classification',
     param_grid: Optional[Dict[str, List[Any]]] = None,
     scoring: Optional[Union[str, List[str], Dict[str, Any]]] = None,
     cv: int = 5,
@@ -30,11 +24,7 @@ def grid_search_with_splits(
     verbose: int = 0
 ) -> Dict[str, Dict[str, Any]]:
     """
-    Оптимизированная функция для подбора моделей с полной поддержкой:
-    - Категориальных признаков (LightGBM/CatBoost)
-    - Разделения на train/test/oot
-    - Ранней остановки
-    - Сохранения PMML
+    Универсальная функция для подбора моделей LightGBM без использования Pipeline
     
     Параметры:
         train_data: Тренировочные данные
@@ -42,13 +32,12 @@ def grid_search_with_splits(
         oot_data: Out-of-time данные
         targets: Список целевых переменных
         final_selected_features: Словарь {target: [фичи]}
-        model: Экземпляр модели (sklearn API)
+        model_type: 'regression' или 'classification'
         categorical_features: Список категориальных фичей
-        task_type: 'classification' или 'regression'
         param_grid: Сетка параметров
         scoring: Метрики оценки
         cv: Число фолдов
-        threads: Число потоков (-1 = все ядра)
+        threads: Число потоков
         pmml_output_path: Путь для сохранения PMML
         early_stopping_rounds: Раунды ранней остановки
         verbose: Уровень логгирования
@@ -56,7 +45,7 @@ def grid_search_with_splits(
     # Инициализация параметров
     categorical_features = categorical_features or []
     param_grid = param_grid or {}
-    scoring = scoring or ('roc_auc' if task_type == 'classification' else 'neg_mean_squared_error')
+    scoring = scoring or ('roc_auc' if model_type == 'classification' else 'neg_mean_squared_error')
     results = {}
 
     for target in targets:
@@ -66,95 +55,82 @@ def grid_search_with_splits(
         features = final_selected_features[target]
         cat_features = [f for f in categorical_features if f in features]
         
-        # 2. Определение типа модели
-        model_type = type(model).__name__.lower()
-        is_lgbm = 'lgbm' in model_type
-        is_catboost = 'catboost' in model_type
-        
-        # 3. Обработка категориальных признаков
-        if cat_features and (is_lgbm or is_catboost):
-            for df in [train_data, test_data, oot_data]:
-                df[cat_features] = df[cat_features].astype('category')
-            
-            if is_lgbm:
-                fit_params = {'estimator__categorical_feature': [features.index(f) for f in cat_features]}
-            else:
-                model.set_params(cat_features=cat_features)
-                fit_params = {}
+        # 2. Создание модели
+        if model_type == 'classification':
+            model = LGBMClassifier(random_state=42, verbose=-1, n_jobs=threads)
         else:
-            fit_params = {}
-
-        # 4. Настройка ранней остановки
-        if early_stopping_rounds and (is_lgbm or is_catboost):
-            X_val, y_val = test_data[features], test_data[target]
-            fit_params.setdefault('estimator__eval_set', [(X_val, y_val)])
+            model = LGBMRegressor(random_state=42, verbose=-1, n_jobs=threads)
+        
+        # 3. Указание категориальных фичей
+        if cat_features:
+            for df in [train_data, test_data, oot_data]:
+                for col in cat_features:
+                    df[col] = df[col].astype('category')
             
-            if is_lgbm:
-                fit_params.update({
-                    'estimator__callbacks': [
-                        early_stopping(early_stopping_rounds, verbose=verbose),
-                        log_evaluation(verbose) if verbose > 0 else None
-                    ],
-                    'estimator__eval_metric': 'binary_logloss' if task_type == 'classification' else 'l2'
-                })
-            elif is_catboost:
-                fit_params.update({
-                    'estimator__early_stopping_rounds': early_stopping_rounds,
-                    'estimator__verbose': verbose
-                })
+            # Для LightGBM нужно передать индексы категориальных фичей
+            cat_indices = [i for i, f in enumerate(features) if f in cat_features]
+            model.set_params(**{'categorical_feature': cat_indices})
 
-        # 5. Обучение модели
-        pipeline = PMMLPipeline([('estimator', model)])
+        # 4. Настройка параметров обучения
+        fit_params = {}
+        if early_stopping_rounds:
+            fit_params['eval_set'] = [(test_data[features], test_data[target])]
+            fit_params['callbacks'] = [
+                early_stopping(early_stopping_rounds, verbose=verbose),
+                log_evaluation(verbose) if verbose > 0 else None
+            ]
+
+        # 5. Настройка GridSearch
         grid_search = GridSearchCV(
-            estimator=pipeline,
+            estimator=model,
             param_grid=param_grid,
             scoring=scoring,
             cv=cv,
-            n_jobs=threads if threads != -1 else None,
+            n_jobs=1 if threads != 1 else threads,
             verbose=verbose
         )
-        
-        print(f"Обучение модели на {len(features)} фичах...")
+
+        # 6. Обучение модели
+        print(f"Обучение на {len(features)} фичах...")
         grid_search.fit(train_data[features], train_data[target], **fit_params)
         
-        # 6. Вычисление метрик
+        # 7. Получение лучшей модели
         best_model = grid_search.best_estimator_
-        metrics = {}
         
+        # 8. Вычисление метрик
+        metrics = {}
         for name, df in [('train', train_data), ('test', test_data), ('oot', oot_data)]:
             X, y = df[features], df[target]
             pred = best_model.predict(X)
             
-            if task_type == 'classification':
+            if model_type == 'classification':
                 metrics[name] = {
                     'accuracy': accuracy_score(y, pred),
                     'precision': precision_score(y, pred),
                     'recall': recall_score(y, pred),
-                    'f1': f1_score(y, pred)
+                    'f1': f1_score(y, pred),
+                    'roc_auc': roc_auc_score(y, pred)
                 }
-                if hasattr(best_model, 'predict_proba'):
-                    proba = best_model.predict_proba(X)[:, 1]
-                    metrics[name].update({
-                        'roc_auc': roc_auc_score(y, proba),
-                        'log_loss': log_loss(y, proba)
-                    })
             else:
                 metrics[name] = {
                     'mse': mean_squared_error(y, pred),
                     'rmse': np.sqrt(mean_squared_error(y, pred)),
                     'mae': mean_absolute_error(y, pred),
-                    'mape': mean_absolute_percentage_error(y, pred),
                     'r2': r2_score(y, pred)
                 }
 
-        # 7. Сохранение модели
+        # 9. Сохранение в PMML
         if pmml_output_path:
             os.makedirs(pmml_output_path, exist_ok=True)
             output_file = f"{pmml_output_path}/{target}_{model_type}.pmml"
-            sklearn2pmml(best_model, output_file, with_repr=True)
+            
+            # Создаем минимальный PMML pipeline
+            pmml_pipeline = make_pmml_pipeline(best_model)
+            sklearn2pmml(pmml_pipeline, output_file, with_repr=True)
+            
             print(f"Модель сохранена в {output_file}")
 
-        # 8. Сохранение результатов
+        # 10. Сохранение результатов
         results[target] = {
             'model': best_model,
             'metrics': metrics,
@@ -163,7 +139,7 @@ def grid_search_with_splits(
             'categorical_features': cat_features
         }
 
-        # 9. Вывод результатов
+        # 11. Вывод результатов
         print("\nЛучшие параметры:")
         for param, value in grid_search.best_params_.items():
             print(f"{param}: {value}")
@@ -175,17 +151,3 @@ def grid_search_with_splits(
                 print(f"{metric}: {value:.4f}")
 
     return results
-
-
-param_grid = {
-    'boosting_type': ['gbdt', 'dart'],  # Тип бустинга
-    'num_leaves': [31, 63, 127],        # Макс. количество листьев в дереве
-    'max_depth': [-1, 5, 10],           # Глубина дерева (-1 = без ограничений)
-    'learning_rate': [0.01, 0.05, 0.1], # Скорость обучения
-    'n_estimators': [100, 200, 300],    # Количество деревьев
-    'min_child_samples': [20, 50],      # Минимальное количество данных в листе
-    'subsample': [0.8, 1.0],            # Доля строк для обучения каждого дерева
-    'colsample_bytree': [0.8, 1.0],     # Доля признаков для обучения каждого дерева
-    'reg_alpha': [0, 0.1, 1],           # L1-регуляризация
-    'reg_lambda': [0, 0.1, 1],          # L2-регуляризация
-}
