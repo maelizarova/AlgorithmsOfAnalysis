@@ -1,28 +1,264 @@
-def calculate_metrics(model, X, y_true, dataset_name):
-    """Вычисляет метрики для датасета"""
-    y_pred = model.predict(X)
+from sklearn.base import BaseEstimator
+from sklearn.model_selection import GridSearchCV
+from sklearn2pmml import sklearn2pmml, PMMLPipeline
+from sklearn.metrics import get_scorer
+import pandas as pd
+import numpy as np
+import os
+from typing import Dict, List, Union, Any, Optional
+from lightgbm import early_stopping, log_evaluation  # Импорт только если используется LGBM
+
+def grid_search_with_splits(
+    train_data: pd.DataFrame,
+    test_data: pd.DataFrame,
+    oot_data: pd.DataFrame,
+    targets: List[str],
+    final_selected_features: Dict[str, List[str]],
+    model: BaseEstimator,
+    task_type: str = 'classification',
+    param_grid: Optional[Dict[str, List[Any]]] = None,
+    scoring: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+    cv: int = 5,
+    threads: int = -1,
+    pmml_output_path: Optional[str] = None,
+    early_stopping_rounds: Optional[int] = None,
+    verbose: int = 0
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Универсальная функция для GridSearchCV с поддержкой train/test/oot разбиения
+    
+    Параметры:
+        train_data: DataFrame с тренировочными данными
+        test_data: DataFrame с тестовыми данными
+        oot_data: DataFrame с out-of-time данными
+        targets: Список таргетов
+        final_selected_features: Словарь с отобранными фичами для каждого таргета
+        model: Экземпляр модели для обучения (должен быть совместим с scikit-learn API)
+        task_type: Тип задачи ('classification' или 'regression')
+        param_grid: Сетка параметров для GridSearch (если None, будет использоваться дефолтная)
+        scoring: Метрики для оценки
+        cv: Количество фолдов для кросс-валидации
+        threads: Количество потоков (-1 = все ядра)
+        pmml_output_path: Путь для сохранения PMML файлов
+        early_stopping_rounds: Количество раундов для ранней остановки (если поддерживается моделью)
+        verbose: Уровень детализации логирования
+    
+    Возвращает:
+        Словарь с результатами для каждого таргета
+    """
+    # Определяем дефолтные param_grid в зависимости от типа модели
+    if param_grid is None:
+        param_grid = get_default_param_grid(model, task_type)
+    
+    if scoring is None:
+        scoring = get_default_scoring(task_type)
+    
+    results = {}
+    
+    for target in targets:
+        features = final_selected_features[target]
+        
+        # Создаем PMML pipeline
+        pipeline = PMMLPipeline([
+            ("estimator", model)
+        ])
+        
+        # Настройка параметров обучения
+        fit_params = {}
+        
+        # Добавляем early_stopping для моделей, которые его поддерживают
+        if early_stopping_rounds is not None and hasattr(model, 'fit_params'):
+            X_test = test_data[features]
+            y_test = test_data[target]
+            fit_params['estimator__eval_set'] = [(X_test, y_test)]
+            
+            if hasattr(model, 'set_params'):
+                model.set_params(n_jobs=threads)
+            
+            # Для LightGBM и CatBoost добавляем специфичные параметры
+            if 'lightgbm' in str(type(model)).lower():
+                fit_params['estimator__callbacks'] = [
+                    early_stopping(early_stopping_rounds, verbose=verbose),
+                    log_evaluation(verbose) if verbose > 0 else None
+                ]
+                eval_metric = 'logloss' if task_type == 'classification' else 'l2'
+                fit_params['estimator__eval_metric'] = eval_metric
+            elif 'catboost' in str(type(model)).lower():
+                fit_params['estimator__eval_set'] = [(X_test, y_test)]
+                fit_params['estimator__early_stopping_rounds'] = early_stopping_rounds
+                fit_params['estimator__verbose'] = verbose
+        
+        # Настраиваем GridSearchCV
+        grid_search = GridSearchCV(
+            estimator=pipeline,
+            param_grid=param_grid,
+            scoring=scoring,
+            cv=cv,
+            refit=True,
+            n_jobs=1 if threads != 1 else threads,  # Осторожно с многопоточностью
+            verbose=verbose
+        )
+        
+        # Обучение модели
+        print(f"\n=== Обучение модели для таргета: {target} ===")
+        print(f"Тип модели: {type(model).__name__}")
+        print(f"Используется {len(features)} фичей")
+        
+        X_train = train_data[features]
+        y_train = train_data[target]
+        
+        grid_search.fit(X_train, y_train, **fit_params)
+        
+        # Получаем лучшую модель
+        best_model = grid_search.best_estimator_
+        
+        # Вычисляем метрики
+        datasets = {
+            'train': (X_train, y_train),
+            'test': (test_data[features], test_data[target]),
+            'oot': (oot_data[features], oot_data[target])
+        }
+        
+        metrics = {}
+        for name, (X, y) in datasets.items():
+            pred = best_model.predict(X)
+            proba = best_model.predict_proba(X)[:, 1] if task_type == 'classification' and hasattr(best_model, 'predict_proba') else None
+            
+            metrics[f"{name}_metrics"] = calculate_metrics(
+                y_true=y,
+                y_pred=pred,
+                y_proba=proba,
+                task_type=task_type
+            )
+        
+        # Сохранение модели
+        if pmml_output_path is not None:
+            os.makedirs(pmml_output_path, exist_ok=True)
+            output_file = f"{pmml_output_path}/model_{target}_{type(model).__name__}.pmml"
+            sklearn2pmml(best_model, output_file, with_repr=True)
+            print(f"Модель сохранена в {output_file}")
+        
+        # Сохраняем результаты
+        results[target] = {
+            'model': grid_search,
+            'best_model': best_model,
+            'features': features,
+            **metrics,
+            'best_params': grid_search.best_params_,
+            'model_type': type(model).__name__
+        }
+        
+        # Выводим результаты
+        print(f"\nРезультаты для таргета {target}:")
+        print(f"Лучшие параметры: {grid_search.best_params_}")
+        print_metrics_summary(metrics)
+    
+    return results
+
+def get_default_param_grid(model: BaseEstimator, task_type: str) -> Dict[str, List[Any]]:
+    """Возвращает дефолтную сетку параметров в зависимости от типа модели"""
+    model_name = type(model).__name__.lower()
+    
+    if 'lightgbm' in model_name:
+        if task_type == 'classification':
+            return {
+                'estimator__n_estimators': [50, 100, 200],
+                'estimator__max_depth': [3, 5, 7],
+                'estimator__learning_rate': [0.01, 0.1],
+                'estimator__num_leaves': [31, 63],
+                'estimator__min_child_samples': [10, 20],
+                'estimator__class_weight': [None, 'balanced']
+            }
+        else:
+            return {
+                'estimator__n_estimators': [50, 100, 200],
+                'estimator__max_depth': [3, 5, 7],
+                'estimator__learning_rate': [0.01, 0.1],
+                'estimator__num_leaves': [31, 63],
+                'estimator__min_child_samples': [10, 20]
+            }
+    
+    elif 'xgboost' in model_name:
+        if task_type == 'classification':
+            return {
+                'estimator__n_estimators': [50, 100, 200],
+                'estimator__max_depth': [3, 5, 7],
+                'estimator__learning_rate': [0.01, 0.1],
+                'estimator__subsample': [0.8, 1.0],
+                'estimator__colsample_bytree': [0.8, 1.0],
+                'estimator__scale_pos_weight': [1, (y_train == 1).sum() / (y_train == 0).sum()]
+            }
+        else:
+            return {
+                'estimator__n_estimators': [50, 100, 200],
+                'estimator__max_depth': [3, 5, 7],
+                'estimator__learning_rate': [0.01, 0.1],
+                'estimator__subsample': [0.8, 1.0],
+                'estimator__colsample_bytree': [0.8, 1.0]
+            }
+    
+    elif 'randomforest' in model_name:
+        if task_type == 'classification':
+            return {
+                'estimator__n_estimators': [50, 100, 200],
+                'estimator__max_depth': [3, 5, 7, None],
+                'estimator__min_samples_split': [2, 5, 10],
+                'estimator__min_samples_leaf': [1, 2, 4],
+                'estimator__class_weight': [None, 'balanced']
+            }
+        else:
+            return {
+                'estimator__n_estimators': [50, 100, 200],
+                'estimator__max_depth': [3, 5, 7, None],
+                'estimator__min_samples_split': [2, 5, 10],
+                'estimator__min_samples_leaf': [1, 2, 4]
+            }
+    
+    # Дефолтная сетка для неизвестных моделей
     return {
-        'dataset': dataset_name,
-        'R2': r2_score(y_true, y_pred),
-        'MAE': mean_absolute_error(y_true, y_pred),
-        'RMSE': mean_squared_error(y_true, y_pred, squared=False)
+        'estimator__n_estimators': [50, 100],
+        'estimator__max_depth': [3, 5],
+        'estimator__learning_rate': [0.01, 0.1]
     }
 
+def get_default_scoring(task_type: str) -> str:
+    """Возвращает дефолтные метрики для типа задачи"""
+    return 'roc_auc' if task_type == 'classification' else 'neg_mean_squared_error'
 
-# Результирующий DataFrame
-metrics_df = pd.DataFrame()
-
-
-# Сбор метрик
-    metrics = [
-        calculate_metrics(model, train_pool, train_data[target], 'train'),
-        calculate_metrics(model, val_pool, val_data[target], 'val'),
-        calculate_metrics(model, test_pool, test_data[target], 'test')
-    ]
+def calculate_metrics(y_true, y_pred, y_proba=None, task_type='classification'):
+    """Вычисляет метрики качества"""
+    metrics = {}
     
-    # Добавление в общий DataFrame
-    target_metrics = pd.DataFrame(metrics)
-    target_metrics['target'] = target
-    metrics_df = pd.concat([metrics_df, target_metrics], ignore_index=True)
+    if task_type == 'classification':
+        from sklearn.metrics import (accuracy_score, precision_score, recall_score,
+                                   f1_score, roc_auc_score, log_loss)
+        
+        metrics['accuracy'] = accuracy_score(y_true, y_pred)
+        metrics['precision'] = precision_score(y_true, y_pred)
+        metrics['recall'] = recall_score(y_true, y_pred)
+        metrics['f1'] = f1_score(y_true, y_pred)
+        
+        if y_proba is not None:
+            metrics['roc_auc'] = roc_auc_score(y_true, y_proba)
+            metrics['log_loss'] = log_loss(y_true, y_proba)
+    
+    else:  # regression
+        from sklearn.metrics import (mean_squared_error, mean_absolute_error,
+                                   mean_absolute_percentage_error, r2_score)
+        
+        metrics['mse'] = mean_squared_error(y_true, y_pred)
+        metrics['rmse'] = np.sqrt(metrics['mse'])
+        metrics['mae'] = mean_absolute_error(y_true, y_pred)
+        metrics['mape'] = mean_absolute_percentage_error(y_true, y_pred)
+        metrics['r2'] = r2_score(y_true, y_pred)
+    
+    return metrics
 
-metrics_df = metrics_df[['target', 'dataset', 'R2', 'MAE', 'RMSE']]
+def print_metrics_summary(metrics):
+    """Печатает сводку метрик"""
+    for dataset in ['train', 'test', 'oot']:
+        metric_key = f"{dataset}_metrics"
+        if metric_key in metrics:
+            print(f"\n{dataset.upper()} metrics:")
+            for name, value in metrics[metric_key].items():
+                print(f"{name}: {value:.4f}")
