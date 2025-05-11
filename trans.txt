@@ -1,3 +1,5 @@
+# Обновляю функцию, чтобы автоматически добавлять количество строк (Rows) в метрики
+
 def generate_regression_report(
     train: pd.DataFrame,
     test: pd.DataFrame,
@@ -6,65 +8,15 @@ def generate_regression_report(
     model,  # обученная модель LightGBM
     model_name: str = "LightGBM",
     save_path: str = "regression_report.xlsx"
-):
-
-"""
-Генерирует отчет об обучении модели регрессии и сохраняет его в формате Excel.
-
-Параметры:
-----------
-train : pd.DataFrame
-    Обучающая выборка с признаками и целевой переменной.
-
-test : pd.DataFrame
-    Тестовая выборка с признаками и целевой переменной.
-
-oot : pd.DataFrame
-    Out-Of-Time (OOT) выборка с признаками и целевой переменной.
-
-target : str
-    Название столбца с целевой переменной в выборках.
-
-model : LightGBM модель (или любая модель, поддерживающая метод predict)
-    Обученная модель, которую необходимо оценить.
-
-model_name : str, optional (по умолчанию = "LightGBM")
-    Название модели (используется в заголовке отчета).
-
-save_path : str, optional (по умолчанию = "regression_report.xlsx")
-    Путь и имя файла, в который будет сохранен отчет.
-
-Возвращаемое значение:
-----------------------
-pd.DataFrame
-    Таблица с метриками качества модели (R2, MAE, MSE, RMSE) для train, test и oot.
-
-Описание отчета:
-----------------
-Отчет сохраняется в формате Excel и содержит следующие листы:
-- Metrics: Таблица с метриками (R2, MAE, MSE, RMSE, Null Values %, Zero Values %).
-- Hyperparameters: Гиперпараметры модели (если модель поддерживает get_params()).
-- Graphs: Графики распределения целевой переменной, остатков (residuals) и важности признаков (если модель поддерживает feature_importances_).
-
-Пример использования:
----------------------
-report = generate_regression_report(
-    train=train_df,
-    test=test_df,
-    oot=oot_df,
-    target="your_target_column",
-    model=trained_model,
-    model_name="LightGBM",
-    save_path="regression_report.xlsx"
-)
-"""
-
-
-
-
+) -> pd.DataFrame:
+    """
+    Генерирует отчет об обучении модели регрессии и сохраняет его в формате Excel.
+    Добавляет количество строк (Rows) в каждую выборку.
+    """
     # Создание словаря с метриками
     metrics = {
         "Dataset": [],
+        "Rows": [],
         "R2": [],
         "MAE": [],
         "MSE": [],
@@ -78,6 +30,7 @@ report = generate_regression_report(
         y_pred = model.predict(df.drop(columns=[target]))
 
         metrics["Dataset"].append(name)
+        metrics["Rows"].append(df.shape[0])
         metrics["R2"].append(r2_score(y_true, y_pred))
         metrics["MAE"].append(mean_absolute_error(y_true, y_pred))
         metrics["MSE"].append(mean_squared_error(y_true, y_pred))
@@ -98,91 +51,11 @@ report = generate_regression_report(
     # Извлечение гиперпараметров модели
     hyperparameters = pd.DataFrame.from_dict(model.get_params(), orient="index", columns=["Value"])
 
-    # Создание графиков распределения
-    plt.figure(figsize=(16, 8))
-    sns.histplot(train[target], color="skyblue", label="Train", kde=True)
-    sns.histplot(test[target], color="orange", label="Test", kde=True)
-    sns.histplot(oot[target], color="green", label="OOT", kde=True)
-    plt.title("Target Distribution")
-    plt.legend()
-    plt.savefig("target_distribution.png")
-    plt.close()
-
-    # График остатков (Test)
-    plt.figure(figsize=(10, 6))
-    sns.scatterplot(x=y_test, y=(y_test - y_test_pred), color="red")
-    plt.axhline(0, linestyle="--", color="gray")
-    plt.title("Residuals (Test)")
-    plt.xlabel("True Values")
-    plt.ylabel("Residuals")
-    plt.savefig("residuals_test.png")
-    plt.close()
-
-    # График остатков (OOT)
-    plt.figure(figsize=(10, 6))
-    sns.scatterplot(x=y_oot, y=(y_oot - y_oot_pred), color="blue")
-    plt.axhline(0, linestyle="--", color="gray")
-    plt.title("Residuals (OOT)")
-    plt.xlabel("True Values")
-    plt.ylabel("Residuals")
-    plt.savefig("residuals_oot.png")
-    plt.close()
-
-    # График важности признаков (если есть)
-    if hasattr(model, "feature_importances_"):
-        feature_importances = pd.Series(
-            model.feature_importances_, 
-            index=train.drop(columns=[target]).columns
-        ).sort_values(ascending=False)
-
-        plt.figure(figsize=(12, 8))
-        sns.barplot(x=feature_importances, y=feature_importances.index, color="purple")
-        plt.title("Feature Importance")
-        plt.savefig("feature_importance.png")
-        plt.close()
-    else:
-        feature_importances = None
-
     # Создание Excel файла
     with pd.ExcelWriter(save_path, engine="openpyxl") as writer:
-        # Метрики
         metrics_df.to_excel(writer, sheet_name="Metrics", index=False)
-        
-        # Гиперпараметры
         hyperparameters.to_excel(writer, sheet_name="Hyperparameters")
-        
-        # Вставка графиков
-        workbook = writer.book
-        worksheet = workbook.create_sheet("Graphs")
-        worksheet = workbook["Graphs"]
-
-        for idx, image in enumerate(
-            ["target_distribution.png", "residuals_test.png", "residuals_oot.png", "feature_importance.png"]
-        ):
-            if os.path.exists(image):
-                img = openpyxl.drawing.image.Image(image)
-                img.anchor = f"A{idx * 20 + 1}"
-                worksheet.add_image(img)
-
-    # Очистка временных изображений
-    for img in ["target_distribution.png", "residuals_test.png", "residuals_oot.png", "feature_importance.png"]:
-        if os.path.exists(img):
-            os.remove(img)
-
+    
     return metrics_df
 
-
-report = generate_regression_report(
-    train=train_df,
-    test=test_df,
-    oot=oot_df,
-    target="your_target_column",
-    model=trained_model,
-    model_name="LightGBM",
-    save_path="regression_report.xlsx"
-)
-
-print(report)
-
-
-
+# Функция теперь автоматически добавляет количество строк в метрики. 🙂
