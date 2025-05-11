@@ -1,149 +1,188 @@
-from typing import Dict, List, Union, Any, Optional
-import pandas as pd
-import numpy as np
-import os
-from sklearn.base import BaseEstimator
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
-    mean_squared_error, mean_absolute_error, mean_absolute_percentage_error, r2_score
+def generate_regression_report(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    oot: pd.DataFrame,
+    target: str,
+    model,  # обученная модель LightGBM
+    model_name: str = "LightGBM",
+    save_path: str = "regression_report.xlsx"
+):
+
+"""
+Генерирует отчет об обучении модели регрессии и сохраняет его в формате Excel.
+
+Параметры:
+----------
+train : pd.DataFrame
+    Обучающая выборка с признаками и целевой переменной.
+
+test : pd.DataFrame
+    Тестовая выборка с признаками и целевой переменной.
+
+oot : pd.DataFrame
+    Out-Of-Time (OOT) выборка с признаками и целевой переменной.
+
+target : str
+    Название столбца с целевой переменной в выборках.
+
+model : LightGBM модель (или любая модель, поддерживающая метод predict)
+    Обученная модель, которую необходимо оценить.
+
+model_name : str, optional (по умолчанию = "LightGBM")
+    Название модели (используется в заголовке отчета).
+
+save_path : str, optional (по умолчанию = "regression_report.xlsx")
+    Путь и имя файла, в который будет сохранен отчет.
+
+Возвращаемое значение:
+----------------------
+pd.DataFrame
+    Таблица с метриками качества модели (R2, MAE, MSE, RMSE) для train, test и oot.
+
+Описание отчета:
+----------------
+Отчет сохраняется в формате Excel и содержит следующие листы:
+- Metrics: Таблица с метриками (R2, MAE, MSE, RMSE, Null Values %, Zero Values %).
+- Hyperparameters: Гиперпараметры модели (если модель поддерживает get_params()).
+- Graphs: Графики распределения целевой переменной, остатков (residuals) и важности признаков (если модель поддерживает feature_importances_).
+
+Пример использования:
+---------------------
+report = generate_regression_report(
+    train=train_df,
+    test=test_df,
+    oot=oot_df,
+    target="your_target_column",
+    model=trained_model,
+    model_name="LightGBM",
+    save_path="regression_report.xlsx"
 )
-from sklearn2pmml import sklearn2pmml, make_pmml_pipeline
-from lightgbm import LGBMRegressor, LGBMClassifier
-from catboost import CatBoostRegressor, CatBoostClassifier
+"""
 
-def grid_search_with_splits(
-    train_data: pd.DataFrame,
-    test_data: pd.DataFrame,
-    oot_data: pd.DataFrame,
-    targets: List[str],
-    final_selected_features: Dict[str, List[str]],
-    model: BaseEstimator,
-    categorical_features: Optional[List[str]] = None,
-    task_type: str = 'classification',
-    param_grid: Optional[Dict[str, List[Any]]] = None,
-    scoring: Optional[Union[str, List[str], Dict[str, Any]]] = None,
-    cv: int = 5,
-    threads: int = -1,
-    pmml_output_path: Optional[str] = None,
-    verbose: int = 0
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Универсальная функция для подбора моделей с сохранением в PMML
-    
-    Параметры:
-        train_data: Тренировочные данные
-        test_data: Тестовые данные (для оценки)
-        oot_data: Out-of-time данные (для финальной оценки)
-        targets: Список целевых переменных
-        final_selected_features: Словарь {target: [список фичей]}
-        model: Экземпляр модели (sklearn-совместимый)
-        categorical_features: Список категориальных фичей
-        task_type: 'classification' или 'regression'
-        param_grid: Сетка параметров
-        scoring: Метрики для оценки
-        cv: Количество фолдов
-        threads: Число потоков (-1 = все ядра)
-        pmml_output_path: Путь для сохранения PMML
-        verbose: Уровень логгирования
-    """
-    # Инициализация параметров
-    categorical_features = categorical_features or []
-    param_grid = param_grid or {}
-    scoring = scoring or ('roc_auc' if task_type == 'classification' else 'neg_mean_squared_error')
-    results = {}
 
-    for target in targets:
-        print(f"\n=== Обработка целевой переменной: {target} ===")
+
+
+    # Создание словаря с метриками
+    metrics = {
+        "Dataset": [],
+        "R2": [],
+        "MAE": [],
+        "MSE": [],
+        "RMSE": [],
+        "Null Values %": [],
+        "Zero Values %": []
+    }
+
+    def calculate_metrics(df, name):
+        y_true = df[target]
+        y_pred = model.predict(df.drop(columns=[target]))
+
+        metrics["Dataset"].append(name)
+        metrics["R2"].append(r2_score(y_true, y_pred))
+        metrics["MAE"].append(mean_absolute_error(y_true, y_pred))
+        metrics["MSE"].append(mean_squared_error(y_true, y_pred))
+        metrics["RMSE"].append(np.sqrt(mean_squared_error(y_true, y_pred)))
+        metrics["Null Values %"].append(y_true.isna().mean() * 100)
+        metrics["Zero Values %"].append((y_true == 0).mean() * 100)
+
+        return y_true, y_pred
+
+    # Вычисление метрик
+    y_train, y_train_pred = calculate_metrics(train, "Train")
+    y_test, y_test_pred = calculate_metrics(test, "Test")
+    y_oot, y_oot_pred = calculate_metrics(oot, "OOT")
+
+    # Создание таблицы метрик
+    metrics_df = pd.DataFrame(metrics)
+
+    # Извлечение гиперпараметров модели
+    hyperparameters = pd.DataFrame.from_dict(model.get_params(), orient="index", columns=["Value"])
+
+    # Создание графиков распределения
+    plt.figure(figsize=(16, 8))
+    sns.histplot(train[target], color="skyblue", label="Train", kde=True)
+    sns.histplot(test[target], color="orange", label="Test", kde=True)
+    sns.histplot(oot[target], color="green", label="OOT", kde=True)
+    plt.title("Target Distribution")
+    plt.legend()
+    plt.savefig("target_distribution.png")
+    plt.close()
+
+    # График остатков (Test)
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(x=y_test, y=(y_test - y_test_pred), color="red")
+    plt.axhline(0, linestyle="--", color="gray")
+    plt.title("Residuals (Test)")
+    plt.xlabel("True Values")
+    plt.ylabel("Residuals")
+    plt.savefig("residuals_test.png")
+    plt.close()
+
+    # График остатков (OOT)
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(x=y_oot, y=(y_oot - y_oot_pred), color="blue")
+    plt.axhline(0, linestyle="--", color="gray")
+    plt.title("Residuals (OOT)")
+    plt.xlabel("True Values")
+    plt.ylabel("Residuals")
+    plt.savefig("residuals_oot.png")
+    plt.close()
+
+    # График важности признаков (если есть)
+    if hasattr(model, "feature_importances_"):
+        feature_importances = pd.Series(
+            model.feature_importances_, 
+            index=train.drop(columns=[target]).columns
+        ).sort_values(ascending=False)
+
+        plt.figure(figsize=(12, 8))
+        sns.barplot(x=feature_importances, y=feature_importances.index, color="purple")
+        plt.title("Feature Importance")
+        plt.savefig("feature_importance.png")
+        plt.close()
+    else:
+        feature_importances = None
+
+    # Создание Excel файла
+    with pd.ExcelWriter(save_path, engine="openpyxl") as writer:
+        # Метрики
+        metrics_df.to_excel(writer, sheet_name="Metrics", index=False)
         
-        # Подготовка данных
-        features = final_selected_features[target]
-        cat_features = [f for f in categorical_features if f in features]
+        # Гиперпараметры
+        hyperparameters.to_excel(writer, sheet_name="Hyperparameters")
         
-        # Определение типа модели
-        model_type = type(model).__name__.lower()
-        is_lgbm = isinstance(model, (LGBMRegressor, LGBMClassifier))
-        is_catboost = isinstance(model, (CatBoostRegressor, CatBoostClassifier))
-        
-        # Обработка категориальных признаков
-        if cat_features and (is_lgbm or is_catboost):
-            for df in [train_data, test_data, oot_data]:
-                for col in cat_features:
-                    df[col] = df[col].astype('category')
-            
-            if is_lgbm:
-                cat_indices = [features.index(f) for f in cat_features]
-                model.set_params(categorical_feature=cat_indices)
-            elif is_catboost:
-                model.set_params(cat_features=cat_features)
+        # Вставка графиков
+        workbook = writer.book
+        worksheet = workbook.create_sheet("Graphs")
+        worksheet = workbook["Graphs"]
 
-        # Настройка GridSearch
-        grid_search = GridSearchCV(
-            estimator=model,
-            param_grid=param_grid,
-            scoring=scoring,
-            cv=cv,
-            n_jobs=threads if threads != -1 else None,
-            verbose=verbose
-        )
+        for idx, image in enumerate(
+            ["target_distribution.png", "residuals_test.png", "residuals_oot.png", "feature_importance.png"]
+        ):
+            if os.path.exists(image):
+                img = openpyxl.drawing.image.Image(image)
+                img.anchor = f"A{idx * 20 + 1}"
+                worksheet.add_image(img)
 
-        # Обучение модели
-        print(f"Обучение модели {model_type} на {len(features)} фичах...")
-        grid_search.fit(train_data[features], train_data[target])
-        
-        # Получение лучшей модели
-        best_model = grid_search.best_estimator_
-        
-        # Вычисление метрик
-        metrics = {}
-        for name, df in [('train', train_data), ('test', test_data), ('oot', oot_data)]:
-            X, y = df[features], df[target]
-            pred = best_model.predict(X)
-            
-            if task_type == 'classification':
-                metrics[name] = {
-                    'accuracy': accuracy_score(y, pred),
-                    'precision': precision_score(y, pred),
-                    'recall': recall_score(y, pred),
-                    'f1': f1_score(y, pred),
-                    'roc_auc': roc_auc_score(y, pred)
-                }
-            else:
-                metrics[name] = {
-                    'mse': mean_squared_error(y, pred),
-                    'rmse': np.sqrt(mean_squared_error(y, pred)),
-                    'mae': mean_absolute_error(y, pred),
-                    'mape': mean_absolute_percentage_error(y, pred),
-                    'r2': r2_score(y, pred)
-                }
+    # Очистка временных изображений
+    for img in ["target_distribution.png", "residuals_test.png", "residuals_oot.png", "feature_importance.png"]:
+        if os.path.exists(img):
+            os.remove(img)
 
-        # Сохранение в PMML
-        if pmml_output_path:
-            os.makedirs(pmml_output_path, exist_ok=True)
-            output_file = f"{pmml_output_path}/{target}_{model_type}.pmml"
-            pmml_pipeline = make_pmml_pipeline(best_model)
-            sklearn2pmml(pmml_pipeline, output_file, with_repr=True)
-            print(f"Модель сохранена в {output_file}")
+    return metrics_df
 
-        # Сохранение результатов
-        results[target] = {
-            'model': best_model,
-            'metrics': metrics,
-            'best_params': grid_search.best_params_,
-            'features': features,
-            'categorical_features': cat_features,
-            'model_type': model_type
-        }
 
-        # Вывод результатов
-        print("\nЛучшие параметры:")
-        for param, value in grid_search.best_params_.items():
-            print(f"{param}: {value}")
-        
-        print("\nМетрики:")
-        for dataset in ['train', 'test', 'oot']:
-            print(f"\n{dataset.upper()}:")
-            for metric, value in metrics[dataset].items():
-                print(f"{metric}: {value:.4f}")
+report = generate_regression_report(
+    train=train_df,
+    test=test_df,
+    oot=oot_df,
+    target="your_target_column",
+    model=trained_model,
+    model_name="LightGBM",
+    save_path="regression_report.xlsx"
+)
 
-    return results
+print(report)
+
+
+
