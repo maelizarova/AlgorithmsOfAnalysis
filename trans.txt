@@ -1,16 +1,15 @@
-# Переписываю функцию без использования torch и GPU для SHAP
-
-def generate_detailed_model_report_with_psi_shap_cpu(
+def detailed_model_report(
     train: pd.DataFrame,
     test: pd.DataFrame,
     oot: pd.DataFrame,
     target: str,
-    model,  # обученная модель LightGBM
+    model,  # обученная модель LightGBM или другая модель
+    features: list,  # список переменных, на которых обучается модель
     psi_df: pd.DataFrame,  # DataFrame с PSI (переменные как индекс, даты как столбцы)
     save_path: str = "regression_report.xlsx",
     model_name: str = "LightGBM",
-    bins: int = 50,  # Количество бинов на гистограмме
-    percentile_range: tuple = (1, 99)  # Диапазон процентилей для ограничения графиков
+    bins: int = 50,
+    percentile_range: tuple = (1, 99)
 ) -> None:
     """
     Генерирует отчет об обучении модели регрессии и сохраняет его на отдельном листе в Excel.
@@ -29,15 +28,13 @@ def generate_detailed_model_report_with_psi_shap_cpu(
 
     def calculate_metrics(df, name):
         y_true = df[target]
-        y_pred = model.predict(df.drop(columns=[target]))
-
+        y_pred = model.predict(df[features])
         metrics["R2"].append(np.round(r2_score(y_true, y_pred), 4))
         metrics["MAE"].append(np.round(mean_absolute_error(y_true, y_pred), 4))
         metrics["MSE"].append(np.round(mean_squared_error(y_true, y_pred), 4))
         metrics["RMSE"].append(np.round(np.sqrt(mean_squared_error(y_true, y_pred)), 4))
         metrics["Null Values %"].append(np.round(y_true.isna().mean() * 100, 2))
         metrics["Zero Values %"].append(np.round((y_true == 0).mean() * 100, 2))
-        return y_true, y_pred
 
     # Вычисление метрик
     calculate_metrics(train, "Train")
@@ -56,47 +53,50 @@ def generate_detailed_model_report_with_psi_shap_cpu(
     report_table["report_date"] = pd.to_datetime(report_table["report_date"])
     monthly_counts = report_table.groupby(report_table["report_date"].dt.to_period("M")).size().reset_index(name="Count")
 
-    # SHAP values без использования torch
-    import shap
-    explainer = shap.TreeExplainer(model, data=train.drop(columns=[target]), feature_perturbation="tree_path_dependent")
-    shap_values = explainer.shap_values(train.drop(columns=[target]))
-
-    # Создание графиков
-    y_combined = pd.concat([train[target], test[target], oot[target]])
-    lower, upper = np.percentile(y_combined.dropna(), percentile_range)
-
     # График распределения
     plt.figure(figsize=(10, 6))
-    sns.histplot(train[target].clip(lower, upper), bins=bins, color="skyblue", label="Train", kde=True)
-    sns.histplot(test[target].clip(lower, upper), bins=bins, color="orange", label="Test", kde=True)
-    sns.histplot(oot[target].clip(lower, upper), bins=bins, color="green", label="OOT", kde=True)
-    plt.title(f"Target Distribution - {target} (Clipped)")
+    sns.histplot(train[target], bins=bins, color="skyblue", label="Train", kde=True)
+    sns.histplot(test[target], bins=bins, color="orange", label="Test", kde=True)
+    sns.histplot(oot[target], bins=bins, color="green", label="OOT", kde=True)
+    plt.title(f"Target Distribution - {target}")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("target_distribution_limited.png")
+    plt.savefig("target_distribution.png")
     plt.close()
 
-    # SHAP Summary Plot (без использования torch)
-    shap.summary_plot(shap_values, train.drop(columns=[target]), show=False, plot_type="bar")
-    plt.title(f"SHAP Summary Plot - {target}")
+    # График остатков (Residuals)
+    plt.figure(figsize=(10, 6))
+    sns.scatterplot(x=test[target], y=test[target] - model.predict(test[features]), label="Test", color="red")
+    sns.scatterplot(x=oot[target], y=oot[target] - model.predict(oot[features]), label="OOT", color="blue")
+    plt.axhline(0, linestyle="--", color="gray")
+    plt.title("Residuals (Test & OOT)")
     plt.tight_layout()
-    plt.savefig("shap_summary.png")
+    plt.savefig("residuals.png")
+    plt.close()
+
+    # Feature Importance Plot (Top 20)
+    plt.figure(figsize=(10, 6))
+    feature_importance = pd.Series(model.feature_importances_, index=features)
+    top_features = feature_importance.sort_values(ascending=False).head(20)
+    sns.barplot(x=top_features.values, y=top_features.index, color="purple")
+    plt.title("Feature Importance (Top 20)")
+    plt.tight_layout()
+    plt.savefig("feature_importance.png")
     plt.close()
 
     # Создание Excel файла (или добавление листа)
     sheet_name = f"{model_name}_{target}"
     with pd.ExcelWriter(save_path, engine="openpyxl", mode="a" if os.path.exists(save_path) else "w") as writer:
-        # Метрики и гиперпараметры на одном листе
         metrics_df.to_excel(writer, sheet_name=sheet_name, startrow=0, index=False)
         hyperparameters.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + 3, header=True)
         psi_table.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + hyperparameters.shape[0] + 6)
         monthly_counts.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + hyperparameters.shape[0] + psi_table.shape[0] + 10, index=False)
 
         workbook = writer.book
-        worksheet = writer.sheets[sheet_name]
+        worksheet = workbook[sheet_name]
 
         # Вставка графиков
-        images = ["target_distribution_limited.png", "shap_summary.png"]
+        images = ["target_distribution.png", "residuals.png", "feature_importance.png"]
         row_pos = metrics_df.shape[0] + hyperparameters.shape[0] + psi_table.shape[0] + 20
         for idx, image in enumerate(images):
             if os.path.exists(image):
@@ -105,18 +105,19 @@ def generate_detailed_model_report_with_psi_shap_cpu(
                 worksheet.add_image(img)
 
     # Удаление временных изображений
-    for image in ["target_distribution_limited.png", "shap_summary.png"]:
+    for image in ["target_distribution.png", "residuals.png", "feature_importance.png"]:
         if os.path.exists(image):
             os.remove(image)
 
     print(f"✅ Отчет по модели {model_name} ({target}) добавлен в файл {save_path} на отдельный лист.")
 
 
-generate_detailed_model_report_with_psi_shap_cpu(
+detailed_model_report(
     train=train_df,
     test=test_df,
     oot=oot_df,
     target="your_target_column",
+    features=["feature_1", "feature_2", "feature_3"],
     model=trained_model,
     psi_df=psi_dataframe,  # твой DataFrame с PSI
     save_path="regression_report.xlsx",
