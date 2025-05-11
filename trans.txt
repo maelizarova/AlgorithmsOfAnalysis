@@ -110,3 +110,17 @@ def generate_detailed_model_report_with_psi_shap_cpu(
             os.remove(image)
 
     print(f"✅ Отчет по модели {model_name} ({target}) добавлен в файл {save_path} на отдельный лист.")
+
+
+generate_detailed_model_report_with_psi_shap_cpu(
+    train=train_df,
+    test=test_df,
+    oot=oot_df,
+    target="your_target_column",
+    model=trained_model,
+    psi_df=psi_dataframe,  # твой DataFrame с PSI
+    save_path="regression_report.xlsx",
+    model_name="LightGBM",
+    bins=50,
+    percentile_range=(1, 99)
+)
