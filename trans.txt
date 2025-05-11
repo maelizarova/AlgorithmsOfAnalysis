@@ -1,15 +1,23 @@
-def detailed_model_report(
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import openpyxl
+import os
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+
+def generate_detailed_model_report_full_no_shap(
     train: pd.DataFrame,
     test: pd.DataFrame,
     oot: pd.DataFrame,
     target: str,
-    model,  # обученная модель LightGBM или другая модель
     features: list,  # список переменных, на которых обучается модель
+    model,  # обученная модель LightGBM или другая модель
     psi_df: pd.DataFrame,  # DataFrame с PSI (переменные как индекс, даты как столбцы)
     save_path: str = "regression_report.xlsx",
     model_name: str = "LightGBM",
     bins: int = 50,
-    percentile_range: tuple = (1, 99)
+    percentile_range: tuple = (1, 99)  # Ограничение по процентилям для графика распределения
 ) -> None:
     """
     Генерирует отчет об обучении модели регрессии и сохраняет его на отдельном листе в Excel.
@@ -53,12 +61,16 @@ def detailed_model_report(
     report_table["report_date"] = pd.to_datetime(report_table["report_date"])
     monthly_counts = report_table.groupby(report_table["report_date"].dt.to_period("M")).size().reset_index(name="Count")
 
-    # График распределения
+    # Ограничение графика распределения по процентилям
+    y_combined = pd.concat([train[target], test[target], oot[target]])
+    lower, upper = np.percentile(y_combined.dropna(), percentile_range)
+
+    # График распределения (ОГРАНИЧЕН по процентилям)
     plt.figure(figsize=(10, 6))
-    sns.histplot(train[target], bins=bins, color="skyblue", label="Train", kde=True)
-    sns.histplot(test[target], bins=bins, color="orange", label="Test", kde=True)
-    sns.histplot(oot[target], bins=bins, color="green", label="OOT", kde=True)
-    plt.title(f"Target Distribution - {target}")
+    sns.histplot(train[target].clip(lower, upper), bins=bins, color="skyblue", label="Train", kde=True)
+    sns.histplot(test[target].clip(lower, upper), bins=bins, color="orange", label="Test", kde=True)
+    sns.histplot(oot[target].clip(lower, upper), bins=bins, color="green", label="OOT", kde=True)
+    plt.title(f"Target Distribution - {target} (Clipped {percentile_range[0]}-{percentile_range[1]}%)")
     plt.legend()
     plt.tight_layout()
     plt.savefig("target_distribution.png")
@@ -110,18 +122,3 @@ def detailed_model_report(
             os.remove(image)
 
     print(f"✅ Отчет по модели {model_name} ({target}) добавлен в файл {save_path} на отдельный лист.")
-
-
-detailed_model_report(
-    train=train_df,
-    test=test_df,
-    oot=oot_df,
-    target="your_target_column",
-    features=["feature_1", "feature_2", "feature_3"],
-    model=trained_model,
-    psi_df=psi_dataframe,  # твой DataFrame с PSI
-    save_path="regression_report.xlsx",
-    model_name="LightGBM",
-    bins=50,
-    percentile_range=(1, 99)
-)
