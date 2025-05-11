@@ -1,11 +1,3 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import openpyxl
-import os
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-
 def generate_detailed_model_report_full_no_shap(
     train: pd.DataFrame,
     test: pd.DataFrame,
@@ -39,7 +31,7 @@ def generate_detailed_model_report_full_no_shap(
         y_pred = model.predict(df[features])
         metrics["R2"].append(np.round(r2_score(y_true, y_pred), 4))
         metrics["MAE"].append(np.round(mean_absolute_error(y_true, y_pred), 4))
-        metrics["MSE"].append(np.round(mean_squared_error(y_true, y_pred), 4))
+        metrics["MSE"].append(np.round(mean_squared_squared_error(y_true, y_pred), 4))
         metrics["RMSE"].append(np.round(np.sqrt(mean_squared_error(y_true, y_pred)), 4))
         metrics["Null Values %"].append(np.round(y_true.isna().mean() * 100, 2))
         metrics["Zero Values %"].append(np.round((y_true == 0).mean() * 100, 2))
@@ -96,16 +88,22 @@ def generate_detailed_model_report_full_no_shap(
     plt.savefig("feature_importance.png")
     plt.close()
 
-    # Создание Excel файла (или добавление листа)
+    # Создание или обновление Excel файла
     sheet_name = f"{model_name}_{target}"
     with pd.ExcelWriter(save_path, engine="openpyxl", mode="a" if os.path.exists(save_path) else "w") as writer:
+        workbook = writer.book if os.path.exists(save_path) else None
+
+        # Проверяем, существует ли лист
+        if workbook and sheet_name in workbook.sheetnames:
+            del workbook[sheet_name]  # Удаляем лист, если он существует
+
+        # Создаем новый лист и записываем данные
+        worksheet = workbook.create_sheet(title=sheet_name)
+
         metrics_df.to_excel(writer, sheet_name=sheet_name, startrow=0, index=False)
         hyperparameters.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + 3, header=True)
         psi_table.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + hyperparameters.shape[0] + 6)
         monthly_counts.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + hyperparameters.shape[0] + psi_table.shape[0] + 10, index=False)
-
-        workbook = writer.book
-        worksheet = workbook[sheet_name]
 
         # Вставка графиков
         images = ["target_distribution.png", "residuals.png", "feature_importance.png"]
