@@ -1,122 +1,53 @@
-def generate_detailed_model_report_full_no_shap(
-    train: pd.DataFrame,
-    test: pd.DataFrame,
-    oot: pd.DataFrame,
-    target: str,
-    features: list,  # список переменных, на которых обучается модель
-    model,  # обученная модель LightGBM или другая модель
-    psi_df: pd.DataFrame,  # DataFrame с PSI (переменные как индекс, даты как столбцы)
-    save_path: str = "regression_report.xlsx",
-    model_name: str = "LightGBM",
-    bins: int = 50,
-    percentile_range: tuple = (1, 99)  # Ограничение по процентилям для графика распределения
-) -> None:
+from openpyxl import load_workbook
+import os
+
+def merge_excel_files(file_paths, final_output):
     """
-    Генерирует отчет об обучении модели регрессии и сохраняет его на отдельном листе в Excel.
-    """
-    # Создание словаря с метриками
-    metrics = {
-        "Dataset": ["Train", "Test", "OOT"],
-        "Rows": [train.shape[0], test.shape[0], oot.shape[0]],
-        "R2": [],
-        "MAE": [],
-        "MSE": [],
-        "RMSE": [],
-        "Null Values %": [],
-        "Zero Values %": []
-    }
-
-    def calculate_metrics(df, name):
-        y_true = df[target]
-        y_pred = model.predict(df[features])
-        metrics["R2"].append(np.round(r2_score(y_true, y_pred), 4))
-        metrics["MAE"].append(np.round(mean_absolute_error(y_true, y_pred), 4))
-        metrics["MSE"].append(np.round(mean_squared_squared_error(y_true, y_pred), 4))
-        metrics["RMSE"].append(np.round(np.sqrt(mean_squared_error(y_true, y_pred)), 4))
-        metrics["Null Values %"].append(np.round(y_true.isna().mean() * 100, 2))
-        metrics["Zero Values %"].append(np.round((y_true == 0).mean() * 100, 2))
-
-    # Вычисление метрик
-    calculate_metrics(train, "Train")
-    calculate_metrics(test, "Test")
-    calculate_metrics(oot, "OOT")
-    metrics_df = pd.DataFrame(metrics)
-
-    # Извлечение гиперпараметров модели
-    hyperparameters = pd.DataFrame.from_dict(model.get_params(), orient="index", columns=["Value"])
-
-    # Таблица PSI (из переданного psi_df)
-    psi_table = psi_df.copy()
+    Объединяет несколько Excel-файлов в один, копируя листы.
     
-    # Таблица записей по месяцам
-    report_table = pd.concat([train, test, oot])
-    report_table["report_date"] = pd.to_datetime(report_table["report_date"])
-    monthly_counts = report_table.groupby(report_table["report_date"].dt.to_period("M")).size().reset_index(name="Count")
+    Parameters:
+        file_paths (list): Список путей к файлам для объединения
+        final_output (str): Путь для итогового файла
+    """
+    final_wb = load_workbook(file_paths[0]) if os.path.exists(file_paths[0]) else None
+    
+    for file in file_paths[1:]:
+        if not os.path.exists(file):
+            continue
+        
+        source_wb = load_workbook(file)
+        if final_wb is None:
+            final_wb = source_wb
+            continue
+            
+        for sheet_name in source_wb.sheetnames:
+            # Если лист уже существует, переименовываем (добавляем "_2")
+            new_sheet_name = sheet_name
+            if new_sheet_name in final_wb.sheetnames:
+                new_sheet_name = f"{sheet_name}_2"
+            
+            # Копируем лист
+            source_sheet = source_wb[sheet_name]
+            new_sheet = final_wb.create_sheet(new_sheet_name)
+            
+            # Копируем данные и стили
+            for row in source_sheet.iter_rows():
+                for cell in row:
+                    new_sheet[cell.coordinate].value = cell.value
+                    if cell.has_style:
+                        new_sheet[cell.coordinate].font = cell.font.copy()
+                        new_sheet[cell.coordinate].border = cell.border.copy()
+                        new_sheet[cell.coordinate].fill = cell.fill.copy()
+                        new_sheet[cell.coordinate].alignment = cell.alignment.copy()
+    
+    if final_wb:
+        final_wb.save(final_output)
+        print(f"Файлы объединены в: {final_output}")
+    else:
+        print("Нет файлов для объединения!")
 
-    # Ограничение графика распределения по процентилям
-    y_combined = pd.concat([train[target], test[target], oot[target]])
-    lower, upper = np.percentile(y_combined.dropna(), percentile_range)
-
-    # График распределения (ОГРАНИЧЕН по процентилям)
-    plt.figure(figsize=(10, 6))
-    sns.histplot(train[target].clip(lower, upper), bins=bins, color="skyblue", label="Train", kde=True)
-    sns.histplot(test[target].clip(lower, upper), bins=bins, color="orange", label="Test", kde=True)
-    sns.histplot(oot[target].clip(lower, upper), bins=bins, color="green", label="OOT", kde=True)
-    plt.title(f"Target Distribution - {target} (Clipped {percentile_range[0]}-{percentile_range[1]}%)")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig("target_distribution.png")
-    plt.close()
-
-    # График остатков (Residuals)
-    plt.figure(figsize=(10, 6))
-    sns.scatterplot(x=test[target], y=test[target] - model.predict(test[features]), label="Test", color="red")
-    sns.scatterplot(x=oot[target], y=oot[target] - model.predict(oot[features]), label="OOT", color="blue")
-    plt.axhline(0, linestyle="--", color="gray")
-    plt.title("Residuals (Test & OOT)")
-    plt.tight_layout()
-    plt.savefig("residuals.png")
-    plt.close()
-
-    # Feature Importance Plot (Top 20)
-    plt.figure(figsize=(10, 6))
-    feature_importance = pd.Series(model.feature_importances_, index=features)
-    top_features = feature_importance.sort_values(ascending=False).head(20)
-    sns.barplot(x=top_features.values, y=top_features.index, color="purple")
-    plt.title("Feature Importance (Top 20)")
-    plt.tight_layout()
-    plt.savefig("feature_importance.png")
-    plt.close()
-
-    # Создание или обновление Excel файла
-    sheet_name = f"{model_name}_{target}"
-    with pd.ExcelWriter(save_path, engine="openpyxl", mode="a" if os.path.exists(save_path) else "w") as writer:
-        workbook = writer.book if os.path.exists(save_path) else None
-
-        # Проверяем, существует ли лист
-        if workbook and sheet_name in workbook.sheetnames:
-            del workbook[sheet_name]  # Удаляем лист, если он существует
-
-        # Создаем новый лист и записываем данные
-        worksheet = workbook.create_sheet(title=sheet_name)
-
-        metrics_df.to_excel(writer, sheet_name=sheet_name, startrow=0, index=False)
-        hyperparameters.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + 3, header=True)
-        psi_table.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + hyperparameters.shape[0] + 6)
-        monthly_counts.to_excel(writer, sheet_name=sheet_name, startrow=metrics_df.shape[0] + hyperparameters.shape[0] + psi_table.shape[0] + 10, index=False)
-
-        # Вставка графиков
-        images = ["target_distribution.png", "residuals.png", "feature_importance.png"]
-        row_pos = metrics_df.shape[0] + hyperparameters.shape[0] + psi_table.shape[0] + 20
-        for idx, image in enumerate(images):
-            if os.path.exists(image):
-                img = openpyxl.drawing.image.Image(image)
-                img.anchor = f"A{row_pos + (idx * 20)}"
-                worksheet.add_image(img)
-
-    # Удаление временных изображений
-    for image in ["target_distribution.png", "residuals.png", "feature_importance.png"]:
-        if os.path.exists(image):
-            os.remove(image)
-
-    print(f"✅ Отчет по модели {model_name} ({target}) добавлен в файл {save_path} на отдельный лист.")
+# Пример использования:
+merge_excel_files(
+    ["file1.xlsx", "file2.xlsx", "file3.xlsx"],
+    "merged_result.xlsx"
+)
