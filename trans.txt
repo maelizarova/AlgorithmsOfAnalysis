@@ -1,81 +1,21 @@
-from openpyxl import load_workbook
-from openpyxl.drawing.image import Image
-import os
-from copy import copy
-from tempfile import NamedTemporaryFile
-
-def merge_excel_files(file_paths, final_output):
-    """
-    Объединяет Excel-файлы, гарантированно сохраняя встроенные изображения.
-    """
-    if not file_paths:
-        raise ValueError("Нет файлов для объединения!")
-
-    final_wb = None
-    temp_files = []  # Для хранения путей временных файлов
-
-    try:
-        for file in file_paths:
-            if not os.path.exists(file):
-                print(f"Файл {file} не найден, пропускаем.")
-                continue
-            
-            source_wb = load_workbook(file)
-            if final_wb is None:
-                final_wb = source_wb
-                continue
-                
-            for sheet_name in source_wb.sheetnames:
-                new_sheet_name = sheet_name
-                counter = 1
-                while new_sheet_name in final_wb.sheetnames:
-                    new_sheet_name = f"{sheet_name}_{counter}"
-                    counter += 1
-                
-                source_sheet = source_wb[sheet_name]
-                new_sheet = final_wb.create_sheet(new_sheet_name)
-                
-                # Копирование данных и стилей
-                for row in source_sheet.iter_rows():
-                    for cell in row:
-                        new_cell = new_sheet[cell.coordinate]
-                        new_cell.value = cell.value
-                        if cell.font:
-                            new_cell.font = copy(cell.font)
-                        if cell.border:
-                            new_cell.border = copy(cell.border)
-                        if cell.fill:
-                            new_cell.fill = copy(cell.fill)
-                        if cell.alignment:
-                            new_cell.alignment = copy(cell.alignment)
-                
-                # Копирование изображений (с отложенным удалением)
-                for image in source_sheet._images:
-                    try:
-                        if hasattr(image, '_data'):
-                            with NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-                                tmp.write(image._data())
-                                tmp_path = tmp.name
-                                temp_files.append(tmp_path)  # Запоминаем файл
-                            img = Image(tmp_path)
-                        else:
-                            img = Image(image.path)
-                        img.anchor = image.anchor
-                        new_sheet.add_image(img)
-                    except Exception as e:
-                        print(f"Ошибка при копировании изображения: {e}")
-
-        if final_wb:
-            final_wb.save(final_output)
-            print(f"Файлы объединены в: {final_output}")
-        else:
-            raise FileNotFoundError("Не удалось создать итоговый файл!")
-
-    finally:
-        # Удаляем временные файлы только после сохранения книги
-        for tmp_path in temp_files:
-            try:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-            except Exception as e:
-                print(f"Ошибка при удалении временного файла {tmp_path}: {e}")
+with pd.ExcelWriter('output.xlsx', engine='openpyxl') as writer:
+    # Записываем данные
+    psi_table.to_excel(
+        writer,
+        sheet_name=sheet_name,
+        startrow=metrics_df.shape[0] + monthly_counts.T.shape[0] + 6,
+        index=True
+    )
+    
+    # Получаем лист
+    ws = writer.sheets[sheet_name]
+    
+    # Находим стартовую строку (где начинается psi_table)
+    start_row = metrics_df.shape[0] + monthly_counts.T.shape[0] + 6 + 1  # +1 (заголовок)
+    
+    # Форматируем строку с датами (если они в columns)
+    for col_num, date in enumerate(psi_table.columns, start=2):  # start=2, т.к. 1-я колонка — индекс
+        cell = ws.cell(row=start_row, column=col_num)
+        if isinstance(date, (pd.Timestamp, datetime.datetime)):  # Если дата — datetime
+            cell.number_format = 'YYYY-MM-DD'  # Формат без времени
+            cell.value = date  # Перезаписываем, чтобы формат применился
