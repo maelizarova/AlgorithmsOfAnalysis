@@ -6,70 +6,76 @@ from tempfile import NamedTemporaryFile
 
 def merge_excel_files(file_paths, final_output):
     """
-    Объединяет Excel-файлы, корректно обрабатывая встроенные изображения.
+    Объединяет Excel-файлы, гарантированно сохраняя встроенные изображения.
     """
     if not file_paths:
         raise ValueError("Нет файлов для объединения!")
 
-    # Загружаем первый файл или создаем новую книгу
-    final_wb = load_workbook(file_paths[0]) if os.path.exists(file_paths[0]) else None
-    
-    for file in file_paths:
-        if not os.path.exists(file):
-            print(f"Файл {file} не найден, пропускаем.")
-            continue
-        
-        source_wb = load_workbook(file)
-        if final_wb is None:
-            final_wb = source_wb
-            continue
+    final_wb = None
+    temp_files = []  # Для хранения путей временных файлов
+
+    try:
+        for file in file_paths:
+            if not os.path.exists(file):
+                print(f"Файл {file} не найден, пропускаем.")
+                continue
             
-        for sheet_name in source_wb.sheetnames:
-            # Уникальное имя листа
-            new_sheet_name = sheet_name
-            counter = 1
-            while new_sheet_name in final_wb.sheetnames:
-                new_sheet_name = f"{sheet_name}_{counter}"
-                counter += 1
-            
-            # Копируем лист
-            source_sheet = source_wb[sheet_name]
-            new_sheet = final_wb.create_sheet(new_sheet_name)
-            
-            # Копируем данные и стили
-            for row in source_sheet.iter_rows():
-                for cell in row:
-                    new_cell = new_sheet[cell.coordinate]
-                    new_cell.value = cell.value
-                    if cell.font:
-                        new_cell.font = copy(cell.font)
-                    if cell.border:
-                        new_cell.border = copy(cell.border)
-                    if cell.fill:
-                        new_cell.fill = copy(cell.fill)
-                    if cell.alignment:
-                        new_cell.alignment = copy(cell.alignment)
-            
-            # Копируем изображения (исправленная часть)
-            for image in source_sheet._images:
-                try:
-                    # Для встроенных изображений
-                    if hasattr(image, '_data'):
-                        with NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-                            tmp.write(image._data())
-                            tmp_path = tmp.name
-                        img = Image(tmp_path)
-                        os.unlink(tmp_path)  # Удаляем временный файл
-                    else:
-                        # Для внешних изображений
-                        img = Image(image.path)
-                    img.anchor = image.anchor
-                    new_sheet.add_image(img)
-                except Exception as e:
-                    print(f"Ошибка при копировании изображения: {e}")
-    
-    if final_wb:
-        final_wb.save(final_output)
-        print(f"Файлы объединены в: {final_output}")
-    else:
-        raise FileNotFoundError("Не удалось создать итоговый файл!")
+            source_wb = load_workbook(file)
+            if final_wb is None:
+                final_wb = source_wb
+                continue
+                
+            for sheet_name in source_wb.sheetnames:
+                new_sheet_name = sheet_name
+                counter = 1
+                while new_sheet_name in final_wb.sheetnames:
+                    new_sheet_name = f"{sheet_name}_{counter}"
+                    counter += 1
+                
+                source_sheet = source_wb[sheet_name]
+                new_sheet = final_wb.create_sheet(new_sheet_name)
+                
+                # Копирование данных и стилей
+                for row in source_sheet.iter_rows():
+                    for cell in row:
+                        new_cell = new_sheet[cell.coordinate]
+                        new_cell.value = cell.value
+                        if cell.font:
+                            new_cell.font = copy(cell.font)
+                        if cell.border:
+                            new_cell.border = copy(cell.border)
+                        if cell.fill:
+                            new_cell.fill = copy(cell.fill)
+                        if cell.alignment:
+                            new_cell.alignment = copy(cell.alignment)
+                
+                # Копирование изображений (с отложенным удалением)
+                for image in source_sheet._images:
+                    try:
+                        if hasattr(image, '_data'):
+                            with NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+                                tmp.write(image._data())
+                                tmp_path = tmp.name
+                                temp_files.append(tmp_path)  # Запоминаем файл
+                            img = Image(tmp_path)
+                        else:
+                            img = Image(image.path)
+                        img.anchor = image.anchor
+                        new_sheet.add_image(img)
+                    except Exception as e:
+                        print(f"Ошибка при копировании изображения: {e}")
+
+        if final_wb:
+            final_wb.save(final_output)
+            print(f"Файлы объединены в: {final_output}")
+        else:
+            raise FileNotFoundError("Не удалось создать итоговый файл!")
+
+    finally:
+        # Удаляем временные файлы только после сохранения книги
+        for tmp_path in temp_files:
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+            except Exception as e:
+                print(f"Ошибка при удалении временного файла {tmp_path}: {e}")
