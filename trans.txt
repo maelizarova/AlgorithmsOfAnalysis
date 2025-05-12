@@ -1,18 +1,25 @@
 from openpyxl import load_workbook
+from openpyxl.drawing.image import Image
 import os
+from copy import deepcopy
 
 def merge_excel_files(file_paths, final_output):
     """
-    Объединяет несколько Excel-файлов в один, копируя листы.
+    Объединяет несколько Excel-файлов в один, копируя листы вместе с изображениями.
     
     Parameters:
-        file_paths (list): Список путей к файлам для объединения
-        final_output (str): Путь для итогового файла
+        file_paths (list): Список путей к файлам для объединения.
+        final_output (str): Путь для итогового файла.
     """
+    if not file_paths:
+        raise ValueError("Список файлов для объединения пуст!")
+
+    # Создаем новую книгу или загружаем первую из списка
     final_wb = load_workbook(file_paths[0]) if os.path.exists(file_paths[0]) else None
     
     for file in file_paths[1:]:
         if not os.path.exists(file):
+            print(f"Файл {file} не найден, пропускаем.")
             continue
         
         source_wb = load_workbook(file)
@@ -21,10 +28,12 @@ def merge_excel_files(file_paths, final_output):
             continue
             
         for sheet_name in source_wb.sheetnames:
-            # Если лист уже существует, переименовываем (добавляем "_2")
+            # Генерируем уникальное имя листа (если такой уже есть)
             new_sheet_name = sheet_name
-            if new_sheet_name in final_wb.sheetnames:
-                new_sheet_name = f"{sheet_name}_2"
+            counter = 1
+            while new_sheet_name in final_wb.sheetnames:
+                new_sheet_name = f"{sheet_name}_{counter}"
+                counter += 1
             
             # Копируем лист
             source_sheet = source_wb[sheet_name]
@@ -33,21 +42,29 @@ def merge_excel_files(file_paths, final_output):
             # Копируем данные и стили
             for row in source_sheet.iter_rows():
                 for cell in row:
-                    new_sheet[cell.coordinate].value = cell.value
+                    new_cell = new_sheet[cell.coordinate]
+                    new_cell.value = cell.value
                     if cell.has_style:
-                        new_sheet[cell.coordinate].font = cell.font.copy()
-                        new_sheet[cell.coordinate].border = cell.border.copy()
-                        new_sheet[cell.coordinate].fill = cell.fill.copy()
-                        new_sheet[cell.coordinate].alignment = cell.alignment.copy()
+                        new_cell.font = deepcopy(cell.font)
+                        new_cell.border = deepcopy(cell.border)
+                        new_cell.fill = deepcopy(cell.fill)
+                        new_cell.alignment = deepcopy(cell.alignment)
+            
+            # Копируем изображения
+            for image in source_sheet._images:
+                # Создаем копию изображения
+                img = Image(image.path)
+                img.anchor = image.anchor  # Сохраняем позицию
+                new_sheet.add_image(img)
     
     if final_wb:
         final_wb.save(final_output)
-        print(f"Файлы объединены в: {final_output}")
+        print(f"Файлы успешно объединены в: {final_output}")
     else:
-        print("Нет файлов для объединения!")
+        raise FileNotFoundError("Ни один из файлов не найден!")
 
-# Пример использования:
+# Пример использования
 merge_excel_files(
-    ["file1.xlsx", "file2.xlsx", "file3.xlsx"],
-    "merged_result.xlsx"
+    ["report_part1.xlsx", "report_part2.xlsx"],
+    "final_report_with_images.xlsx"
 )
