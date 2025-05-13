@@ -1,16 +1,51 @@
-from openpyxl import load_workbook
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 
-wb = load_workbook('your_file.xlsx')
+# Исходные данные (пример)
+all_metrics = [
+    {
+        "Dataset": ["Train", "Test", "OOT"],
+        "Rows": [10000, 3000, 2000], 
+        "R2": [0.85, 0.82, 0.80]
+    },
+    {
+        "Dataset": ["Train", "Test"],
+        "Rows": [8000, 2000],
+        "R2": [0.88, 0.84]
+    }
+]
+
+# Создаем Excel-файл с объединением ячеек
+wb = Workbook()
 ws = wb.active
 
-current_value = None
-start_row = 2
+# Заголовки
+headers = ['Model'] + list(all_metrics[0].keys())
+ws.append(headers)
+
+# Записываем данные с маркировкой моделей
+for i, metrics in enumerate(all_metrics, 1):
+    model_name = f'Model {i}'
+    for j in range(len(metrics['Dataset'])):
+        row = [model_name if k == 0 else metrics[headers[k+1]][j] 
+               for k in range(len(headers))]
+        ws.append(row)
+
+# Объединяем ячейки для одинаковых моделей
+current_model = None
+start_row = 2  # Первая строка с данными
 
 for row in range(2, ws.max_row + 1):
-    if ws[f'A{row}'].value != current_value:
-        if start_row != row - 1:
+    if ws[f'A{row}'].value != current_model:
+        if current_model is not None and (row - 1) > start_row:
             ws.merge_cells(f'A{start_row}:A{row-1}')
-        current_value = ws[f'A{row}'].value
+        current_model = ws[f'A{row}'].value
         start_row = row
 
-wb.save('merged_cells.xlsx')
+# Объединяем последнюю группу
+if (ws.max_row) > start_row:
+    ws.merge_cells(f'A{start_row}:A{ws.max_row}')
+
+# Сохраняем файл
+wb.save('merged_models_report.xlsx')
