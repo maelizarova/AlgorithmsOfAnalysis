@@ -1,21 +1,16 @@
-with pd.ExcelWriter('output.xlsx', engine='openpyxl') as writer:
-    # Записываем данные
-    psi_table.to_excel(
-        writer,
-        sheet_name=sheet_name,
-        startrow=metrics_df.shape[0] + monthly_counts.T.shape[0] + 6,
-        index=True
-    )
-    
-    # Получаем лист
-    ws = writer.sheets[sheet_name]
-    
-    # Находим стартовую строку (где начинается psi_table)
-    start_row = metrics_df.shape[0] + monthly_counts.T.shape[0] + 6 + 1  # +1 (заголовок)
-    
-    # Форматируем строку с датами (если они в columns)
-    for col_num, date in enumerate(psi_table.columns, start=2):  # start=2, т.к. 1-я колонка — индекс
-        cell = ws.cell(row=start_row, column=col_num)
-        if isinstance(date, (pd.Timestamp, datetime.datetime)):  # Если дата — datetime
-            cell.number_format = 'YYYY-MM-DD'  # Формат без времени
-            cell.value = date  # Перезаписываем, чтобы формат применился
+from openpyxl import load_workbook
+
+wb = load_workbook('your_file.xlsx')
+ws = wb.active
+
+current_value = None
+start_row = 2
+
+for row in range(2, ws.max_row + 1):
+    if ws[f'A{row}'].value != current_value:
+        if start_row != row - 1:
+            ws.merge_cells(f'A{start_row}:A{row-1}')
+        current_value = ws[f'A{row}'].value
+        start_row = row
+
+wb.save('merged_cells.xlsx')
