@@ -1,31 +1,163 @@
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
+import pandas as pd
+from sklearn.neighbors import KernelDensity
 
-def trimmed_mae(y_true, y_pred, percentile=95):
+def plot_model_performance(y_true, y_pred, log_scale=False, exclude_zero_targets=False, 
+                          quantile_range=None, sample_fraction=1.0, bw_method=None):
     """
-    Вычисляет MAE, исключая верхние (100 - percentile)% ошибок.
+    Функция для визуализации ошибок модели и сравнения предсказаний с таргетами.
     
     Параметры:
     ----------
     y_true : array-like
-        Истинные значения.
+        Истинные значения целевой переменной.
     y_pred : array-like
-        Предсказанные значения.
-    percentile : float (по умолчанию 95)
-        Процент ошибок, которые учитываются (от 0 до 100).
-    
-    Возвращает:
-    -----------
-    float
-        Усеченное MAE.
+        Предсказанные значения модели.
+    log_scale : bool, optional (default=False)
+        Если True, оси на scatter plot будут в логарифмическом масштабе.
+    exclude_zero_targets : bool, optional (default=False)
+        Если True, исключает записи где y_true == 0.
+    quantile_range : tuple, optional (default=None)
+        Диапазон квантилей для отбора данных (например, (0.05, 0.95)).
+        Если None, данные не фильтруются.
+    sample_fraction : float, optional (default=1.0)
+        Доля данных для построения графиков (от 0.0 до 1.0).
+        Если < 1.0, данные выбираются случайным образом.
+    bw_method : float or str, optional (default=None)
+        Метод определения ширины окна для KDE. Может быть числом, 'scott' или 'silverman'.
     """
-    # Вычисляем абсолютные ошибки
-    errors = np.abs(np.array(y_true) - np.array(y_pred))
+    # Преобразуем входные данные в numpy array
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
     
-    # Находим порог для заданного перцентиля
-    threshold = np.percentile(errors, percentile)
+    # Проверяем совпадение размеров
+    if len(y_true) != len(y_pred):
+        raise ValueError("y_true и y_pred должны иметь одинаковую длину")
     
-    # Фильтруем ошибки, оставляя только <= порога
-    filtered_errors = errors[errors <= threshold]
+    # Исключаем записи с нулевым таргетом если нужно
+    if exclude_zero_targets:
+        mask = y_true != 0
+        y_true = y_true[mask]
+        y_pred = y_pred[mask]
     
-    # Возвращаем среднее значение оставшихся ошибок
-    return np.mean(filtered_errors)
+    # Применяем фильтрацию по квантилям если задана
+    if quantile_range is not None:
+        low_q, high_q = quantile_range
+        if not (0 <= low_q < high_q <= 1):
+            raise ValueError("quantile_range должен быть в формате (low, high), где 0 ≤ low < high ≤ 1")
+        
+        # Фильтруем по квантилям таргета
+        low_bound = np.quantile(y_true, low_q)
+        high_bound = np.quantile(y_true, high_q)
+        mask = (y_true >= low_bound) & (y_true <= high_bound)
+        y_true = y_true[mask]
+        y_pred = y_pred[mask]
+    
+    # Выбираем долю данных если нужно
+    if sample_fraction < 1.0:
+        if not (0 < sample_fraction <= 1):
+            raise ValueError("sample_fraction должен быть в диапазоне (0, 1]")
+        
+        n_samples = int(len(y_true) * sample_fraction)
+        indices = np.random.choice(len(y_true), size=n_samples, replace=False)
+        y_true = y_true[indices]
+        y_pred = y_pred[indices]
+    
+    # Вычисляем ошибки
+    errors = y_true - y_pred
+    
+    # Создаем subplot с тремя графиками
+    fig = make_subplots(rows=1, cols=3, 
+                        subplot_titles=('Распределение ошибок', 
+                                       'Предсказания vs Таргеты',
+                                       'Распределения таргета и предсказаний'),
+                        horizontal_spacing=0.1,
+                        column_widths=[0.25, 0.4, 0.35])
+    
+    # 1. Боксплот ошибок (горизонтальный)
+    fig.add_trace(
+        go.Box(x=errors, name='Ошибки', orientation='h', boxpoints='outliers'),
+        row=1, col=1
+    )
+    
+    # 2. Scatter plot предсказаний против таргетов
+    scatter = go.Scatter(
+        x=y_true,
+        y=y_pred,
+        mode='markers',
+        marker=dict(size=6, opacity=0.5),
+        name='Предсказания'
+    )
+    fig.add_trace(scatter, row=1, col=2)
+    
+    # Добавляем линию идеальных предсказаний (y = x)
+    max_val = max(np.max(y_true), np.max(y_pred))
+    min_val = min(np.min(y_true), np.min(y_pred))
+    line = go.Scatter(
+        x=[min_val, max_val],
+        y=[min_val, max_val],
+        mode='lines',
+        line=dict(color='red', dash='dash'),
+        name='Идеальные предсказания'
+    )
+    fig.add_trace(line, row=1, col=2)
+    
+    # 3. KDE plot для распределений
+    # Создаем точки для оценки плотности
+    x_grid = np.linspace(min(min_val, 0), max_val, 1000)
+    
+    # Оцениваем KDE для таргета
+    kde_true = KernelDensity(kernel='gaussian', bandwidth=bw_method).fit(y_true.reshape(-1, 1))
+    log_dens_true = kde_true.score_samples(x_grid.reshape(-1, 1))
+    dens_true = np.exp(log_dens_true)
+    
+    # Оцениваем KDE для предсказаний
+    kde_pred = KernelDensity(kernel='gaussian', bandwidth=bw_method).fit(y_pred.reshape(-1, 1))
+    log_dens_pred = kde_pred.score_samples(x_grid.reshape(-1, 1))
+    dens_pred = np.exp(log_dens_pred)
+    
+    # Добавляем KDE plot
+    fig.add_trace(
+        go.Scatter(x=x_grid, y=dens_true, 
+                  mode='lines', line=dict(color='blue'), 
+                  name='Таргет', fill='tozeroy'),
+        row=1, col=3
+    )
+    fig.add_trace(
+        go.Scatter(x=x_grid, y=dens_pred, 
+                  mode='lines', line=dict(color='green'), 
+                  name='Предсказание', fill='tozeroy'),
+        row=1, col=3
+    )
+    
+    # Настраиваем логарифмический масштаб если нужно
+    if log_scale:
+        fig.update_xaxes(type='log', row=1, col=2)
+        fig.update_yaxes(type='log', row=1, col=2)
+        fig.update_xaxes(type='log', row=1, col=3)
+    
+    # Обновляем layout
+    title = 'Анализ производительности модели'
+    if quantile_range is not None:
+        title += f' (квантили {quantile_range[0]}-{quantile_range[1]})'
+    if sample_fraction < 1.0:
+        title += f' ({sample_fraction*100:.0f}% данных)'
+    
+    fig.update_layout(
+        title_text=title,
+        height=500,
+        width=1300,  # Увеличили ширину для третьего графика
+        showlegend=True,
+        margin=dict(l=50, r=50, b=50, t=80)
+    )
+    
+    # Обновляем подписи осей
+    fig.update_xaxes(title_text='Ошибка (таргет - предсказание)', row=1, col=1)
+    fig.update_xaxes(title_text='Таргет', row=1, col=2)
+    fig.update_yaxes(title_text='Предсказание', row=1, col=2)
+    fig.update_xaxes(title_text='Значение', row=1, col=3)
+    fig.update_yaxes(title_text='Плотность', row=1, col=3)
+    
+    fig.show()
