@@ -137,3 +137,23 @@ def plot_model_performance(y_true, y_pred, log_scale=False, exclude_zeros=False,
     fig.update_yaxes(title_text="Плотность", row=3, col=1)
     
     fig.show()
+
+
+import plotly.express as px
+
+fig = px.histogram(
+    pd.DataFrame({
+        'log_y_true': log_y_true,
+        'log_y_pred': log_y_pred
+    }).melt(),
+    x='value',
+    color='variable',
+    marginal='rug',
+    nbins=100,
+    barmode='overlay',
+    histnorm='probability density'
+)
+
+fig.update_traces(opacity=0.75)
+fig.update_layout(title='Сравнение распределений в log10-шкале')
+fig.show()
