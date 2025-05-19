@@ -124,6 +124,15 @@ def plot_model_performance_v2(y_true, y_pred, file_nm, log_scale=False, exclude_
         tickvals=[-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6],
         ticktext=['10⁻⁶', '10⁻⁵', '10⁻⁴', '10⁻³', '10⁻²', '10⁻¹', '10⁰', '10¹', '10²', '10³', '10⁴', '10⁵', '10⁶']
     )
+
+    fig.update_xaxes(
+        row=3, col=1,
+        type='log',
+        title_text="Значение",
+        tickformat="s",  # Автоматически использует k, M, G и т.д.
+        tickvals=[1, 10, 100, 1e3, 1e4, 1e5, 1e6],  # 1, 10, 100, 1k, 10k, 100k, 1M
+        range=[0, 6]  # Диапазон log10 (10⁰ до 10⁶)
+    )
     
     # Общие настройки
     fig.update_layout(
