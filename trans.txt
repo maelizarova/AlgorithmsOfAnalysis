@@ -122,7 +122,7 @@ def plot_model_performance_v2(y_true, y_pred, file_nm, log_scale=False, exclude_
         title_text="log10(Значение)",
         row=3, col=1,
         tickvals=[-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6],
-        ticktext=['10⁻⁶', '10⁻⁵', '10⁻⁴', '10⁻³', '10⁻²', '10⁻¹', '10⁰', '10¹', '10²', '10³', '10⁴', '10⁵', '10⁶']
+        ticktext=['1µ', '10µ', '100µ', '1m', '10m', '100m', '1', '10', '100', '1k', '10k', '100k', '1M']
     )
 
     fig.update_xaxes(
