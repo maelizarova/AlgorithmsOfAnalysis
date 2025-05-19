@@ -5,15 +5,15 @@ import pandas as pd
 
 def plot_model_performance(y_true, y_pred, log_scale=False, exclude_zeros=False, quantile_range=None):
     """
-    Улучшенная версия с единым форматом подписей осей.
+    Стабильная версия с единообразными подписями осей.
     
     Параметры:
     ----------
     y_true : array-like
     y_pred : array-like
-    log_scale : bool (default=False) - логарифмические оси везде, где возможно
-    exclude_zeros : bool (default=False) - исключать нулевые значения
-    quantile_range : tuple (default=None) - диапазон квантилей для фильтрации
+    log_scale : bool (default=False)
+    exclude_zeros : bool (default=False)
+    quantile_range : tuple (default=None)
     """
     
     # Подготовка данных
@@ -30,11 +30,9 @@ def plot_model_performance(y_true, y_pred, log_scale=False, exclude_zeros=False,
     
     errors = df['y_true'] - df['y_pred']
     
-    # Логарифмированные данные (с обработкой нулей)
-    log_df = pd.DataFrame({
-        'log_y_true': np.log10(df['y_true'].clip(lower=1e-10)),
-        'log_y_pred': np.log10(df['y_pred'].clip(lower=1e-10))
-    }).melt()
+    # Общие настройки для логарифмических подписей
+    log_tickvals = [-3, -2, -1, 0, 1, 2, 3]
+    log_ticktext = ['10⁻³', '10⁻²', '10⁻¹', '10⁰', '10¹', '10²', '10³']
 
     # Создаем фигуру
     fig = make_subplots(
@@ -42,22 +40,30 @@ def plot_model_performance(y_true, y_pred, log_scale=False, exclude_zeros=False,
         subplot_titles=(
             '1. Распределение ошибок (y_true - y_pred)',
             '2. Сравнение y_true и y_pred',
-            '3. Распределения в log10-шкале'
+            '3. KDE распределения (log10)'
         ),
-        vertical_spacing=0.1
+        vertical_spacing=0.15
     )
 
     # 1. Боксплот ошибок
     fig.add_trace(
-        go.Box(x=errors, name='Ошибки', orientation='h', boxpoints=False),
+        go.Box(
+            x=errors,
+            name='Ошибки',
+            orientation='h',
+            boxpoints=False,
+            marker_color='lightseagreen'
+        ),
         row=1, col=1
     )
 
     # 2. Scatter plot
     fig.add_trace(
         go.Scatter(
-            x=df['y_true'], y=df['y_pred'],
-            mode='markers', marker=dict(size=5, opacity=0.3, color='blue'),
+            x=df['y_true'],
+            y=df['y_pred'],
+            mode='markers',
+            marker=dict(size=5, opacity=0.3, color='steelblue'),
             name='Предсказания'
         ),
         row=2, col=1
@@ -66,60 +72,42 @@ def plot_model_performance(y_true, y_pred, log_scale=False, exclude_zeros=False,
         go.Scatter(
             x=[df['y_true'].min(), df['y_true'].max()],
             y=[df['y_true'].min(), df['y_true'].max()],
-            mode='lines', line=dict(color='red', dash='dash'),
-            name='Идеал'
+            mode='lines',
+            line=dict(color='crimson', dash='dash'),
+            name='Идеальная линия'
         ),
         row=2, col=1
     )
 
-    # 3. Гистограммы с rug plot
-    for var, color in zip(['log_y_true', 'log_y_pred'], ['blue', 'orange']):
-        fig.add_trace(
-            go.Histogram(
-                x=log_df[log_df['variable'] == var]['value'],
-                name=var, marker_color=color, opacity=0.5,
-                histnorm='probability density', nbinsx=50
-            ),
-            row=3, col=1
-        )
+    # 3. KDE plot
+    for name, color, column in [('y_true', 'navy', 'y_true'), ('y_pred', 'darkorange', 'y_pred')]:
+        hist, bins = np.histogram(np.log10(df[column][df[column] > 0]), bins=50, density=True)
         fig.add_trace(
             go.Scatter(
-                x=log_df[log_df['variable'] == var]['value'],
-                y=[0]*len(log_df[log_df['variable'] == var]),
-                mode='markers', marker=dict(size=2, color=color),
-                showlegend=False
+                x=bins[:-1],
+                y=hist,
+                mode='lines',
+                fill='tozeroy',
+                name=name,
+                line=dict(color=color, width=1.5),
+                opacity=0.7
             ),
             row=3, col=1
         )
 
-    # Единый формат подписей для логарифмических осей
-    log_tickvals = [-3, -2, -1, 0, 1, 2, 3]
-    log_ticktext = ['10⁻³', '10⁻²', '10⁻¹', '10⁰', '10¹', '10²', '10³']
-
+    # Настройка осей
     if log_scale:
-        # Боксплот ошибок
+        fig.update_xaxes(type='log', row=2, col=1)
+        fig.update_yaxes(type='log', row=2, col=1)
+        
+        # Подписи для боксплота
         fig.update_xaxes(
-            type='log',
-            tickvals=10.**np.array(log_tickvals),
+            tickvals=[10**x for x in log_tickvals],
             ticktext=log_ticktext,
             row=1, col=1
         )
-        
-        # Scatter plot
-        fig.update_xaxes(
-            type='log',
-            tickvals=10.**np.array(log_tickvals),
-            ticktext=log_ticktext,
-            row=2, col=1
-        )
-        fig.update_yaxes(
-            type='log',
-            tickvals=10.**np.array(log_tickvals),
-            ticktext=log_ticktext,
-            row=2, col=1
-        )
 
-    # KDE plot (всегда в log10)
+    # Фиксированные подписи для KDE (всегда log10)
     fig.update_xaxes(
         tickvals=log_tickvals,
         ticktext=log_ticktext,
@@ -128,17 +116,18 @@ def plot_model_performance(y_true, y_pred, log_scale=False, exclude_zeros=False,
 
     # Общие настройки
     fig.update_layout(
-        height=1200,
-        width=800,
-        title_text="Анализ качества модели",
-        barmode='overlay'
+        height=900,
+        width=700,
+        margin=dict(l=50, r=50, b=50, t=50),
+        showlegend=True,
+        plot_bgcolor='white'
     )
     
-    # Подписи осей
-    fig.update_xaxes(title_text="Ошибка (y_true - y_pred)" + (" (log10)" if log_scale else ""), row=1, col=1)
+    # Единообразные подписи осей
+    fig.update_xaxes(title_text="Ошибка" + (" (log10)" if log_scale else ""), row=1, col=1)
     fig.update_xaxes(title_text="y_true" + (" (log10)" if log_scale else ""), row=2, col=1)
     fig.update_yaxes(title_text="y_pred" + (" (log10)" if log_scale else ""), row=2, col=1)
     fig.update_xaxes(title_text="log10(Значение)", row=3, col=1)
-    fig.update_yaxes(title_text="Плотность вероятности", row=3, col=1)
+    fig.update_yaxes(title_text="Плотность", row=3, col=1)
 
-    fig.show()
+    return fig
