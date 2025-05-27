@@ -1,44 +1,19 @@
-# Standard library imports
-from typing import Tuple, Union, Optional, Dict, List, Any
+import shap
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.datasets import load_breast_cancer
 
-# Third-party imports
-# Machine learning frameworks
-import lightgbm as lgbm  # Исправлено: 1gbm → lgbm
-from lightgbm import LGBMClassifier, LGBMRegressor, early_stopping, log_evaluation
-from catboost import (
-    CatBoostRegressor, 
-    CatBoostClassifier, 
-    Pool, 
-    EShapCalcType, 
-    EFeaturesSelectionAlgorithm
-)
+# Загрузка данных
+data = load_breast_cancer()
+X, y = data.data, data.target
+feature_names = data.feature_names
 
-# Scikit-learn components
-from sklearn.model_selection import train_test_split, GridSearchCV  # Исправлено: Gridsearchev → GridSearchCV
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder, OrdinalEncoder
-from sklearn.metrics import (
-    accuracy_score, 
-    precision_score, 
-    recall_score,
-    f1_score, 
-    roc_auc_score, 
-    log_loss, 
-    mean_squared_error, 
-    mean_absolute_error, 
-    mean_absolute_percentage_error, 
-    r2_score
-)
-from sklearn.base import BaseEstimator
-from sklearn.metrics import get_scorer
+# Обучение модели
+model = RandomForestClassifier()
+model.fit(X, y)
 
-# PMML related
-from sklearn2pmml import sklearn2pmml, PMMLPipeline, make_pmml_pipeline  # Исправлено: make _pmmi_pipeline → make_pmml_pipeline
+# Инициализация SHAP
+explainer = shap.TreeExplainer(model)  # Для деревьев
+shap_values = explainer.shap_values(X)
 
-# Workflow tools
-from prefect import task, flow
-
-# Custom modules
-from psi_model import PSIAnalyzer
-
-# Other utilities
-import openpyxl
+# Визуализация
+shap.summary_plot(shap_values, X, feature_names=feature_names)
