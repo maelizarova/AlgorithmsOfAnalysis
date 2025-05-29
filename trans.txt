@@ -1,47 +1,55 @@
 import numpy as np
-from scipy.stats import t
+from scipy import stats
 
-def get_prediction_intervals(y_true, y_pred, confidence=0.95, interval_type="prediction"):
+def exact_ols_style_interval(model, X_train, y_train, X_new, alpha=0.05):
     """
-    Вычисляет доверительный интервал или интервал предсказаний для любых моделей (включая LightGBM).
-    
+    Жёстко воспроизводит OLS-формулу для интервала предсказания, 
+    даже если модель нелинейная (LightGBM). 
+    Внимание: Это формальная подстановка, а не теоретически обоснованный метод!
+
     Параметры:
-    ----------
-    y_true : array-like
-        Реальные значения.
-    y_pred : array-like
-        Предсказания модели.
-    confidence : float, optional (default=0.95)
-        Уровень доверия (0.9, 0.95, 0.99).
-    interval_type : str, optional (default="prediction")
-        "prediction" — интервал для индивидуальных предсказаний,
-        "confidence" — доверительный интервал для среднего.
-    
+    -----------
+    model : любой модель (LightGBM, CatBoost и т.д.)
+        Модель с методом predict().
+    X_train : array-like
+        Предикторы, использованные для обучения.
+    y_train : array-like
+        Целевая переменная.
+    X_new : array-like
+        Новые данные для предсказания.
+    alpha : float
+        Уровень значимости (0.05 = 95% интервал).
+
     Возвращает:
     -----------
-    tuple: (y_pred, lower, upper)
+    tuple : (y_pred, lower, upper)
     """
-    y_true = np.asarray(y_true)
-    y_pred = np.asarray(y_pred)
-    
-    if len(y_true) != len(y_pred):
-        raise ValueError("Длины y_true и y_pred должны совпадать")
-    
-    errors = y_true - y_pred
-    n = len(errors)
-    s = np.std(errors, ddof=1)  # Стандартное отклонение остатков
-    
-    # Выбираем df: для LightGBM без регрессии — n-1, для линейной регрессии — n-2
-    df = n - 1  # Можно заменить на n-2, если уверены в регрессионной природе
-    
-    alpha = 1 - confidence
-    t_crit = t.ppf(1 - alpha / 2, df)
-    
-    if interval_type == "prediction":
-        margin = t_crit * s * np.sqrt(1 + 1/n)  # Интервал предсказаний
-    elif interval_type == "confidence":
-        margin = t_crit * s / np.sqrt(n)  # Доверительный интервал
-    else:
-        raise ValueError("Неподдерживаемый interval_type. Используйте 'prediction' или 'confidence'")
-    
-    return y_pred, y_pred - margin, y_pred + margin
+    # Добавляем константу к X_train и X_new (как в OLS)
+    X_train_const = np.column_stack([np.ones(len(X_train)), X_train])
+    X_new_const = np.column_stack([np.ones(len(X_new)), X_new])
+
+    # Предсказания модели на обучающих данных
+    y_pred_train = model.predict(X_train)
+    residuals = y_train - y_pred_train
+    sigma_e = np.std(residuals)
+
+    # Формально вычисляем (X'X)⁻¹ как в OLS (игнорируя, что модель не OLS!)
+    XtX_inv = np.linalg.pinv(X_train_const.T @ X_train_const)
+
+    # Предсказание для новых данных
+    y_pred = model.predict(X_new)
+
+    # Вычисляем x*(X'X)⁻¹x' для каждой точки в X_new
+    intervals = []
+    for x in X_new_const:
+        mat_part = x @ XtX_inv @ x.T
+        se = sigma_e * np.sqrt(1 + mat_part)
+        intervals.append(se)
+
+    intervals = np.array(intervals).flatten()
+    z_value = stats.norm.ppf(1 - alpha/2)  # 1.96 для alpha=0.05
+
+    lower = y_pred - z_value * intervals
+    upper = y_pred + z_value * intervals
+
+    return y_pred, lower, upper
