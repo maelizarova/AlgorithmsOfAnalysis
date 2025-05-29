@@ -1,19 +1,47 @@
-import shap
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.datasets import load_breast_cancer
+import numpy as np
+from scipy.stats import t
 
-# Загрузка данных
-data = load_breast_cancer()
-X, y = data.data, data.target
-feature_names = data.feature_names
-
-# Обучение модели
-model = RandomForestClassifier()
-model.fit(X, y)
-
-# Инициализация SHAP
-explainer = shap.TreeExplainer(model)  # Для деревьев
-shap_values = explainer.shap_values(X)
-
-# Визуализация
-shap.summary_plot(shap_values, X, feature_names=feature_names)
+def get_prediction_intervals(y_true, y_pred, confidence=0.95, interval_type="prediction"):
+    """
+    Вычисляет доверительный интервал или интервал предсказаний для любых моделей (включая LightGBM).
+    
+    Параметры:
+    ----------
+    y_true : array-like
+        Реальные значения.
+    y_pred : array-like
+        Предсказания модели.
+    confidence : float, optional (default=0.95)
+        Уровень доверия (0.9, 0.95, 0.99).
+    interval_type : str, optional (default="prediction")
+        "prediction" — интервал для индивидуальных предсказаний,
+        "confidence" — доверительный интервал для среднего.
+    
+    Возвращает:
+    -----------
+    tuple: (y_pred, lower, upper)
+    """
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    
+    if len(y_true) != len(y_pred):
+        raise ValueError("Длины y_true и y_pred должны совпадать")
+    
+    errors = y_true - y_pred
+    n = len(errors)
+    s = np.std(errors, ddof=1)  # Стандартное отклонение остатков
+    
+    # Выбираем df: для LightGBM без регрессии — n-1, для линейной регрессии — n-2
+    df = n - 1  # Можно заменить на n-2, если уверены в регрессионной природе
+    
+    alpha = 1 - confidence
+    t_crit = t.ppf(1 - alpha / 2, df)
+    
+    if interval_type == "prediction":
+        margin = t_crit * s * np.sqrt(1 + 1/n)  # Интервал предсказаний
+    elif interval_type == "confidence":
+        margin = t_crit * s / np.sqrt(n)  # Доверительный интервал
+    else:
+        raise ValueError("Неподдерживаемый interval_type. Используйте 'prediction' или 'confidence'")
+    
+    return y_pred, y_pred - margin, y_pred + margin
