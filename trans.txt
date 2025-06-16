@@ -1,69 +1,67 @@
-def select_top_features(
+def feature_selection_shap(
     data: pd.DataFrame,
     targets: List[str],
-    model: BaseEstimator,
-    eval_set: Optional[pd.DataFrame] = None,
-    n_top: int = 10,
-    categorical_features: Optional[List[str]] = None,
-    preprocess_categorical: bool = True,
-    early_stopping_rounds: Optional[int] = None,
-    random_state: int = 42,
-    fit_params: Optional[dict] = None
+    selected_features: Dict[str, List[str]],
+    categorical_features: List[str] = None,
+    eval_set: pd.DataFrame = None,
+    num_features_to_select: int = 20,
+    threads: int = -1
 ) -> Dict[str, List[str]]:
     """
-    Универсальная функция для отбора наиболее значимых признаков с использованием заданной модели.
-    
+    Дополнительный отбор признаков с помощью SHAP-значений через CatBoost.
+
     Параметры:
     ----------
     data : pd.DataFrame
         Входной DataFrame с признаками и целевыми переменными.
     targets : List[str]
         Список имен целевых переменных.
-    model : BaseEstimator
-        Модель машинного обучения, реализующая scikit-learn API.
-    eval_set : Optional[pd.DataFrame], default=None
-        Дополнительный набор данных для оценки.
-    n_top : int, default=10
-        Количество лучших признаков для отбора.
-    categorical_features : Optional[List[str]], default=None
+    selected_features : Dict[str, List[str]]
+        Словарь с предварительно отобранными признаками для каждой целевой переменной.
+        Формат: {target_name: [feature1, feature2, ...]}
+    categorical_features : List[str], default=None
         Список категориальных признаков.
-    preprocess_categorical : bool, default=True
-        Флаг предобработки категориальных признаков.
-    early_stopping_rounds : Optional[int], default=None
-        Количество раундов для ранней остановки.
-    random_state : int, default=42
-        Seed для воспроизводимости результатов.
-    fit_params : Optional[dict], default=None
-        Дополнительные параметры для метода fit() модели.
-        Пример: {'eval_metric': 'rmse', 'verbose': True}
-    
+    eval_set : pd.DataFrame, default=None
+        Валидационный набор данных для оценки модели.
+    num_features_to_select : int, default=20
+        Количество признаков для отбора.
+    threads : int, default=-1
+        Количество потоков для параллельных вычислений (-1 означает использование всех доступных ядер).
+
     Возвращает:
     -----------
     Dict[str, List[str]]
-        Словарь, где ключи - имена целевых переменных, 
-        а значения - списки отобранных признаков для каждой целевой переменной.
-    
+        Словарь с отобранными признаками для каждой целевой переменной.
+        Формат: {target_name: [selected_feature1, selected_feature2, ...]}
+
     Пример использования:
     ---------------------
-    >>> from sklearn.ensemble import RandomForestRegressor
     >>> import pandas as pd
+    >>> from catboost import CatBoostClassifier
     >>>
     >>> data = pd.DataFrame({
     ...     'feature1': [1, 2, 3, 4],
     ...     'feature2': [4, 3, 2, 1],
-    ...     'target': [0.5, 0.3, 0.8, 0.1]
+    ...     'feature3': [0.1, 0.5, 0.3, 0.8],
+    ...     'target': [0, 1, 0, 1]
     ... })
     >>>
-    >>> model = RandomForestRegressor(random_state=42)
-    >>> selected_features = select_top_features(
+    >>> pre_selected = {'target': ['feature1', 'feature2', 'feature3']}
+    >>> final_features = feature_selection_shap(
     ...     data=data,
     ...     targets=['target'],
-    ...     model=model,
-    ...     n_top=1,
-    ...     random_state=42
+    ...     selected_features=pre_selected,
+    ...     num_features_to_select=2,
+    ...     threads=4
     ... )
-    >>> print(selected_features)
-    {'target': ['feature1']}
+    >>> print(final_features)
+    {'target': ['feature1', 'feature3']}
+
+    Примечания:
+    -----------
+    - Функция использует CatBoost для расчета SHAP-значений.
+    - Для категориальных признаков автоматически применяется соответствующая обработка.
+    - Рекомендуется использовать после предварительного отбора признаков для уменьшения вычислительной нагрузки.
     """
     # Реализация функции...
     pass
