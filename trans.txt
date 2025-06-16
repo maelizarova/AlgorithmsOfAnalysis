@@ -1,55 +1,69 @@
-import numpy as np
-from scipy import stats
-
-def exact_ols_style_interval(model, X_train, y_train, X_new, alpha=0.05):
+def select_top_features(
+    data: pd.DataFrame,
+    targets: List[str],
+    model: BaseEstimator,
+    eval_set: Optional[pd.DataFrame] = None,
+    n_top: int = 10,
+    categorical_features: Optional[List[str]] = None,
+    preprocess_categorical: bool = True,
+    early_stopping_rounds: Optional[int] = None,
+    random_state: int = 42,
+    fit_params: Optional[dict] = None
+) -> Dict[str, List[str]]:
     """
-    Жёстко воспроизводит OLS-формулу для интервала предсказания, 
-    даже если модель нелинейная (LightGBM). 
-    Внимание: Это формальная подстановка, а не теоретически обоснованный метод!
-
+    Универсальная функция для отбора наиболее значимых признаков с использованием заданной модели.
+    
     Параметры:
-    -----------
-    model : любой модель (LightGBM, CatBoost и т.д.)
-        Модель с методом predict().
-    X_train : array-like
-        Предикторы, использованные для обучения.
-    y_train : array-like
-        Целевая переменная.
-    X_new : array-like
-        Новые данные для предсказания.
-    alpha : float
-        Уровень значимости (0.05 = 95% интервал).
-
+    ----------
+    data : pd.DataFrame
+        Входной DataFrame с признаками и целевыми переменными.
+    targets : List[str]
+        Список имен целевых переменных.
+    model : BaseEstimator
+        Модель машинного обучения, реализующая scikit-learn API.
+    eval_set : Optional[pd.DataFrame], default=None
+        Дополнительный набор данных для оценки.
+    n_top : int, default=10
+        Количество лучших признаков для отбора.
+    categorical_features : Optional[List[str]], default=None
+        Список категориальных признаков.
+    preprocess_categorical : bool, default=True
+        Флаг предобработки категориальных признаков.
+    early_stopping_rounds : Optional[int], default=None
+        Количество раундов для ранней остановки.
+    random_state : int, default=42
+        Seed для воспроизводимости результатов.
+    fit_params : Optional[dict], default=None
+        Дополнительные параметры для метода fit() модели.
+        Пример: {'eval_metric': 'rmse', 'verbose': True}
+    
     Возвращает:
     -----------
-    tuple : (y_pred, lower, upper)
+    Dict[str, List[str]]
+        Словарь, где ключи - имена целевых переменных, 
+        а значения - списки отобранных признаков для каждой целевой переменной.
+    
+    Пример использования:
+    ---------------------
+    >>> from sklearn.ensemble import RandomForestRegressor
+    >>> import pandas as pd
+    >>>
+    >>> data = pd.DataFrame({
+    ...     'feature1': [1, 2, 3, 4],
+    ...     'feature2': [4, 3, 2, 1],
+    ...     'target': [0.5, 0.3, 0.8, 0.1]
+    ... })
+    >>>
+    >>> model = RandomForestRegressor(random_state=42)
+    >>> selected_features = select_top_features(
+    ...     data=data,
+    ...     targets=['target'],
+    ...     model=model,
+    ...     n_top=1,
+    ...     random_state=42
+    ... )
+    >>> print(selected_features)
+    {'target': ['feature1']}
     """
-    # Добавляем константу к X_train и X_new (как в OLS)
-    X_train_const = np.column_stack([np.ones(len(X_train)), X_train])
-    X_new_const = np.column_stack([np.ones(len(X_new)), X_new])
-
-    # Предсказания модели на обучающих данных
-    y_pred_train = model.predict(X_train)
-    residuals = y_train - y_pred_train
-    sigma_e = np.std(residuals)
-
-    # Формально вычисляем (X'X)⁻¹ как в OLS (игнорируя, что модель не OLS!)
-    XtX_inv = np.linalg.pinv(X_train_const.T @ X_train_const)
-
-    # Предсказание для новых данных
-    y_pred = model.predict(X_new)
-
-    # Вычисляем x*(X'X)⁻¹x' для каждой точки в X_new
-    intervals = []
-    for x in X_new_const:
-        mat_part = x @ XtX_inv @ x.T
-        se = sigma_e * np.sqrt(1 + mat_part)
-        intervals.append(se)
-
-    intervals = np.array(intervals).flatten()
-    z_value = stats.norm.ppf(1 - alpha/2)  # 1.96 для alpha=0.05
-
-    lower = y_pred - z_value * intervals
-    upper = y_pred + z_value * intervals
-
-    return y_pred, lower, upper
+    # Реализация функции...
+    pass
