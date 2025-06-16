@@ -1,67 +1,95 @@
-def feature_selection_shap(
-    data: pd.DataFrame,
+def grid_search_with_splits(
+    train_data: pd.DataFrame,
+    test_data: pd.DataFrame,
+    oot_data: pd.DataFrame,
     targets: List[str],
-    selected_features: Dict[str, List[str]],
-    categorical_features: List[str] = None,
-    eval_set: pd.DataFrame = None,
-    num_features_to_select: int = 20,
-    threads: int = -1
-) -> Dict[str, List[str]]:
+    final_selected_features: Dict[str, List[str]],
+    model: BaseEstimator,
+    categorical_features: Optional[List[str]] = None,
+    task_type: str = 'classification',
+    param_grid: Optional[Dict[str, List[Any]]] = None,
+    scoring: Optional[Union[str, List[str], Dict[str, Any]]] = None,
+    cv: int = 5,
+    threads: int = -1,
+    pmml_output_path: Optional[str] = None,
+    verbose: int = 0
+) -> Dict[str, Dict[str, Any]]:
     """
-    Дополнительный отбор признаков с помощью SHAP-значений через CatBoost.
+    Универсальная функция для подбора гиперпараметров модели с кросс-валидацией и сохранением в PMML.
 
     Параметры:
     ----------
-    data : pd.DataFrame
-        Входной DataFrame с признаками и целевыми переменными.
+    train_data : pd.DataFrame
+        Обучающий набор данных.
+    test_data : pd.DataFrame
+        Тестовый набор данных.
+    oot_data : pd.DataFrame
+        Out-of-time набор данных для дополнительной валидации.
     targets : List[str]
-        Список имен целевых переменных.
-    selected_features : Dict[str, List[str]]
-        Словарь с предварительно отобранными признаками для каждой целевой переменной.
-        Формат: {target_name: [feature1, feature2, ...]}
-    categorical_features : List[str], default=None
+        Список целевых переменных.
+    final_selected_features : Dict[str, List[str]]
+        Словарь с окончательно отобранными признаками для каждой целевой переменной.
+    model : BaseEstimator
+        Базовый estimator, совместимый с scikit-learn API.
+    categorical_features : Optional[List[str]], default=None
         Список категориальных признаков.
-    eval_set : pd.DataFrame, default=None
-        Валидационный набор данных для оценки модели.
-    num_features_to_select : int, default=20
-        Количество признаков для отбора.
+    task_type : str, default='classification'
+        Тип задачи: 'classification' или 'regression'.
+    param_grid : Optional[Dict[str, List[Any]]], default=None
+        Сетка параметров для GridSearch.
+    scoring : Optional[Union[str, List[str], Dict[str, Any]]], default=None
+        Метрики для оценки модели.
+    cv : int, default=5
+        Количество фолдов для кросс-валидации.
     threads : int, default=-1
-        Количество потоков для параллельных вычислений (-1 означает использование всех доступных ядер).
+        Количество потоков для параллельных вычислений (-1 - все ядра).
+    pmml_output_path : Optional[str], default=None
+        Путь для сохранения модели в PMML формате.
+    verbose : int, default=0
+        Уровень детализации логирования.
 
     Возвращает:
     -----------
-    Dict[str, List[str]]
-        Словарь с отобранными признаками для каждой целевой переменной.
-        Формат: {target_name: [selected_feature1, selected_feature2, ...]}
+    Dict[str, Dict[str, Any]]
+        Словарь с результатами для каждой целевой переменной:
+        {
+            'target_name': {
+                'best_model': лучшая модель,
+                'best_params': лучшие параметры,
+                'best_score': лучшая метрика,
+                'test_score': метрика на тесте,
+                'oot_score': метрика на OOT,
+                'feature_importances': важность признаков
+            }
+        }
 
     Пример использования:
     ---------------------
+    >>> from sklearn.ensemble import RandomForestClassifier
     >>> import pandas as pd
-    >>> from catboost import CatBoostClassifier
     >>>
-    >>> data = pd.DataFrame({
-    ...     'feature1': [1, 2, 3, 4],
-    ...     'feature2': [4, 3, 2, 1],
-    ...     'feature3': [0.1, 0.5, 0.3, 0.8],
-    ...     'target': [0, 1, 0, 1]
-    ... })
+    >>> train = pd.DataFrame({'feat1': [1,2,3], 'feat2': [4,5,6], 'target': [0,1,0]})
+    >>> test = pd.DataFrame({'feat1': [4,5], 'feat2': [7,8], 'target': [1,0]})
+    >>> oot = pd.DataFrame({'feat1': [6,7], 'feat2': [9,10], 'target': [0,1]})
+    >>> features = {'target': ['feat1', 'feat2']}
     >>>
-    >>> pre_selected = {'target': ['feature1', 'feature2', 'feature3']}
-    >>> final_features = feature_selection_shap(
-    ...     data=data,
+    >>> results = grid_search_with_splits(
+    ...     train_data=train,
+    ...     test_data=test,
+    ...     oot_data=oot,
     ...     targets=['target'],
-    ...     selected_features=pre_selected,
-    ...     num_features_to_select=2,
-    ...     threads=4
+    ...     final_selected_features=features,
+    ...     model=RandomForestClassifier(),
+    ...     param_grid={'n_estimators': [10, 20]},
+    ...     pmml_output_path='model.pmml'
     ... )
-    >>> print(final_features)
-    {'target': ['feature1', 'feature3']}
 
     Примечания:
     -----------
-    - Функция использует CatBoost для расчета SHAP-значений.
-    - Для категориальных признаков автоматически применяется соответствующая обработка.
-    - Рекомендуется использовать после предварительного отбора признаков для уменьшения вычислительной нагрузки.
+    - Поддерживается как классификация, так и регрессия.
+    - Автоматически обрабатывает категориальные признаки.
+    - Сохраняет модель в PMML формате при указании пути.
+    - Для задач классификации использует predict_proba если доступно.
     """
     # Реализация функции...
     pass
