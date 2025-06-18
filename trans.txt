@@ -1,95 +1,74 @@
-def grid_search_with_splits(
-    train_data: pd.DataFrame,
-    test_data: pd.DataFrame,
-    oot_data: pd.DataFrame,
-    targets: List[str],
-    final_selected_features: Dict[str, List[str]],
-    model: BaseEstimator,
-    categorical_features: Optional[List[str]] = None,
-    task_type: str = 'classification',
-    param_grid: Optional[Dict[str, List[Any]]] = None,
-    scoring: Optional[Union[str, List[str], Dict[str, Any]]] = None,
-    cv: int = 5,
-    threads: int = -1,
-    pmml_output_path: Optional[str] = None,
-    verbose: int = 0
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Универсальная функция для подбора гиперпараметров модели с кросс-валидацией и сохранением в PMML.
+import pandas as pd
+import numpy as np
 
+def optimize_dataframe(df, categorical_threshold=0.5, verbose=True):
+    """
+    Оптимизирует DataFrame, уменьшая использование памяти за счёт преобразования типов данных.
+    
     Параметры:
-    ----------
-    train_data : pd.DataFrame
-        Обучающий набор данных.
-    test_data : pd.DataFrame
-        Тестовый набор данных.
-    oot_data : pd.DataFrame
-        Out-of-time набор данных для дополнительной валидации.
-    targets : List[str]
-        Список целевых переменных.
-    final_selected_features : Dict[str, List[str]]
-        Словарь с окончательно отобранными признаками для каждой целевой переменной.
-    model : BaseEstimator
-        Базовый estimator, совместимый с scikit-learn API.
-    categorical_features : Optional[List[str]], default=None
-        Список категориальных признаков.
-    task_type : str, default='classification'
-        Тип задачи: 'classification' или 'regression'.
-    param_grid : Optional[Dict[str, List[Any]]], default=None
-        Сетка параметров для GridSearch.
-    scoring : Optional[Union[str, List[str], Dict[str, Any]]], default=None
-        Метрики для оценки модели.
-    cv : int, default=5
-        Количество фолдов для кросс-валидации.
-    threads : int, default=-1
-        Количество потоков для параллельных вычислений (-1 - все ядра).
-    pmml_output_path : Optional[str], default=None
-        Путь для сохранения модели в PMML формате.
-    verbose : int, default=0
-        Уровень детализации логирования.
-
+    - df: Исходный DataFrame
+    - categorical_threshold: Порог (0-1) для преобразования в категориальный тип
+    - verbose: Выводить информацию об оптимизации
+    
     Возвращает:
-    -----------
-    Dict[str, Dict[str, Any]]
-        Словарь с результатами для каждой целевой переменной:
-        {
-            'target_name': {
-                'best_model': лучшая модель,
-                'best_params': лучшие параметры,
-                'best_score': лучшая метрика,
-                'test_score': метрика на тесте,
-                'oot_score': метрика на OOT,
-                'feature_importances': важность признаков
-            }
-        }
-
-    Пример использования:
-    ---------------------
-    >>> from sklearn.ensemble import RandomForestClassifier
-    >>> import pandas as pd
-    >>>
-    >>> train = pd.DataFrame({'feat1': [1,2,3], 'feat2': [4,5,6], 'target': [0,1,0]})
-    >>> test = pd.DataFrame({'feat1': [4,5], 'feat2': [7,8], 'target': [1,0]})
-    >>> oot = pd.DataFrame({'feat1': [6,7], 'feat2': [9,10], 'target': [0,1]})
-    >>> features = {'target': ['feat1', 'feat2']}
-    >>>
-    >>> results = grid_search_with_splits(
-    ...     train_data=train,
-    ...     test_data=test,
-    ...     oot_data=oot,
-    ...     targets=['target'],
-    ...     final_selected_features=features,
-    ...     model=RandomForestClassifier(),
-    ...     param_grid={'n_estimators': [10, 20]},
-    ...     pmml_output_path='model.pmml'
-    ... )
-
-    Примечания:
-    -----------
-    - Поддерживается как классификация, так и регрессия.
-    - Автоматически обрабатывает категориальные признаки.
-    - Сохраняет модель в PMML формате при указании пути.
-    - Для задач классификации использует predict_proba если доступно.
+    - Оптимизированный DataFrame
     """
-    # Реализация функции...
-    pass
+    
+    optimized_df = df.copy()
+    date_cols = []
+    
+    for col in optimized_df.columns:
+        col_type = optimized_df[col].dtype
+        col_values = optimized_df[col]
+        
+        # Оптимизация целых чисел
+        if pd.api.types.is_integer_dtype(col_type):
+            col_min = col_values.min()
+            col_max = col_values.max()
+            
+            if col_min > np.iinfo(np.int8).min and col_max < np.iinfo(np.int8).max:
+                optimized_df[col] = col_values.astype(np.int8)
+            elif col_min > np.iinfo(np.int16).min and col_max < np.iinfo(np.int16).max:
+                optimized_df[col] = col_values.astype(np.int16)
+            elif col_min > np.iinfo(np.int32).min and col_max < np.iinfo(np.int32).max:
+                optimized_df[col] = col_values.astype(np.int32)
+        
+        # Оптимизация чисел с плавающей точкой
+        elif pd.api.types.is_float_dtype(col_type):
+            col_min = col_values.min()
+            col_max = col_values.max()
+            
+            if col_min > np.finfo(np.float16).min and col_max < np.finfo(np.float16).max:
+                optimized_df[col] = col_values.astype(np.float16)
+            elif col_min > np.finfo(np.float32).min and col_max < np.finfo(np.float32).max:
+                optimized_df[col] = col_values.astype(np.float32)
+        
+        # Преобразование строк в категории
+        elif pd.api.types.is_string_dtype(col_type):
+            num_unique = col_values.nunique()
+            if num_unique / len(col_values) < categorical_threshold:
+                optimized_df[col] = col_values.astype('category')
+        
+        # Преобразование в datetime (если уже похоже на datetime)
+        elif pd.api.types.is_datetime64_any_dtype(col_type):
+            try:
+                converted = pd.to_datetime(col_values)
+                optimized_df[col] = converted
+                date_cols.append(col)
+            except:
+                pass
+    
+    # Вывод информации
+    if verbose:
+        original_mem = df.memory_usage(deep=True).sum() / 1024**2
+        optimized_mem = optimized_df.memory_usage(deep=True).sum() / 1024**2
+        reduction = (original_mem - optimized_mem) / original_mem * 100
+        
+        print(f"Оптимизация памяти:")
+        print(f"До: {original_mem:.2f} MB")
+        print(f"После: {optimized_mem:.2f} MB")
+        print(f"Экономия: {reduction:.1f}%")
+        if date_cols:
+            print(f"Обнаружены datetime колонки: {date_cols}")
+    
+    return optimized_df
