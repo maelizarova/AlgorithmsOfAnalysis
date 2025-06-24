@@ -1,23 +1,9 @@
-plt.figure(figsize=(10, 6))
-
-# График Gini
-plt.plot(metrics_df['step'], metrics_df['gini'], 
-         marker='o', linestyle='-', color='blue', label='Gini coefficient')
-
-# Разметка
-plt.xlabel('Feature selection step')
-plt.ylabel('Gini coefficient')
-plt.title('Gini Improvement During Feature Selection')
-plt.xticks(metrics_df['step'])
-plt.grid(True, alpha=0.3)
-
-# Подсветка максимума
-max_gini_idx = metrics_df['gini'].idxmax()
-plt.axvline(x=max_gini_idx + 1, color='red', linestyle='--', alpha=0.5)
-plt.annotate(f'Max Gini: {metrics_df["gini"].max():.3f}',
-             xy=(max_gini_idx + 1, metrics_df["gini"].max()),
-             xytext=(10, -20), textcoords='offset points')
-
-plt.legend()
-plt.tight_layout()
-plt.show()
+param_grid = {
+    'num_leaves': [15, 31, 63],
+    'max_depth': [-1, 5, 10],
+    'learning_rate': [0.01, 0.05, 0.1],
+    'n_estimators': [100, 300, 500],
+    'min_child_samples': [10, 20],
+    'subsample': [0.7, 0.9, 1.0],
+    'colsample_bytree': [0.7, 0.9, 1.0],
+}
