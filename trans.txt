@@ -1,57 +1,61 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score
+from IPython.display import display
 
-def plot_gini_vs_clients(df, date_col='scoring_date', target_col='target', pred_col='predictions'):
+def plot_gini_vs_clients(df, date_col='year_month', target_col='target', pred_col='predictions'):
     """
-    Строит график с динамикой Gini и количеством клиентов по месяцам.
+    Строит график с динамикой Gini и количеством клиентов по месяцам + выводит таблицу с расчетами.
+    Предполагает, что date_col уже содержит готовые периоды (например, '2023-01-01' для января 2023).
 
     Параметры:
     -----------
     df : pd.DataFrame
         Исходный DataFrame с данными.
-    date_col : str, optional (default='scoring_date')
-        Название колонки с датами.
+    date_col : str, optional (default='year_month')
+        Название колонки с готовыми месячными периодами.
     target_col : str, optional (default='target')
         Название колонки с таргетом (0/1).
     pred_col : str, optional (default='predictions')
         Название колонки с предсказаниями модели (вероятности).
     """
-    # --- 1. Подготовка данных ---
     df = df.copy()
-    df['month'] = df[date_col].dt.to_period('M').dt.to_timestamp()
     
-    # --- 2. Расчет Gini и количества клиентов ---
-    def calculate_gini(group):
+    def calculate_metrics(group):
         auc = roc_auc_score(group[target_col], group[pred_col])
-        return 2 * auc - 1
+        return pd.Series({
+            'gini': 2 * auc - 1,
+            'auc': auc,
+            'clients_count': len(group),
+            'positive_rate': group[target_col].mean()
+        })
     
-    gini_by_month = df.groupby('month').apply(calculate_gini).reset_index(name='gini')
-    count_by_month = df.groupby('month').size().reset_index(name='count')
+    metrics_df = df.groupby(date_col).apply(calculate_metrics).reset_index()
     
-    # --- 3. Построение графика ---
+    print("Расчетные метрики по месяцам:")
+    display(metrics_df.style.format({
+        'gini': '{:.3f}',
+        'auc': '{:.3f}',
+        'positive_rate': '{:.2%}'
+    }).background_gradient(cmap='Blues', subset=['gini', 'auc']))
+    
     fig, ax1 = plt.subplots(figsize=(12, 6))
-    
-    # Гистограмма (количество клиентов)
-    ax1.bar(count_by_month['month'], count_by_month['count'], 
+    ax1.bar(metrics_df[date_col], metrics_df['clients_count'], 
             color='skyblue', alpha=0.7, width=20, label='Клиенты')
     ax1.set_xlabel('Месяц', fontsize=12)
     ax1.set_ylabel('Количество клиентов', fontsize=12)
     ax1.tick_params(axis='y')
     
-    # Линия Gini (вторая ось Y)
     ax2 = ax1.twinx()
-    ax2.plot(gini_by_month['month'], gini_by_month['gini'], 
+    ax2.plot(metrics_df[date_col], metrics_df['gini'], 
              marker='o', linestyle='-', color='red', linewidth=2, label='Gini')
     ax2.set_ylabel('Gini', fontsize=12)
     ax2.tick_params(axis='y')
     
-    # Настройки графика
     plt.title('Динамика Gini и количества клиентов по месяцам', fontsize=14)
     plt.xticks(rotation=45)
     plt.grid(True, linestyle='--', alpha=0.5)
     
-    # Объединение легенд
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
@@ -59,18 +63,12 @@ def plot_gini_vs_clients(df, date_col='scoring_date', target_col='target', pred_
     plt.tight_layout()
     plt.show()
 
-# --- Пример использования ---
+# Пример использования
 if __name__ == "__main__":
-    # Пример данных (замените на ваши)
     data = {
-        'scoring_date': pd.to_datetime(
-            ['2023-01-15']*100 + ['2023-02-10']*150 + ['2023-03-20']*120 + 
-            ['2023-04-05']*80 + ['2023-05-30']*200
-        ),
-        'target': [0, 1]*275,
-        'predictions': [0.1, 0.9]*275
+        'year_month': pd.to_datetime(['2023-01-01', '2023-02-01', '2023-03-01'] * 100),
+        'target': [0, 1] * 150,
+        'predictions': [0.1, 0.9] * 150
     }
     df = pd.DataFrame(data)
-    
-    # Вызов функции
     plot_gini_vs_clients(df)
