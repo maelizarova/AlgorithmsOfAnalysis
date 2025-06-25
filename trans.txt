@@ -2,36 +2,55 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score
 import numpy as np
+from ace_tools import display_dataframe_to_user
+
+# Примерная структура данных
+# df = pd.read_csv('your_data.csv')
+# df.columns = ['date', 'target', 'prediction']
 
 def compute_gini(y_true, y_scores):
     auc = roc_auc_score(y_true, y_scores)
     return 2 * auc - 1
 
-def plot_monthly_gini(df: pd.DataFrame):
+# Генерация тестового датафрейма для демонстрации
+np.random.seed(0)
+dates = pd.date_range(start='2021-01-01', end='2022-11-30', freq='M').to_period('M')
+data = []
+
+for date in dates:
+    size = np.random.randint(500, 1000)
+    y_true = np.random.randint(0, 2, size)
+    y_pred = np.random.rand(size)
+    for yt, yp in zip(y_true, y_pred):
+        data.append([str(date), yt, yp])
+
+df = pd.DataFrame(data, columns=['date', 'target', 'prediction'])
+
+def plot_monthly_gini_and_table(df: pd.DataFrame):
     df['date'] = pd.to_datetime(df['date']).dt.to_period('M')
     grouped = df.groupby('date')
 
-    dates = []
-    cnts = []
-    ginis = []
+    summary = []
 
     for date, group in grouped:
         gini = compute_gini(group['target'], group['prediction'])
-        dates.append(str(date))
-        cnts.append(len(group))
-        ginis.append(gini)
+        summary.append({
+            'date': str(date),
+            'gini': round(gini * 100, 2),
+            'count': len(group)
+        })
 
+    summary_df = pd.DataFrame(summary)
+
+    # Построение графика
     fig, ax1 = plt.subplots(figsize=(14, 6))
-
-    # Левая ось — количество наблюдений
-    ax1.bar(dates, cnts, color='cornflowerblue', label='CNT')
+    ax1.bar(summary_df['date'], summary_df['count'], color='cornflowerblue', label='CNT')
     ax1.set_ylabel('CNT', color='blue')
-    ax1.set_ylim(0, max(cnts) * 1.2)
+    ax1.set_ylim(0, summary_df['count'].max() * 1.2)
     ax1.tick_params(axis='x', rotation=45)
 
-    # Правая ось — GINI (%)
     ax2 = ax1.twinx()
-    ax2.plot(dates, np.array(ginis) * 100, color='green', label='GINI', linewidth=2)
+    ax2.plot(summary_df['date'], summary_df['gini'], color='green', label='GINI', linewidth=2)
     ax2.set_ylabel('GINI (%)', color='green')
     ax2.set_ylim(0, 100)
 
@@ -41,3 +60,7 @@ def plot_monthly_gini(df: pd.DataFrame):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
+    display_dataframe_to_user("GINI Summary by Month", summary_df)
+
+plot_monthly_gini_and_table(df)
