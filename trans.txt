@@ -1,9 +1,57 @@
-param_grid = {
-    'num_leaves': [15, 31, 63],
-    'max_depth': [-1, 5, 10],
-    'learning_rate': [0.01, 0.05, 0.1],
-    'n_estimators': [100, 300, 500],
-    'min_child_samples': [10, 20],
-    'subsample': [0.7, 0.9, 1.0],
-    'colsample_bytree': [0.7, 0.9, 1.0],
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_auc_score
+
+# --- 1. Подготовка данных (замените на ваш DataFrame) ---
+# Пример данных: дата скоринга, таргет (0/1), предсказания модели (вероятности)
+data = {
+    'scoring_date': pd.to_datetime(
+        ['2023-01-15']*100 + ['2023-02-10']*150 + ['2023-03-20']*120 + 
+        ['2023-04-05']*80 + ['2023-05-30']*200
+    ),
+    'target': [0, 1]*275,  # Бинарный таргет (случайные 0 и 1)
+    'predictions': [0.1, 0.9]*275  # Пример предсказаний (вероятности)
 }
+df = pd.DataFrame(data)
+
+# --- 2. Расчет Gini и количества клиентов по месяцам ---
+# Группировка по месяцу
+df['month'] = df['scoring_date'].dt.to_period('M').dt.to_timestamp()
+
+# Расчет Gini = 2 * AUC - 1
+def calculate_gini(group):
+    auc = roc_auc_score(group['target'], group['predictions'])
+    return 2 * auc - 1
+
+gini_by_month = df.groupby('month').apply(calculate_gini).reset_index(name='gini')
+count_by_month = df.groupby('month').size().reset_index(name='count')
+
+# --- 3. Построение графика с двумя осями Y ---
+fig, ax1 = plt.subplots(figsize=(12, 6))
+
+# Гистограмма (количество клиентов)
+ax1.bar(count_by_month['month'], count_by_month['count'], 
+         color='skyblue', alpha=0.7, width=20, label='Клиенты')
+ax1.set_xlabel('Месяц', fontsize=12)
+ax1.set_ylabel('Количество клиентов', fontsize=12)
+ax1.tick_params(axis='y')
+
+# Линия Gini (вторая ось Y)
+ax2 = ax1.twinx()
+ax2.plot(gini_by_month['month'], gini_by_month['gini'], 
+         marker='o', linestyle='-', color='red', linewidth=2, label='Gini')
+ax2.set_ylabel('Gini', fontsize=12)
+ax2.tick_params(axis='y')
+
+# Настройки графика
+plt.title('Динамика Gini и количества клиентов по месяцам', fontsize=14)
+plt.xticks(rotation=45)
+plt.grid(True, linestyle='--', alpha=0.5)
+
+# Объединение легенд
+lines1, labels1 = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+
+plt.tight_layout()
+plt.show()
