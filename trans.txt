@@ -1,66 +1,219 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.metrics import roc_auc_score
-import numpy as np
-from ace_tools import display_dataframe_to_user
+AVG(CASE WHEN k.categ = 'Дом и ремонт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS dom_rem_avg_1m,
+AVG(CASE WHEN k.categ = 'Дом и ремонт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS dom_rem_avg_3m,
+AVG(CASE WHEN k.categ = 'Дом и ремонт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS dom_rem_avg_6m,
+AVG(CASE WHEN k.categ = 'Дом и ремонт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS dom_rem_avg_12m,
 
-# Примерная структура данных
-# df = pd.read_csv('your_data.csv')
-# df.columns = ['date', 'target', 'prediction']
+AVG(CASE WHEN k.categ = 'Кафе и рестораны' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS cafe_avg_1m,
+AVG(CASE WHEN k.categ = 'Кафе и рестораны' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS cafe_avg_3m,
+AVG(CASE WHEN k.categ = 'Кафе и рестораны' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS cafe_avg_6m,
+AVG(CASE WHEN k.categ = 'Кафе и рестораны' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS cafe_avg_12m,
 
-def compute_gini(y_true, y_scores):
-    auc = roc_auc_score(y_true, y_scores)
-    return 2 * auc - 1
+AVG(CASE WHEN k.categ = 'Аренда авто' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS rent_auto_avg_1m,
+AVG(CASE WHEN k.categ = 'Аренда авто' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS rent_auto_avg_3m,
+AVG(CASE WHEN k.categ = 'Аренда авто' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS rent_auto_avg_6m,
+AVG(CASE WHEN k.categ = 'Аренда авто' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS rent_auto_avg_12m,
 
-# Генерация тестового датафрейма для демонстрации
-np.random.seed(0)
-dates = pd.date_range(start='2021-01-01', end='2022-11-30', freq='M').to_period('M')
-data = []
+AVG(CASE WHEN k.categ = 'Транспорт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS transport_avg_1m,
+AVG(CASE WHEN k.categ = 'Транспорт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS transport_avg_3m,
+AVG(CASE WHEN k.categ = 'Транспорт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS transport_avg_6m,
+AVG(CASE WHEN k.categ = 'Транспорт' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS transport_avg_12m,
 
-for date in dates:
-    size = np.random.randint(500, 1000)
-    y_true = np.random.randint(0, 2, size)
-    y_pred = np.random.rand(size)
-    for yt, yp in zip(y_true, y_pred):
-        data.append([str(date), yt, yp])
+AVG(CASE WHEN k.categ = 'Путешествия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS travel_avg_1m,
+AVG(CASE WHEN k.categ = 'Путешествия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS travel_avg_3m,
+AVG(CASE WHEN k.categ = 'Путешествия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS travel_avg_6m,
+AVG(CASE WHEN k.categ = 'Путешествия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS travel_avg_12m,
 
-df = pd.DataFrame(data, columns=['date', 'target', 'prediction'])
+AVG(CASE WHEN k.categ = 'Медицина' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS medicine_avg_1m,
+AVG(CASE WHEN k.categ = 'Медицина' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS medicine_avg_3m,
+AVG(CASE WHEN k.categ = 'Медицина' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS medicine_avg_6m,
+AVG(CASE WHEN k.categ = 'Медицина' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS medicine_avg_12m,
 
-def plot_monthly_gini_and_table(df: pd.DataFrame):
-    df['date'] = pd.to_datetime(df['date']).dt.to_period('M')
-    grouped = df.groupby('date')
+AVG(CASE WHEN k.categ = 'Онлайн магазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS online_shops_avg_1m,
+AVG(CASE WHEN k.categ = 'Онлайн магазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS online_shops_avg_3m,
+AVG(CASE WHEN k.categ = 'Онлайн магазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS online_shops_avg_6m,
+AVG(CASE WHEN k.categ = 'Онлайн магазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS online_shops_avg_12m,
 
-    summary = []
+AVG(CASE WHEN k.categ = 'Музыка' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS music_avg_1m,
+AVG(CASE WHEN k.categ = 'Музыка' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS music_avg_3m,
+AVG(CASE WHEN k.categ = 'Музыка' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS music_avg_6m,
+AVG(CASE WHEN k.categ = 'Музыка' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS music_avg_12m,
 
-    for date, group in grouped:
-        gini = compute_gini(group['target'], group['prediction'])
-        summary.append({
-            'date': str(date),
-            'gini': round(gini * 100, 2),
-            'count': len(group)
-        })
+AVG(CASE WHEN k.categ = 'Ломбарды' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS lombards_avg_1m,
+AVG(CASE WHEN k.categ = 'Ломбарды' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS lombards_avg_3m,
+AVG(CASE WHEN k.categ = 'Ломбарды' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS lombards_avg_6m,
+AVG(CASE WHEN k.categ = 'Ломбарды' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS lombards_avg_12m,
 
-    summary_df = pd.DataFrame(summary)
+AVG(CASE WHEN k.categ = 'Зоомагазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS zoo_avg_1m,
+AVG(CASE WHEN k.categ = 'Зоомагазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS zoo_avg_3m,
+AVG(CASE WHEN k.categ = 'Зоомагазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS zoo_avg_6m,
+AVG(CASE WHEN k.categ = 'Зоомагазины' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS zoo_avg_12m,
 
-    # Построение графика
-    fig, ax1 = plt.subplots(figsize=(14, 6))
-    ax1.bar(summary_df['date'], summary_df['count'], color='cornflowerblue', label='CNT')
-    ax1.set_ylabel('CNT', color='blue')
-    ax1.set_ylim(0, summary_df['count'].max() * 1.2)
-    ax1.tick_params(axis='x', rotation=45)
+AVG(CASE WHEN k.categ = 'Авиабилеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS air_tickets_avg_1m,
+AVG(CASE WHEN k.categ = 'Авиабилеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS air_tickets_avg_3m,
+AVG(CASE WHEN k.categ = 'Авиабилеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS air_tickets_avg_6m,
+AVG(CASE WHEN k.categ = 'Авиабилеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS air_tickets_avg_12m,
 
-    ax2 = ax1.twinx()
-    ax2.plot(summary_df['date'], summary_df['gini'], color='green', label='GINI', linewidth=2)
-    ax2.set_ylabel('GINI (%)', color='green')
-    ax2.set_ylim(0, 100)
+AVG(CASE WHEN k.categ = 'Гостиницы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS hotels_avg_1m,
+AVG(CASE WHEN k.categ = 'Гостиницы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS hotels_avg_3m,
+AVG(CASE WHEN k.categ = 'Гостиницы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS hotels_avg_6m,
+AVG(CASE WHEN k.categ = 'Гостиницы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS hotels_avg_12m,
 
-    ax1.legend(loc='upper left')
-    ax2.legend(loc='upper right')
-    plt.title('Gini by generations')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+AVG(CASE WHEN k.categ = 'Услуги курьера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS counter_avg_1m,
+AVG(CASE WHEN k.categ = 'Услуги курьера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS counter_avg_3m,
+AVG(CASE WHEN k.categ = 'Услуги курьера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS counter_avg_6m,
+AVG(CASE WHEN k.categ = 'Услуги курьера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS counter_avg_12m,
 
-    display_dataframe_to_user("GINI Summary by Month", summary_df)
+AVG(CASE WHEN k.categ = 'Сувениры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS souvenirs_avg_1m,
+AVG(CASE WHEN k.categ = 'Сувениры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS souvenirs_avg_3m,
+AVG(CASE WHEN k.categ = 'Сувениры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS souvenirs_avg_6m,
+AVG(CASE WHEN k.categ = 'Сувениры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS souvenirs_avg_12m,
 
-plot_monthly_gini_and_table(df)
+AVG(CASE WHEN k.categ = 'Перевод на карту' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS card_transfer_avg_1m,
+AVG(CASE WHEN k.categ = 'Перевод на карту' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS card_transfer_avg_3m,
+AVG(CASE WHEN k.categ = 'Перевод на карту' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS card_transfer_avg_6m,
+AVG(CASE WHEN k.categ = 'Перевод на карту' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS card_transfer_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Развлечения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS entertainment_avg_1m,
+AVG(CASE WHEN k.categ = 'Развлечения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS entertainment_avg_3m,
+AVG(CASE WHEN k.categ = 'Развлечения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS entertainment_avg_6m,
+AVG(CASE WHEN k.categ = 'Развлечения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS entertainment_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Налоги и штрафы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS taxes_fines_avg_1m,
+AVG(CASE WHEN k.categ = 'Налоги и штрафы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS taxes_fines_avg_3m,
+AVG(CASE WHEN k.categ = 'Налоги и штрафы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS taxes_fines_avg_6m,
+AVG(CASE WHEN k.categ = 'Налоги и штрафы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS taxes_fines_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Супермаркеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS supermarkets_avg_1m,
+AVG(CASE WHEN k.categ = 'Супермаркеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS supermarkets_avg_3m,
+AVG(CASE WHEN k.categ = 'Супермаркеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS supermarkets_avg_6m,
+AVG(CASE WHEN k.categ = 'Супермаркеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS supermarkets_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Спорттовары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS sport_goods_avg_1m,
+AVG(CASE WHEN k.categ = 'Спорттовары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS sport_goods_avg_3m,
+AVG(CASE WHEN k.categ = 'Спорттовары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS sport_goods_avg_6m,
+AVG(CASE WHEN k.categ = 'Спорттовары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS sport_goods_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Сервисы Сбера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS sber_services_avg_1m,
+AVG(CASE WHEN k.categ = 'Сервисы Сбера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS sber_services_avg_3m,
+AVG(CASE WHEN k.categ = 'Сервисы Сбера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS sber_services_avg_6m,
+AVG(CASE WHEN k.categ = 'Сервисы Сбера' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS sber_services_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Госуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS gov_services_avg_1m,
+AVG(CASE WHEN k.categ = 'Госуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS gov_services_avg_3m,
+AVG(CASE WHEN k.categ = 'Госуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS gov_services_avg_6m,
+AVG(CASE WHEN k.categ = 'Госуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS gov_services_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Искусство' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS art_avg_1m,
+AVG(CASE WHEN k.categ = 'Искусство' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS art_avg_3m,
+AVG(CASE WHEN k.categ = 'Искусство' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS art_avg_6m,
+AVG(CASE WHEN k.categ = 'Искусство' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS art_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Аптеки' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS pharmacies_avg_1m,
+AVG(CASE WHEN k.categ = 'Аптеки' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS pharmacies_avg_3m,
+AVG(CASE WHEN k.categ = 'Аптеки' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS pharmacies_avg_6m,
+AVG(CASE WHEN k.categ = 'Аптеки' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS pharmacies_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Цветы и растения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS flowers_avg_1m,
+AVG(CASE WHEN k.categ = 'Цветы и растения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS flowers_avg_3m,
+AVG(CASE WHEN k.categ = 'Цветы и растения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS flowers_avg_6m,
+AVG(CASE WHEN k.categ = 'Цветы и растения' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS flowers_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Ж/д билеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS train_tickets_avg_1m,
+AVG(CASE WHEN k.categ = 'Ж/д билеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS train_tickets_avg_3m,
+AVG(CASE WHEN k.categ = 'Ж/д билеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS train_tickets_avg_6m,
+AVG(CASE WHEN k.categ = 'Ж/д билеты' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS train_tickets_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Азартные игры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS gambling_avg_1m,
+AVG(CASE WHEN k.categ = 'Азартные игры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS gambling_avg_3m,
+AVG(CASE WHEN k.categ = 'Азартные игры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS gambling_avg_6m,
+AVG(CASE WHEN k.categ = 'Азартные игры' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS gambling_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Цифровые товары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS digital_goods_avg_1m,
+AVG(CASE WHEN k.categ = 'Цифровые товары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS digital_goods_avg_3m,
+AVG(CASE WHEN k.categ = 'Цифровые товары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS digital_goods_avg_6m,
+AVG(CASE WHEN k.categ = 'Цифровые товары' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS digital_goods_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Книги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS books_avg_1m,
+AVG(CASE WHEN k.categ = 'Книги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS books_avg_3m,
+AVG(CASE WHEN k.categ = 'Книги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS books_avg_6m,
+AVG(CASE WHEN k.categ = 'Книги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS books_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Топливо' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS fuel_avg_1m,
+AVG(CASE WHEN k.categ = 'Топливо' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS fuel_avg_3m,
+AVG(CASE WHEN k.categ = 'Топливо' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS fuel_avg_6m,
+AVG(CASE WHEN k.categ = 'Топливо' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS fuel_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Сервисы Яндекса' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS yandex_services_avg_1m,
+AVG(CASE WHEN k.categ = 'Сервисы Яндекса' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS yandex_services_avg_3m,
+AVG(CASE WHEN k.categ = 'Сервисы Яндекса' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS yandex_services_avg_6m,
+AVG(CASE WHEN k.categ = 'Сервисы Яндекса' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS yandex_services_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Красота' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS beauty_avg_1m,
+AVG(CASE WHEN k.categ = 'Красота' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS beauty_avg_3m,
+AVG(CASE WHEN k.categ = 'Красота' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS beauty_avg_6m,
+AVG(CASE WHEN k.categ = 'Красота' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS beauty_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Кино' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS cinema_avg_1m,
+AVG(CASE WHEN k.categ = 'Кино' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS cinema_avg_3m,
+AVG(CASE WHEN k.categ = 'Кино' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS cinema_avg_6m,
+AVG(CASE WHEN k.categ = 'Кино' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS cinema_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Благотворительность' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS charity_avg_1m,
+AVG(CASE WHEN k.categ = 'Благотворительность' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS charity_avg_3m,
+AVG(CASE WHEN k.categ = 'Благотворительность' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS charity_avg_6m,
+AVG(CASE WHEN k.categ = 'Благотворительность' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS charity_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Денежные переводы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS money_transfers_avg_1m,
+AVG(CASE WHEN k.categ = 'Денежные переводы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS money_transfers_avg_3m,
+AVG(CASE WHEN k.categ = 'Денежные переводы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS money_transfers_avg_6m,
+AVG(CASE WHEN k.categ = 'Денежные переводы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS money_transfers_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Автоуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS auto_services_avg_1m,
+AVG(CASE WHEN k.categ = 'Автоуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS auto_services_avg_3m,
+AVG(CASE WHEN k.categ = 'Автоуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS auto_services_avg_6m,
+AVG(CASE WHEN k.categ = 'Автоуслуги' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS auto_services_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Услуги и консультации' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS services_consulting_avg_1m,
+AVG(CASE WHEN k.categ = 'Услуги и консультации' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS services_consulting_avg_3m,
+AVG(CASE WHEN k.categ = 'Услуги и консультации' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS services_consulting_avg_6m,
+AVG(CASE WHEN k.categ = 'Услуги и консультации' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS services_consulting_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Снятие наличных' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS cash_withdrawal_avg_1m,
+AVG(CASE WHEN k.categ = 'Снятие наличных' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS cash_withdrawal_avg_3m,
+AVG(CASE WHEN k.categ = 'Снятие наличных' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS cash_withdrawal_avg_6m,
+AVG(CASE WHEN k.categ = 'Снятие наличных' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS cash_withdrawal_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Прочие расходы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS other_expenses_avg_1m,
+AVG(CASE WHEN k.categ = 'Прочие расходы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS other_expenses_avg_3m,
+AVG(CASE WHEN k.categ = 'Прочие расходы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS other_expenses_avg_6m,
+AVG(CASE WHEN k.categ = 'Прочие расходы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS other_expenses_avg_12m,
+
+AVG(CASE WHEN k.categ = 'ЖКУ, связь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS utilities_communication_avg_1m,
+AVG(CASE WHEN k.categ = 'ЖКУ, связь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS utilities_communication_avg_3m,
+AVG(CASE WHEN k.categ = 'ЖКУ, связь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS utilities_communication_avg_6m,
+AVG(CASE WHEN k.categ = 'ЖКУ, связь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS utilities_communication_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Техника и электроника' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS electronics_avg_1m,
+AVG(CASE WHEN k.categ = 'Техника и электроника' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS electronics_avg_3m,
+AVG(CASE WHEN k.categ = 'Техника и электроника' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS electronics_avg_6m,
+AVG(CASE WHEN k.categ = 'Техника и электроника' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS electronics_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Ювелирные изделия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS jewelry_avg_1m,
+AVG(CASE WHEN k.categ = 'Ювелирные изделия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS jewelry_avg_3m,
+AVG(CASE WHEN k.categ = 'Ювелирные изделия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS jewelry_avg_6m,
+AVG(CASE WHEN k.categ = 'Ювелирные изделия' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS jewelry_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Одежда и обувь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS clothing_shoes_avg_1m,
+AVG(CASE WHEN k.categ = 'Одежда и обувь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS clothing_shoes_avg_3m,
+AVG(CASE WHEN k.categ = 'Одежда и обувь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS clothing_shoes_avg_6m,
+AVG(CASE WHEN k.categ = 'Одежда и обувь' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS clothing_shoes_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Образование' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS education_avg_1m,
+AVG(CASE WHEN k.categ = 'Образование' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS education_avg_3m,
+AVG(CASE WHEN k.categ = 'Образование' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS education_avg_6m,
+AVG(CASE WHEN k.categ = 'Образование' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS education_avg_12m,
+
+AVG(CASE WHEN k.categ = 'Финансы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -1) THEN 1 ELSE null END) AS finance_avg_1m,
+AVG(CASE WHEN k.categ = 'Финансы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -3) THEN 1 ELSE null END) AS finance_avg_3m,
+AVG(CASE WHEN k.categ = 'Финансы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -6) THEN 1 ELSE null END) AS finance_avg_6m,
+AVG(CASE WHEN k.categ = 'Финансы' AND transaction_dtm >= ADD_MONTHS(d.report_date, -12) THEN 1 ELSE null END) AS finance_avg_12m
