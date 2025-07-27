@@ -1,132 +1,1495 @@
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_1 t1
-    ON t1.client_did = a.client_did
-    AND t1.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_2 t2
-    ON t2.client_did = a.client_did
-    AND t2.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_3 t3
-    ON t3.client_did = a.client_did
-    AND t3.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_4 t4
-    ON t4.client_did = a.client_did
-    AND t4.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_5 t5
-    ON t5.client_did = a.client_did
-    AND t5.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_6 t6
-    ON t6.client_did = a.client_did
-    AND t6.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_7 t7
-    ON t7.client_did = a.client_did
-    AND t7.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_8 t8
-    ON t8.client_did = a.client_did
-    AND t8.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_9 t9
-    ON t9.client_did = a.client_did
-    AND t9.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_10 t10
-    ON t10.client_did = a.client_did
-    AND t10.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_11 t11
-    ON t11.client_did = a.client_did
-    AND t11.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_12 t12
-    ON t12.client_did = a.client_did
-    AND t12.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_13 t13
-    ON t13.client_did = a.client_did
-    AND t13.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_14 t14
-    ON t14.client_did = a.client_did
-    AND t14.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_15 t15
-    ON t15.client_did = a.client_did
-    AND t15.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_16 t16
-    ON t16.client_did = a.client_did
-    AND t16.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_17 t17
-    ON t17.client_did = a.client_did
-    AND t17.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_18 t18
-    ON t18.client_did = a.client_did
-    AND t18.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_19 t19
-    ON t19.client_did = a.client_did
-    AND t19.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_20 t20
-    ON t20.client_did = a.client_did
-    AND t20.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_21 t21
-    ON t21.client_did = a.client_did
-    AND t21.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_22 t22
-    ON t22.client_did = a.client_did
-    AND t22.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_23 t23
-    ON t23.client_did = a.client_did
-    AND t23.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_24 t24
-    ON t24.client_did = a.client_did
-    AND t24.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_25 t25
-    ON t25.client_did = a.client_did
-    AND t25.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_26 t26
-    ON t26.client_did = a.client_did
-    AND t26.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_27 t27
-    ON t27.client_did = a.client_did
-    AND t27.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_28 t28
-    ON t28.client_did = a.client_did
-    AND t28.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_29 t29
-    ON t29.client_did = a.client_did
-    AND t29.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_30 t30
-    ON t30.client_did = a.client_did
-    AND t30.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_31 t31
-    ON t31.client_did = a.client_did
-    AND t31.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_32 t32
-    ON t32.client_did = a.client_did
-    AND t32.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_33 t33
-    ON t33.client_did = a.client_did
-    AND t33.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_34 t34
-    ON t34.client_did = a.client_did
-    AND t34.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_35 t35
-    ON t35.client_did = a.client_did
-    AND t35.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_36 t36
-    ON t36.client_did = a.client_did
-    AND t36.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_37 t37
-    ON t37.client_did = a.client_did
-    AND t37.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_38 t38
-    ON t38.client_did = a.client_did
-    AND t38.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_39 t39
-    ON t39.client_did = a.client_did
-    AND t39.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_40 t40
-    ON t40.client_did = a.client_did
-    AND t40.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_41 t41
-    ON t41.client_did = a.client_did
-    AND t41.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_42 t42
-    ON t42.client_did = a.client_did
-    AND t42.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_43 t43
-    ON t43.client_did = a.client_did
-    AND t43.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_44 t44
-    ON t44.client_did = a.client_did
-    AND t44.report_date = a.report_date
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_48 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_dom_rem_trans_cnt_1m / NULLIF (transaction_dom_rem_trans_cnt_3m, 0) AS transaction_dom_rem_trans_cnt_1m_to_3m,
+    transaction_dom_rem_trans_gum_1m / NULLIF (transaction_dom_rem_trans_sum_3m, 0) AS transaction_dom_rem_trans_sum_1m_to_3m,
+    transaction_dom rem_trans_cnt_3m / NULLIF (transaction_dom_rem_trans_cnt_6m, 0) AS transaction_dom_rem_trans_cnt_3m_to_6m,
+    transaction_dom_rem_trans_sum_3m / NULLIF (transaction_dom rem_trans_sum_6m, 0) AS transaction_dom_rem_trans_sum_3m_to_6m,
+    transaction_dom_rem_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_dom_rem_trans_cnt_1m_to_total_1m, 
+    transaction_dom_rem_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_dom_rem_trans_sum_1m_to_total_1m, 
+    transaction_dom_rem_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_dom_rem_trans_cnt_3m_to_total_3m, 
+    transaction_dom_rem_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_dom_rem_trans_sum_3m_to_total_3m,
+    transaction_dom rem_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_dom_rem_trans_cnt_3m_to_total_6m, 
+    transaction_dom_rem_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_dom_rem_trans_sum_3m_to_total_6m, 
+    transaction_dom_rem_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_dom_rem_trans_cnt_6m_to_total_6m, 
+    transaction_dom_rem_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_dom_rem_trans_sum_6m_to_total_6m, 
+    transaction_dom_rem_trans_avg_sum_1m / NULLIF (transaction_dom_rem_trans_avg_sum_3m, 0) AS transaction_dom_rem_trans_avg_sum_1m_to_3m, 
+    transaction_dom_rem_trans_avg_cnt_Im / NULLIF (transaction_dom_rem_trans_avg_cnt_3m, 0) AS transaction_dom rem_trans_avg_cnt_1m_to_3m, 
+    transaction_dom_rem_trans_avg_sum_3m / NULLIF (transaction_dom_rem_trans_avg_sum_6m, 0) AS transaction_dom_rem_trans_avg_sum_3m_to_6m, 
+    transaction_dom_rem_trans_avg_cnt_3m / NULLIF (transaction_dom_rem_trans_avg_cnt_6m, 0) AS transaction_dom_rem_trans_avg_cnt_3m_to_6m, 
+    transaction_dom_rem_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_dom_rem_trans_avg_sum_1m_to_total_1m,
+    transaction_dom_rem_trang_avg_cnt_1m / NULLIF (transaction_total_trang_avg_cnt_1m, 0) As transaction_dom_rem_trang_avg_cnt_1m_to_total_1m,
+    transaction_dom_rem_trans_avg_gum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_dom_rem_trans_avg_sum_3m_to_total_3m, 
+    transaction_dom_rem_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_dom_rem_trans_avg_cnt_3m_to_total_3m, 
+    transaction_dom_rem_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_dom_rem_trans_avg_sum_3m_to_total_6m, 
+    transaction_dom_rem_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_dom_rem_trans_avg_cnt_3m_to_total_6m, 
+    transaction_dom_rem_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_dom_rem_trans_avg_sum_6m_to_total_6m, 
+    transaction_dom_rem_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_dom_rem_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_1 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_49 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_cafe_trans_cnt_1m / NULLIF (transaction_cafe_trans_cnt_3m, 0) AS transaction_cafe_trans_cnt_1m_to_3m,
+    transaction_cafe_trans_sum_1m / NULLIF (transaction_cafe_trans_sum_3m, 0) AS transaction_cafe_trans_sum_1m_to_3m,
+    transaction_cafe_trans_cnt_3m / NULLIF (transaction_cafe_trans_cnt_6m, 0) AS transaction_cafe_trans_cnt_3m_to_6m,
+    transaction_cafe_trans_sum_3m / NULLIF (transaction_cafe_trans_sum_6m, 0) AS transaction_cafe_trans_sum_3m_to_6m,
+    transaction_cafe_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_cafe_trans_cnt_1m_to_total_1m, 
+    transaction_cafe_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_cafe_trans_sum_1m_to_total_1m, 
+    transaction_cafe_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_cafe_trans_cnt_3m_to_total_3m, 
+    transaction_cafe_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_cafe_trans_sum_3m_to_total_3m,
+    transaction_cafe_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cafe_trans_cnt_3m_to_total_6m, 
+    transaction_cafe_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cafe_trans_sum_3m_to_total_6m, 
+    transaction_cafe_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cafe_trans_cnt_6m_to_total_6m, 
+    transaction_cafe_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cafe_trans_sum_6m_to_total_6m, 
+    transaction_cafe_trans_avg_sum_1m / NULLIF (transaction_cafe_trans_avg_sum_3m, 0) AS transaction_cafe_trans_avg_sum_1m_to_3m, 
+    transaction_cafe_trans_avg_cnt_1m / NULLIF (transaction_cafe_trans_avg_cnt_3m, 0) AS transaction_cafe_trans_avg_cnt_1m_to_3m, 
+    transaction_cafe_trans_avg_sum_3m / NULLIF (transaction_cafe_trans_avg_sum_6m, 0) AS transaction_cafe_trans_avg_sum_3m_to_6m, 
+    transaction_cafe_trans_avg_cnt_3m / NULLIF (transaction_cafe_trans_avg_cnt_6m, 0) AS transaction_cafe_trans_avg_cnt_3m_to_6m, 
+    transaction_cafe_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_cafe_trans_avg_sum_1m_to_total_1m,
+    transaction_cafe_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_cafe_trans_avg_cnt_1m_to_total_1m,
+    transaction_cafe_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_cafe_trans_avg_sum_3m_to_total_3m, 
+    transaction_cafe_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_cafe_trans_avg_cnt_3m_to_total_3m, 
+    transaction_cafe_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cafe_trans_avg_sum_3m_to_total_6m, 
+    transaction_cafe_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cafe_trans_avg_cnt_3m_to_total_6m, 
+    transaction_cafe_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cafe_trans_avg_sum_6m_to_total_6m, 
+    transaction_cafe_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cafe_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_2 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_50 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_rent_auto_trans_cnt_1m / NULLIF (transaction_rent_auto_trans_cnt_3m, 0) AS transaction_rent_auto_trans_cnt_1m_to_3m,
+    transaction_rent_auto_trans_sum_1m / NULLIF (transaction_rent_auto_trans_sum_3m, 0) AS transaction_rent_auto_trans_sum_1m_to_3m,
+    transaction_rent_auto_trans_cnt_3m / NULLIF (transaction_rent_auto_trans_cnt_6m, 0) AS transaction_rent_auto_trans_cnt_3m_to_6m,
+    transaction_rent_auto_trans_sum_3m / NULLIF (transaction_rent_auto_trans_sum_6m, 0) AS transaction_rent_auto_trans_sum_3m_to_6m,
+    transaction_rent_auto_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_rent_auto_trans_cnt_1m_to_total_1m, 
+    transaction_rent_auto_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_rent_auto_trans_sum_1m_to_total_1m, 
+    transaction_rent_auto_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_rent_auto_trans_cnt_3m_to_total_3m, 
+    transaction_rent_auto_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_rent_auto_trans_sum_3m_to_total_3m,
+    transaction_rent_auto_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_rent_auto_trans_cnt_3m_to_total_6m, 
+    transaction_rent_auto_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_rent_auto_trans_sum_3m_to_total_6m, 
+    transaction_rent_auto_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_rent_auto_trans_cnt_6m_to_total_6m, 
+    transaction_rent_auto_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_rent_auto_trans_sum_6m_to_total_6m, 
+    transaction_rent_auto_trans_avg_sum_1m / NULLIF (transaction_rent_auto_trans_avg_sum_3m, 0) AS transaction_rent_auto_trans_avg_sum_1m_to_3m, 
+    transaction_rent_auto_trans_avg_cnt_1m / NULLIF (transaction_rent_auto_trans_avg_cnt_3m, 0) AS transaction_rent_auto_trans_avg_cnt_1m_to_3m, 
+    transaction_rent_auto_trans_avg_sum_3m / NULLIF (transaction_rent_auto_trans_avg_sum_6m, 0) AS transaction_rent_auto_trans_avg_sum_3m_to_6m, 
+    transaction_rent_auto_trans_avg_cnt_3m / NULLIF (transaction_rent_auto_trans_avg_cnt_6m, 0) AS transaction_rent_auto_trans_avg_cnt_3m_to_6m, 
+    transaction_rent_auto_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_rent_auto_trans_avg_sum_1m_to_total_1m,
+    transaction_rent_auto_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_rent_auto_trans_avg_cnt_1m_to_total_1m,
+    transaction_rent_auto_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_rent_auto_trans_avg_sum_3m_to_total_3m, 
+    transaction_rent_auto_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_rent_auto_trans_avg_cnt_3m_to_total_3m, 
+    transaction_rent_auto_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_rent_auto_trans_avg_sum_3m_to_total_6m, 
+    transaction_rent_auto_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_rent_auto_trans_avg_cnt_3m_to_total_6m, 
+    transaction_rent_auto_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_rent_auto_trans_avg_sum_6m_to_total_6m, 
+    transaction_rent_auto_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_rent_auto_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_3 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_51 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_transport_trans_cnt_1m / NULLIF (transaction_transport_trans_cnt_3m, 0) AS transaction_transport_trans_cnt_1m_to_3m,
+    transaction_transport_trans_sum_1m / NULLIF (transaction_transport_trans_sum_3m, 0) AS transaction_transport_trans_sum_1m_to_3m,
+    transaction_transport_trans_cnt_3m / NULLIF (transaction_transport_trans_cnt_6m, 0) AS transaction_transport_trans_cnt_3m_to_6m,
+    transaction_transport_trans_sum_3m / NULLIF (transaction_transport_trans_sum_6m, 0) AS transaction_transport_trans_sum_3m_to_6m,
+    transaction_transport_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_transport_trans_cnt_1m_to_total_1m, 
+    transaction_transport_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_transport_trans_sum_1m_to_total_1m, 
+    transaction_transport_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_transport_trans_cnt_3m_to_total_3m, 
+    transaction_transport_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_transport_trans_sum_3m_to_total_3m,
+    transaction_transport_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_transport_trans_cnt_3m_to_total_6m, 
+    transaction_transport_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_transport_trans_sum_3m_to_total_6m, 
+    transaction_transport_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_transport_trans_cnt_6m_to_total_6m, 
+    transaction_transport_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_transport_trans_sum_6m_to_total_6m, 
+    transaction_transport_trans_avg_sum_1m / NULLIF (transaction_transport_trans_avg_sum_3m, 0) AS transaction_transport_trans_avg_sum_1m_to_3m, 
+    transaction_transport_trans_avg_cnt_1m / NULLIF (transaction_transport_trans_avg_cnt_3m, 0) AS transaction_transport_trans_avg_cnt_1m_to_3m, 
+    transaction_transport_trans_avg_sum_3m / NULLIF (transaction_transport_trans_avg_sum_6m, 0) AS transaction_transport_trans_avg_sum_3m_to_6m, 
+    transaction_transport_trans_avg_cnt_3m / NULLIF (transaction_transport_trans_avg_cnt_6m, 0) AS transaction_transport_trans_avg_cnt_3m_to_6m, 
+    transaction_transport_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_transport_trans_avg_sum_1m_to_total_1m,
+    transaction_transport_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_transport_trans_avg_cnt_1m_to_total_1m,
+    transaction_transport_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_transport_trans_avg_sum_3m_to_total_3m, 
+    transaction_transport_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_transport_trans_avg_cnt_3m_to_total_3m, 
+    transaction_transport_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_transport_trans_avg_sum_3m_to_total_6m, 
+    transaction_transport_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_transport_trans_avg_cnt_3m_to_total_6m, 
+    transaction_transport_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_transport_trans_avg_sum_6m_to_total_6m, 
+    transaction_transport_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_transport_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_4 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_52 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_travel_trans_cnt_1m / NULLIF (transaction_travel_trans_cnt_3m, 0) AS transaction_travel_trans_cnt_1m_to_3m,
+    transaction_travel_trans_sum_1m / NULLIF (transaction_travel_trans_sum_3m, 0) AS transaction_travel_trans_sum_1m_to_3m,
+    transaction_travel_trans_cnt_3m / NULLIF (transaction_travel_trans_cnt_6m, 0) AS transaction_travel_trans_cnt_3m_to_6m,
+    transaction_travel_trans_sum_3m / NULLIF (transaction_travel_trans_sum_6m, 0) AS transaction_travel_trans_sum_3m_to_6m,
+    transaction_travel_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_travel_trans_cnt_1m_to_total_1m, 
+    transaction_travel_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_travel_trans_sum_1m_to_total_1m, 
+    transaction_travel_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_travel_trans_cnt_3m_to_total_3m, 
+    transaction_travel_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_travel_trans_sum_3m_to_total_3m,
+    transaction_travel_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_travel_trans_cnt_3m_to_total_6m, 
+    transaction_travel_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_travel_trans_sum_3m_to_total_6m, 
+    transaction_travel_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_travel_trans_cnt_6m_to_total_6m, 
+    transaction_travel_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_travel_trans_sum_6m_to_total_6m, 
+    transaction_travel_trans_avg_sum_1m / NULLIF (transaction_travel_trans_avg_sum_3m, 0) AS transaction_travel_trans_avg_sum_1m_to_3m, 
+    transaction_travel_trans_avg_cnt_1m / NULLIF (transaction_travel_trans_avg_cnt_3m, 0) AS transaction_travel_trans_avg_cnt_1m_to_3m, 
+    transaction_travel_trans_avg_sum_3m / NULLIF (transaction_travel_trans_avg_sum_6m, 0) AS transaction_travel_trans_avg_sum_3m_to_6m, 
+    transaction_travel_trans_avg_cnt_3m / NULLIF (transaction_travel_trans_avg_cnt_6m, 0) AS transaction_travel_trans_avg_cnt_3m_to_6m, 
+    transaction_travel_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_travel_trans_avg_sum_1m_to_total_1m,
+    transaction_travel_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_travel_trans_avg_cnt_1m_to_total_1m,
+    transaction_travel_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_travel_trans_avg_sum_3m_to_total_3m, 
+    transaction_travel_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_travel_trans_avg_cnt_3m_to_total_3m, 
+    transaction_travel_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_travel_trans_avg_sum_3m_to_total_6m, 
+    transaction_travel_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_travel_trans_avg_cnt_3m_to_total_6m, 
+    transaction_travel_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_travel_trans_avg_sum_6m_to_total_6m, 
+    transaction_travel_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_travel_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_5 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_53 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_medicine_trans_cnt_1m / NULLIF (transaction_medicine_trans_cnt_3m, 0) AS transaction_medicine_trans_cnt_1m_to_3m,
+    transaction_medicine_trans_sum_1m / NULLIF (transaction_medicine_trans_sum_3m, 0) AS transaction_medicine_trans_sum_1m_to_3m,
+    transaction_medicine_trans_cnt_3m / NULLIF (transaction_medicine_trans_cnt_6m, 0) AS transaction_medicine_trans_cnt_3m_to_6m,
+    transaction_medicine_trans_sum_3m / NULLIF (transaction_medicine_trans_sum_6m, 0) AS transaction_medicine_trans_sum_3m_to_6m,
+    transaction_medicine_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_medicine_trans_cnt_1m_to_total_1m, 
+    transaction_medicine_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_medicine_trans_sum_1m_to_total_1m, 
+    transaction_medicine_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_medicine_trans_cnt_3m_to_total_3m, 
+    transaction_medicine_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_medicine_trans_sum_3m_to_total_3m,
+    transaction_medicine_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_medicine_trans_cnt_3m_to_total_6m, 
+    transaction_medicine_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_medicine_trans_sum_3m_to_total_6m, 
+    transaction_medicine_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_medicine_trans_cnt_6m_to_total_6m, 
+    transaction_medicine_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_medicine_trans_sum_6m_to_total_6m, 
+    transaction_medicine_trans_avg_sum_1m / NULLIF (transaction_medicine_trans_avg_sum_3m, 0) AS transaction_medicine_trans_avg_sum_1m_to_3m, 
+    transaction_medicine_trans_avg_cnt_1m / NULLIF (transaction_medicine_trans_avg_cnt_3m, 0) AS transaction_medicine_trans_avg_cnt_1m_to_3m, 
+    transaction_medicine_trans_avg_sum_3m / NULLIF (transaction_medicine_trans_avg_sum_6m, 0) AS transaction_medicine_trans_avg_sum_3m_to_6m, 
+    transaction_medicine_trans_avg_cnt_3m / NULLIF (transaction_medicine_trans_avg_cnt_6m, 0) AS transaction_medicine_trans_avg_cnt_3m_to_6m, 
+    transaction_medicine_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_medicine_trans_avg_sum_1m_to_total_1m,
+    transaction_medicine_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_medicine_trans_avg_cnt_1m_to_total_1m,
+    transaction_medicine_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_medicine_trans_avg_sum_3m_to_total_3m, 
+    transaction_medicine_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_medicine_trans_avg_cnt_3m_to_total_3m, 
+    transaction_medicine_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_medicine_trans_avg_sum_3m_to_total_6m, 
+    transaction_medicine_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_medicine_trans_avg_cnt_3m_to_total_6m, 
+    transaction_medicine_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_medicine_trans_avg_sum_6m_to_total_6m, 
+    transaction_medicine_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_medicine_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_6 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_54 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_online_shops_trans_cnt_1m / NULLIF (transaction_online_shops_trans_cnt_3m, 0) AS transaction_online_shops_trans_cnt_1m_to_3m,
+    transaction_online_shops_trans_sum_1m / NULLIF (transaction_online_shops_trans_sum_3m, 0) AS transaction_online_shops_trans_sum_1m_to_3m,
+    transaction_online_shops_trans_cnt_3m / NULLIF (transaction_online_shops_trans_cnt_6m, 0) AS transaction_online_shops_trans_cnt_3m_to_6m,
+    transaction_online_shops_trans_sum_3m / NULLIF (transaction_online_shops_trans_sum_6m, 0) AS transaction_online_shops_trans_sum_3m_to_6m,
+    transaction_online_shops_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_online_shops_trans_cnt_1m_to_total_1m, 
+    transaction_online_shops_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_online_shops_trans_sum_1m_to_total_1m, 
+    transaction_online_shops_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_online_shops_trans_cnt_3m_to_total_3m, 
+    transaction_online_shops_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_online_shops_trans_sum_3m_to_total_3m,
+    transaction_online_shops_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_online_shops_trans_cnt_3m_to_total_6m, 
+    transaction_online_shops_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_online_shops_trans_sum_3m_to_total_6m, 
+    transaction_online_shops_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_online_shops_trans_cnt_6m_to_total_6m, 
+    transaction_online_shops_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_online_shops_trans_sum_6m_to_total_6m, 
+    transaction_online_shops_trans_avg_sum_1m / NULLIF (transaction_online_shops_trans_avg_sum_3m, 0) AS transaction_online_shops_trans_avg_sum_1m_to_3m, 
+    transaction_online_shops_trans_avg_cnt_1m / NULLIF (transaction_online_shops_trans_avg_cnt_3m, 0) AS transaction_online_shops_trans_avg_cnt_1m_to_3m, 
+    transaction_online_shops_trans_avg_sum_3m / NULLIF (transaction_online_shops_trans_avg_sum_6m, 0) AS transaction_online_shops_trans_avg_sum_3m_to_6m, 
+    transaction_online_shops_trans_avg_cnt_3m / NULLIF (transaction_online_shops_trans_avg_cnt_6m, 0) AS transaction_online_shops_trans_avg_cnt_3m_to_6m, 
+    transaction_online_shops_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_online_shops_trans_avg_sum_1m_to_total_1m,
+    transaction_online_shops_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_online_shops_trans_avg_cnt_1m_to_total_1m,
+    transaction_online_shops_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_online_shops_trans_avg_sum_3m_to_total_3m, 
+    transaction_online_shops_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_online_shops_trans_avg_cnt_3m_to_total_3m, 
+    transaction_online_shops_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_online_shops_trans_avg_sum_3m_to_total_6m, 
+    transaction_online_shops_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_online_shops_trans_avg_cnt_3m_to_total_6m, 
+    transaction_online_shops_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_online_shops_trans_avg_sum_6m_to_total_6m, 
+    transaction_online_shops_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_online_shops_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_7 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_55 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_music_trans_cnt_1m / NULLIF (transaction_music_trans_cnt_3m, 0) AS transaction_music_trans_cnt_1m_to_3m,
+    transaction_music_trans_sum_1m / NULLIF (transaction_music_trans_sum_3m, 0) AS transaction_music_trans_sum_1m_to_3m,
+    transaction_music_trans_cnt_3m / NULLIF (transaction_music_trans_cnt_6m, 0) AS transaction_music_trans_cnt_3m_to_6m,
+    transaction_music_trans_sum_3m / NULLIF (transaction_music_trans_sum_6m, 0) AS transaction_music_trans_sum_3m_to_6m,
+    transaction_music_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_music_trans_cnt_1m_to_total_1m, 
+    transaction_music_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_music_trans_sum_1m_to_total_1m, 
+    transaction_music_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_music_trans_cnt_3m_to_total_3m, 
+    transaction_music_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_music_trans_sum_3m_to_total_3m,
+    transaction_music_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_music_trans_cnt_3m_to_total_6m, 
+    transaction_music_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_music_trans_sum_3m_to_total_6m, 
+    transaction_music_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_music_trans_cnt_6m_to_total_6m, 
+    transaction_music_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_music_trans_sum_6m_to_total_6m, 
+    transaction_music_trans_avg_sum_1m / NULLIF (transaction_music_trans_avg_sum_3m, 0) AS transaction_music_trans_avg_sum_1m_to_3m, 
+    transaction_music_trans_avg_cnt_1m / NULLIF (transaction_music_trans_avg_cnt_3m, 0) AS transaction_music_trans_avg_cnt_1m_to_3m, 
+    transaction_music_trans_avg_sum_3m / NULLIF (transaction_music_trans_avg_sum_6m, 0) AS transaction_music_trans_avg_sum_3m_to_6m, 
+    transaction_music_trans_avg_cnt_3m / NULLIF (transaction_music_trans_avg_cnt_6m, 0) AS transaction_music_trans_avg_cnt_3m_to_6m, 
+    transaction_music_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_music_trans_avg_sum_1m_to_total_1m,
+    transaction_music_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_music_trans_avg_cnt_1m_to_total_1m,
+    transaction_music_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_music_trans_avg_sum_3m_to_total_3m, 
+    transaction_music_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_music_trans_avg_cnt_3m_to_total_3m, 
+    transaction_music_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_music_trans_avg_sum_3m_to_total_6m, 
+    transaction_music_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_music_trans_avg_cnt_3m_to_total_6m, 
+    transaction_music_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_music_trans_avg_sum_6m_to_total_6m, 
+    transaction_music_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_music_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_8 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_56 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_lombards_trans_cnt_1m / NULLIF (transaction_lombards_trans_cnt_3m, 0) AS transaction_lombards_trans_cnt_1m_to_3m,
+    transaction_lombards_trans_sum_1m / NULLIF (transaction_lombards_trans_sum_3m, 0) AS transaction_lombards_trans_sum_1m_to_3m,
+    transaction_lombards_trans_cnt_3m / NULLIF (transaction_lombards_trans_cnt_6m, 0) AS transaction_lombards_trans_cnt_3m_to_6m,
+    transaction_lombards_trans_sum_3m / NULLIF (transaction_lombards_trans_sum_6m, 0) AS transaction_lombards_trans_sum_3m_to_6m,
+    transaction_lombards_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_lombards_trans_cnt_1m_to_total_1m, 
+    transaction_lombards_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_lombards_trans_sum_1m_to_total_1m, 
+    transaction_lombards_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_lombards_trans_cnt_3m_to_total_3m, 
+    transaction_lombards_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_lombards_trans_sum_3m_to_total_3m,
+    transaction_lombards_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_lombards_trans_cnt_3m_to_total_6m, 
+    transaction_lombards_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_lombards_trans_sum_3m_to_total_6m, 
+    transaction_lombards_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_lombards_trans_cnt_6m_to_total_6m, 
+    transaction_lombards_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_lombards_trans_sum_6m_to_total_6m, 
+    transaction_lombards_trans_avg_sum_1m / NULLIF (transaction_lombards_trans_avg_sum_3m, 0) AS transaction_lombards_trans_avg_sum_1m_to_3m, 
+    transaction_lombards_trans_avg_cnt_1m / NULLIF (transaction_lombards_trans_avg_cnt_3m, 0) AS transaction_lombards_trans_avg_cnt_1m_to_3m, 
+    transaction_lombards_trans_avg_sum_3m / NULLIF (transaction_lombards_trans_avg_sum_6m, 0) AS transaction_lombards_trans_avg_sum_3m_to_6m, 
+    transaction_lombards_trans_avg_cnt_3m / NULLIF (transaction_lombards_trans_avg_cnt_6m, 0) AS transaction_lombards_trans_avg_cnt_3m_to_6m, 
+    transaction_lombards_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_lombards_trans_avg_sum_1m_to_total_1m,
+    transaction_lombards_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_lombards_trans_avg_cnt_1m_to_total_1m,
+    transaction_lombards_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_lombards_trans_avg_sum_3m_to_total_3m, 
+    transaction_lombards_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_lombards_trans_avg_cnt_3m_to_total_3m, 
+    transaction_lombards_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_lombards_trans_avg_sum_3m_to_total_6m, 
+    transaction_lombards_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_lombards_trans_avg_cnt_3m_to_total_6m, 
+    transaction_lombards_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_lombards_trans_avg_sum_6m_to_total_6m, 
+    transaction_lombards_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_lombards_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_9 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_57 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_zoo_trans_cnt_1m / NULLIF (transaction_zoo_trans_cnt_3m, 0) AS transaction_zoo_trans_cnt_1m_to_3m,
+    transaction_zoo_trans_sum_1m / NULLIF (transaction_zoo_trans_sum_3m, 0) AS transaction_zoo_trans_sum_1m_to_3m,
+    transaction_zoo_trans_cnt_3m / NULLIF (transaction_zoo_trans_cnt_6m, 0) AS transaction_zoo_trans_cnt_3m_to_6m,
+    transaction_zoo_trans_sum_3m / NULLIF (transaction_zoo_trans_sum_6m, 0) AS transaction_zoo_trans_sum_3m_to_6m,
+    transaction_zoo_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_zoo_trans_cnt_1m_to_total_1m, 
+    transaction_zoo_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_zoo_trans_sum_1m_to_total_1m, 
+    transaction_zoo_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_zoo_trans_cnt_3m_to_total_3m, 
+    transaction_zoo_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_zoo_trans_sum_3m_to_total_3m,
+    transaction_zoo_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_zoo_trans_cnt_3m_to_total_6m, 
+    transaction_zoo_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_zoo_trans_sum_3m_to_total_6m, 
+    transaction_zoo_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_zoo_trans_cnt_6m_to_total_6m, 
+    transaction_zoo_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_zoo_trans_sum_6m_to_total_6m, 
+    transaction_zoo_trans_avg_sum_1m / NULLIF (transaction_zoo_trans_avg_sum_3m, 0) AS transaction_zoo_trans_avg_sum_1m_to_3m, 
+    transaction_zoo_trans_avg_cnt_1m / NULLIF (transaction_zoo_trans_avg_cnt_3m, 0) AS transaction_zoo_trans_avg_cnt_1m_to_3m, 
+    transaction_zoo_trans_avg_sum_3m / NULLIF (transaction_zoo_trans_avg_sum_6m, 0) AS transaction_zoo_trans_avg_sum_3m_to_6m, 
+    transaction_zoo_trans_avg_cnt_3m / NULLIF (transaction_zoo_trans_avg_cnt_6m, 0) AS transaction_zoo_trans_avg_cnt_3m_to_6m, 
+    transaction_zoo_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_zoo_trans_avg_sum_1m_to_total_1m,
+    transaction_zoo_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_zoo_trans_avg_cnt_1m_to_total_1m,
+    transaction_zoo_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_zoo_trans_avg_sum_3m_to_total_3m, 
+    transaction_zoo_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_zoo_trans_avg_cnt_3m_to_total_3m, 
+    transaction_zoo_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_zoo_trans_avg_sum_3m_to_total_6m, 
+    transaction_zoo_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_zoo_trans_avg_cnt_3m_to_total_6m, 
+    transaction_zoo_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_zoo_trans_avg_sum_6m_to_total_6m, 
+    transaction_zoo_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_zoo_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_10 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_58 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_air_tickets_trans_cnt_1m / NULLIF (transaction_air_tickets_trans_cnt_3m, 0) AS transaction_air_tickets_trans_cnt_1m_to_3m,
+    transaction_air_tickets_trans_sum_1m / NULLIF (transaction_air_tickets_trans_sum_3m, 0) AS transaction_air_tickets_trans_sum_1m_to_3m,
+    transaction_air_tickets_trans_cnt_3m / NULLIF (transaction_air_tickets_trans_cnt_6m, 0) AS transaction_air_tickets_trans_cnt_3m_to_6m,
+    transaction_air_tickets_trans_sum_3m / NULLIF (transaction_air_tickets_trans_sum_6m, 0) AS transaction_air_tickets_trans_sum_3m_to_6m,
+    transaction_air_tickets_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_air_tickets_trans_cnt_1m_to_total_1m, 
+    transaction_air_tickets_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_air_tickets_trans_sum_1m_to_total_1m, 
+    transaction_air_tickets_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_air_tickets_trans_cnt_3m_to_total_3m, 
+    transaction_air_tickets_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_air_tickets_trans_sum_3m_to_total_3m,
+    transaction_air_tickets_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_air_tickets_trans_cnt_3m_to_total_6m, 
+    transaction_air_tickets_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_air_tickets_trans_sum_3m_to_total_6m, 
+    transaction_air_tickets_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_air_tickets_trans_cnt_6m_to_total_6m, 
+    transaction_air_tickets_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_air_tickets_trans_sum_6m_to_total_6m, 
+    transaction_air_tickets_trans_avg_sum_1m / NULLIF (transaction_air_tickets_trans_avg_sum_3m, 0) AS transaction_air_tickets_trans_avg_sum_1m_to_3m, 
+    transaction_air_tickets_trans_avg_cnt_1m / NULLIF (transaction_air_tickets_trans_avg_cnt_3m, 0) AS transaction_air_tickets_trans_avg_cnt_1m_to_3m, 
+    transaction_air_tickets_trans_avg_sum_3m / NULLIF (transaction_air_tickets_trans_avg_sum_6m, 0) AS transaction_air_tickets_trans_avg_sum_3m_to_6m, 
+    transaction_air_tickets_trans_avg_cnt_3m / NULLIF (transaction_air_tickets_trans_avg_cnt_6m, 0) AS transaction_air_tickets_trans_avg_cnt_3m_to_6m, 
+    transaction_air_tickets_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_air_tickets_trans_avg_sum_1m_to_total_1m,
+    transaction_air_tickets_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_air_tickets_trans_avg_cnt_1m_to_total_1m,
+    transaction_air_tickets_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_air_tickets_trans_avg_sum_3m_to_total_3m, 
+    transaction_air_tickets_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_air_tickets_trans_avg_cnt_3m_to_total_3m, 
+    transaction_air_tickets_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_air_tickets_trans_avg_sum_3m_to_total_6m, 
+    transaction_air_tickets_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_air_tickets_trans_avg_cnt_3m_to_total_6m, 
+    transaction_air_tickets_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_air_tickets_trans_avg_sum_6m_to_total_6m, 
+    transaction_air_tickets_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_air_tickets_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_11 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_59 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_hotels_trans_cnt_1m / NULLIF (transaction_hotels_trans_cnt_3m, 0) AS transaction_hotels_trans_cnt_1m_to_3m,
+    transaction_hotels_trans_sum_1m / NULLIF (transaction_hotels_trans_sum_3m, 0) AS transaction_hotels_trans_sum_1m_to_3m,
+    transaction_hotels_trans_cnt_3m / NULLIF (transaction_hotels_trans_cnt_6m, 0) AS transaction_hotels_trans_cnt_3m_to_6m,
+    transaction_hotels_trans_sum_3m / NULLIF (transaction_hotels_trans_sum_6m, 0) AS transaction_hotels_trans_sum_3m_to_6m,
+    transaction_hotels_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_hotels_trans_cnt_1m_to_total_1m, 
+    transaction_hotels_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_hotels_trans_sum_1m_to_total_1m, 
+    transaction_hotels_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_hotels_trans_cnt_3m_to_total_3m, 
+    transaction_hotels_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_hotels_trans_sum_3m_to_total_3m,
+    transaction_hotels_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_hotels_trans_cnt_3m_to_total_6m, 
+    transaction_hotels_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_hotels_trans_sum_3m_to_total_6m, 
+    transaction_hotels_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_hotels_trans_cnt_6m_to_total_6m, 
+    transaction_hotels_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_hotels_trans_sum_6m_to_total_6m, 
+    transaction_hotels_trans_avg_sum_1m / NULLIF (transaction_hotels_trans_avg_sum_3m, 0) AS transaction_hotels_trans_avg_sum_1m_to_3m, 
+    transaction_hotels_trans_avg_cnt_1m / NULLIF (transaction_hotels_trans_avg_cnt_3m, 0) AS transaction_hotels_trans_avg_cnt_1m_to_3m, 
+    transaction_hotels_trans_avg_sum_3m / NULLIF (transaction_hotels_trans_avg_sum_6m, 0) AS transaction_hotels_trans_avg_sum_3m_to_6m, 
+    transaction_hotels_trans_avg_cnt_3m / NULLIF (transaction_hotels_trans_avg_cnt_6m, 0) AS transaction_hotels_trans_avg_cnt_3m_to_6m, 
+    transaction_hotels_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_hotels_trans_avg_sum_1m_to_total_1m,
+    transaction_hotels_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_hotels_trans_avg_cnt_1m_to_total_1m,
+    transaction_hotels_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_hotels_trans_avg_sum_3m_to_total_3m, 
+    transaction_hotels_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_hotels_trans_avg_cnt_3m_to_total_3m, 
+    transaction_hotels_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_hotels_trans_avg_sum_3m_to_total_6m, 
+    transaction_hotels_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_hotels_trans_avg_cnt_3m_to_total_6m, 
+    transaction_hotels_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_hotels_trans_avg_sum_6m_to_total_6m, 
+    transaction_hotels_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_hotels_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_12 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_60 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_courier_trans_cnt_1m / NULLIF (transaction_courier_trans_cnt_3m, 0) AS transaction_courier_trans_cnt_1m_to_3m,
+    transaction_courier_trans_sum_1m / NULLIF (transaction_courier_trans_sum_3m, 0) AS transaction_courier_trans_sum_1m_to_3m,
+    transaction_courier_trans_cnt_3m / NULLIF (transaction_courier_trans_cnt_6m, 0) AS transaction_courier_trans_cnt_3m_to_6m,
+    transaction_courier_trans_sum_3m / NULLIF (transaction_courier_trans_sum_6m, 0) AS transaction_courier_trans_sum_3m_to_6m,
+    transaction_courier_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_courier_trans_cnt_1m_to_total_1m, 
+    transaction_courier_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_courier_trans_sum_1m_to_total_1m, 
+    transaction_courier_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_courier_trans_cnt_3m_to_total_3m, 
+    transaction_courier_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_courier_trans_sum_3m_to_total_3m,
+    transaction_courier_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_courier_trans_cnt_3m_to_total_6m, 
+    transaction_courier_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_courier_trans_sum_3m_to_total_6m, 
+    transaction_courier_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_courier_trans_cnt_6m_to_total_6m, 
+    transaction_courier_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_courier_trans_sum_6m_to_total_6m, 
+    transaction_courier_trans_avg_sum_1m / NULLIF (transaction_courier_trans_avg_sum_3m, 0) AS transaction_courier_trans_avg_sum_1m_to_3m, 
+    transaction_courier_trans_avg_cnt_1m / NULLIF (transaction_courier_trans_avg_cnt_3m, 0) AS transaction_courier_trans_avg_cnt_1m_to_3m, 
+    transaction_courier_trans_avg_sum_3m / NULLIF (transaction_courier_trans_avg_sum_6m, 0) AS transaction_courier_trans_avg_sum_3m_to_6m, 
+    transaction_courier_trans_avg_cnt_3m / NULLIF (transaction_courier_trans_avg_cnt_6m, 0) AS transaction_courier_trans_avg_cnt_3m_to_6m, 
+    transaction_courier_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_courier_trans_avg_sum_1m_to_total_1m,
+    transaction_courier_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_courier_trans_avg_cnt_1m_to_total_1m,
+    transaction_courier_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_courier_trans_avg_sum_3m_to_total_3m, 
+    transaction_courier_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_courier_trans_avg_cnt_3m_to_total_3m, 
+    transaction_courier_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_courier_trans_avg_sum_3m_to_total_6m, 
+    transaction_courier_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_courier_trans_avg_cnt_3m_to_total_6m, 
+    transaction_courier_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_courier_trans_avg_sum_6m_to_total_6m, 
+    transaction_courier_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_courier_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_13 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_61 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_souvenirs_trans_cnt_1m / NULLIF (transaction_souvenirs_trans_cnt_3m, 0) AS transaction_souvenirs_trans_cnt_1m_to_3m,
+    transaction_souvenirs_trans_sum_1m / NULLIF (transaction_souvenirs_trans_sum_3m, 0) AS transaction_souvenirs_trans_sum_1m_to_3m,
+    transaction_souvenirs_trans_cnt_3m / NULLIF (transaction_souvenirs_trans_cnt_6m, 0) AS transaction_souvenirs_trans_cnt_3m_to_6m,
+    transaction_souvenirs_trans_sum_3m / NULLIF (transaction_souvenirs_trans_sum_6m, 0) AS transaction_souvenirs_trans_sum_3m_to_6m,
+    transaction_souvenirs_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_souvenirs_trans_cnt_1m_to_total_1m, 
+    transaction_souvenirs_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_souvenirs_trans_sum_1m_to_total_1m, 
+    transaction_souvenirs_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_souvenirs_trans_cnt_3m_to_total_3m, 
+    transaction_souvenirs_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_souvenirs_trans_sum_3m_to_total_3m,
+    transaction_souvenirs_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_souvenirs_trans_cnt_3m_to_total_6m, 
+    transaction_souvenirs_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_souvenirs_trans_sum_3m_to_total_6m, 
+    transaction_souvenirs_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_souvenirs_trans_cnt_6m_to_total_6m, 
+    transaction_souvenirs_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_souvenirs_trans_sum_6m_to_total_6m, 
+    transaction_souvenirs_trans_avg_sum_1m / NULLIF (transaction_souvenirs_trans_avg_sum_3m, 0) AS transaction_souvenirs_trans_avg_sum_1m_to_3m, 
+    transaction_souvenirs_trans_avg_cnt_1m / NULLIF (transaction_souvenirs_trans_avg_cnt_3m, 0) AS transaction_souvenirs_trans_avg_cnt_1m_to_3m, 
+    transaction_souvenirs_trans_avg_sum_3m / NULLIF (transaction_souvenirs_trans_avg_sum_6m, 0) AS transaction_souvenirs_trans_avg_sum_3m_to_6m, 
+    transaction_souvenirs_trans_avg_cnt_3m / NULLIF (transaction_souvenirs_trans_avg_cnt_6m, 0) AS transaction_souvenirs_trans_avg_cnt_3m_to_6m, 
+    transaction_souvenirs_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_souvenirs_trans_avg_sum_1m_to_total_1m,
+    transaction_souvenirs_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_souvenirs_trans_avg_cnt_1m_to_total_1m,
+    transaction_souvenirs_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_souvenirs_trans_avg_sum_3m_to_total_3m, 
+    transaction_souvenirs_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_souvenirs_trans_avg_cnt_3m_to_total_3m, 
+    transaction_souvenirs_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_souvenirs_trans_avg_sum_3m_to_total_6m, 
+    transaction_souvenirs_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_souvenirs_trans_avg_cnt_3m_to_total_6m, 
+    transaction_souvenirs_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_souvenirs_trans_avg_sum_6m_to_total_6m, 
+    transaction_souvenirs_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_souvenirs_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_14 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_62 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_card_transfer_trans_cnt_1m / NULLIF (transaction_card_transfer_trans_cnt_3m, 0) AS transaction_card_transfer_trans_cnt_1m_to_3m,
+    transaction_card_transfer_trans_sum_1m / NULLIF (transaction_card_transfer_trans_sum_3m, 0) AS transaction_card_transfer_trans_sum_1m_to_3m,
+    transaction_card_transfer_trans_cnt_3m / NULLIF (transaction_card_transfer_trans_cnt_6m, 0) AS transaction_card_transfer_trans_cnt_3m_to_6m,
+    transaction_card_transfer_trans_sum_3m / NULLIF (transaction_card_transfer_trans_sum_6m, 0) AS transaction_card_transfer_trans_sum_3m_to_6m,
+    transaction_card_transfer_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_card_transfer_trans_cnt_1m_to_total_1m, 
+    transaction_card_transfer_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_card_transfer_trans_sum_1m_to_total_1m, 
+    transaction_card_transfer_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_card_transfer_trans_cnt_3m_to_total_3m, 
+    transaction_card_transfer_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_card_transfer_trans_sum_3m_to_total_3m,
+    transaction_card_transfer_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_card_transfer_trans_cnt_3m_to_total_6m, 
+    transaction_card_transfer_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_card_transfer_trans_sum_3m_to_total_6m, 
+    transaction_card_transfer_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_card_transfer_trans_cnt_6m_to_total_6m, 
+    transaction_card_transfer_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_card_transfer_trans_sum_6m_to_total_6m, 
+    transaction_card_transfer_trans_avg_sum_1m / NULLIF (transaction_card_transfer_trans_avg_sum_3m, 0) AS transaction_card_transfer_trans_avg_sum_1m_to_3m, 
+    transaction_card_transfer_trans_avg_cnt_1m / NULLIF (transaction_card_transfer_trans_avg_cnt_3m, 0) AS transaction_card_transfer_trans_avg_cnt_1m_to_3m, 
+    transaction_card_transfer_trans_avg_sum_3m / NULLIF (transaction_card_transfer_trans_avg_sum_6m, 0) AS transaction_card_transfer_trans_avg_sum_3m_to_6m, 
+    transaction_card_transfer_trans_avg_cnt_3m / NULLIF (transaction_card_transfer_trans_avg_cnt_6m, 0) AS transaction_card_transfer_trans_avg_cnt_3m_to_6m, 
+    transaction_card_transfer_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_card_transfer_trans_avg_sum_1m_to_total_1m,
+    transaction_card_transfer_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_card_transfer_trans_avg_cnt_1m_to_total_1m,
+    transaction_card_transfer_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_card_transfer_trans_avg_sum_3m_to_total_3m, 
+    transaction_card_transfer_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_card_transfer_trans_avg_cnt_3m_to_total_3m, 
+    transaction_card_transfer_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_card_transfer_trans_avg_sum_3m_to_total_6m, 
+    transaction_card_transfer_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_card_transfer_trans_avg_cnt_3m_to_total_6m, 
+    transaction_card_transfer_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_card_transfer_trans_avg_sum_6m_to_total_6m, 
+    transaction_card_transfer_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_card_transfer_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_15 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_63 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_fun_trans_cnt_1m / NULLIF (transaction_fun_trans_cnt_3m, 0) AS transaction_fun_trans_cnt_1m_to_3m,
+    transaction_fun_trans_sum_1m / NULLIF (transaction_fun_trans_sum_3m, 0) AS transaction_fun_trans_sum_1m_to_3m,
+    transaction_fun_trans_cnt_3m / NULLIF (transaction_fun_trans_cnt_6m, 0) AS transaction_fun_trans_cnt_3m_to_6m,
+    transaction_fun_trans_sum_3m / NULLIF (transaction_fun_trans_sum_6m, 0) AS transaction_fun_trans_sum_3m_to_6m,
+    transaction_fun_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_fun_trans_cnt_1m_to_total_1m, 
+    transaction_fun_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_fun_trans_sum_1m_to_total_1m, 
+    transaction_fun_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_fun_trans_cnt_3m_to_total_3m, 
+    transaction_fun_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_fun_trans_sum_3m_to_total_3m,
+    transaction_fun_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_fun_trans_cnt_3m_to_total_6m, 
+    transaction_fun_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_fun_trans_sum_3m_to_total_6m, 
+    transaction_fun_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_fun_trans_cnt_6m_to_total_6m, 
+    transaction_fun_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_fun_trans_sum_6m_to_total_6m, 
+    transaction_fun_trans_avg_sum_1m / NULLIF (transaction_fun_trans_avg_sum_3m, 0) AS transaction_fun_trans_avg_sum_1m_to_3m, 
+    transaction_fun_trans_avg_cnt_1m / NULLIF (transaction_fun_trans_avg_cnt_3m, 0) AS transaction_fun_trans_avg_cnt_1m_to_3m, 
+    transaction_fun_trans_avg_sum_3m / NULLIF (transaction_fun_trans_avg_sum_6m, 0) AS transaction_fun_trans_avg_sum_3m_to_6m, 
+    transaction_fun_trans_avg_cnt_3m / NULLIF (transaction_fun_trans_avg_cnt_6m, 0) AS transaction_fun_trans_avg_cnt_3m_to_6m, 
+    transaction_fun_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_fun_trans_avg_sum_1m_to_total_1m,
+    transaction_fun_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_fun_trans_avg_cnt_1m_to_total_1m,
+    transaction_fun_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_fun_trans_avg_sum_3m_to_total_3m, 
+    transaction_fun_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_fun_trans_avg_cnt_3m_to_total_3m, 
+    transaction_fun_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_fun_trans_avg_sum_3m_to_total_6m, 
+    transaction_fun_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_fun_trans_avg_cnt_3m_to_total_6m, 
+    transaction_fun_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_fun_trans_avg_sum_6m_to_total_6m, 
+    transaction_fun_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_fun_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_16 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_64 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_taxes_fines_trans_cnt_1m / NULLIF (transaction_taxes_fines_trans_cnt_3m, 0) AS transaction_taxes_fines_trans_cnt_1m_to_3m,
+    transaction_taxes_fines_trans_sum_1m / NULLIF (transaction_taxes_fines_trans_sum_3m, 0) AS transaction_taxes_fines_trans_sum_1m_to_3m,
+    transaction_taxes_fines_trans_cnt_3m / NULLIF (transaction_taxes_fines_trans_cnt_6m, 0) AS transaction_taxes_fines_trans_cnt_3m_to_6m,
+    transaction_taxes_fines_trans_sum_3m / NULLIF (transaction_taxes_fines_trans_sum_6m, 0) AS transaction_taxes_fines_trans_sum_3m_to_6m,
+    transaction_taxes_fines_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_taxes_fines_trans_cnt_1m_to_total_1m, 
+    transaction_taxes_fines_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_taxes_fines_trans_sum_1m_to_total_1m, 
+    transaction_taxes_fines_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_taxes_fines_trans_cnt_3m_to_total_3m, 
+    transaction_taxes_fines_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_taxes_fines_trans_sum_3m_to_total_3m,
+    transaction_taxes_fines_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_taxes_fines_trans_cnt_3m_to_total_6m, 
+    transaction_taxes_fines_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_taxes_fines_trans_sum_3m_to_total_6m, 
+    transaction_taxes_fines_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_taxes_fines_trans_cnt_6m_to_total_6m, 
+    transaction_taxes_fines_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_taxes_fines_trans_sum_6m_to_total_6m, 
+    transaction_taxes_fines_trans_avg_sum_1m / NULLIF (transaction_taxes_fines_trans_avg_sum_3m, 0) AS transaction_taxes_fines_trans_avg_sum_1m_to_3m, 
+    transaction_taxes_fines_trans_avg_cnt_1m / NULLIF (transaction_taxes_fines_trans_avg_cnt_3m, 0) AS transaction_taxes_fines_trans_avg_cnt_1m_to_3m, 
+    transaction_taxes_fines_trans_avg_sum_3m / NULLIF (transaction_taxes_fines_trans_avg_sum_6m, 0) AS transaction_taxes_fines_trans_avg_sum_3m_to_6m, 
+    transaction_taxes_fines_trans_avg_cnt_3m / NULLIF (transaction_taxes_fines_trans_avg_cnt_6m, 0) AS transaction_taxes_fines_trans_avg_cnt_3m_to_6m, 
+    transaction_taxes_fines_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_taxes_fines_trans_avg_sum_1m_to_total_1m,
+    transaction_taxes_fines_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_taxes_fines_trans_avg_cnt_1m_to_total_1m,
+    transaction_taxes_fines_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_taxes_fines_trans_avg_sum_3m_to_total_3m, 
+    transaction_taxes_fines_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_taxes_fines_trans_avg_cnt_3m_to_total_3m, 
+    transaction_taxes_fines_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_taxes_fines_trans_avg_sum_3m_to_total_6m, 
+    transaction_taxes_fines_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_taxes_fines_trans_avg_cnt_3m_to_total_6m, 
+    transaction_taxes_fines_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_taxes_fines_trans_avg_sum_6m_to_total_6m, 
+    transaction_taxes_fines_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_taxes_fines_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_17 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_65 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_supermarkets_trans_cnt_1m / NULLIF (transaction_supermarkets_trans_cnt_3m, 0) AS transaction_supermarkets_trans_cnt_1m_to_3m,
+    transaction_supermarkets_trans_sum_1m / NULLIF (transaction_supermarkets_trans_sum_3m, 0) AS transaction_supermarkets_trans_sum_1m_to_3m,
+    transaction_supermarkets_trans_cnt_3m / NULLIF (transaction_supermarkets_trans_cnt_6m, 0) AS transaction_supermarkets_trans_cnt_3m_to_6m,
+    transaction_supermarkets_trans_sum_3m / NULLIF (transaction_supermarkets_trans_sum_6m, 0) AS transaction_supermarkets_trans_sum_3m_to_6m,
+    transaction_supermarkets_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_supermarkets_trans_cnt_1m_to_total_1m, 
+    transaction_supermarkets_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_supermarkets_trans_sum_1m_to_total_1m, 
+    transaction_supermarkets_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_supermarkets_trans_cnt_3m_to_total_3m, 
+    transaction_supermarkets_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_supermarkets_trans_sum_3m_to_total_3m,
+    transaction_supermarkets_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_supermarkets_trans_cnt_3m_to_total_6m, 
+    transaction_supermarkets_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_supermarkets_trans_sum_3m_to_total_6m, 
+    transaction_supermarkets_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_supermarkets_trans_cnt_6m_to_total_6m, 
+    transaction_supermarkets_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_supermarkets_trans_sum_6m_to_total_6m, 
+    transaction_supermarkets_trans_avg_sum_1m / NULLIF (transaction_supermarkets_trans_avg_sum_3m, 0) AS transaction_supermarkets_trans_avg_sum_1m_to_3m, 
+    transaction_supermarkets_trans_avg_cnt_1m / NULLIF (transaction_supermarkets_trans_avg_cnt_3m, 0) AS transaction_supermarkets_trans_avg_cnt_1m_to_3m, 
+    transaction_supermarkets_trans_avg_sum_3m / NULLIF (transaction_supermarkets_trans_avg_sum_6m, 0) AS transaction_supermarkets_trans_avg_sum_3m_to_6m, 
+    transaction_supermarkets_trans_avg_cnt_3m / NULLIF (transaction_supermarkets_trans_avg_cnt_6m, 0) AS transaction_supermarkets_trans_avg_cnt_3m_to_6m, 
+    transaction_supermarkets_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_supermarkets_trans_avg_sum_1m_to_total_1m,
+    transaction_supermarkets_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_supermarkets_trans_avg_cnt_1m_to_total_1m,
+    transaction_supermarkets_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_supermarkets_trans_avg_sum_3m_to_total_3m, 
+    transaction_supermarkets_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_supermarkets_trans_avg_cnt_3m_to_total_3m, 
+    transaction_supermarkets_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_supermarkets_trans_avg_sum_3m_to_total_6m, 
+    transaction_supermarkets_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_supermarkets_trans_avg_cnt_3m_to_total_6m, 
+    transaction_supermarkets_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_supermarkets_trans_avg_sum_6m_to_total_6m, 
+    transaction_supermarkets_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_supermarkets_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_18 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_66 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_sport_trans_cnt_1m / NULLIF (transaction_sport_trans_cnt_3m, 0) AS transaction_sport_trans_cnt_1m_to_3m,
+    transaction_sport_trans_sum_1m / NULLIF (transaction_sport_trans_sum_3m, 0) AS transaction_sport_trans_sum_1m_to_3m,
+    transaction_sport_trans_cnt_3m / NULLIF (transaction_sport_trans_cnt_6m, 0) AS transaction_sport_trans_cnt_3m_to_6m,
+    transaction_sport_trans_sum_3m / NULLIF (transaction_sport_trans_sum_6m, 0) AS transaction_sport_trans_sum_3m_to_6m,
+    transaction_sport_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_sport_trans_cnt_1m_to_total_1m, 
+    transaction_sport_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_sport_trans_sum_1m_to_total_1m, 
+    transaction_sport_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_sport_trans_cnt_3m_to_total_3m, 
+    transaction_sport_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_sport_trans_sum_3m_to_total_3m,
+    transaction_sport_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_sport_trans_cnt_3m_to_total_6m, 
+    transaction_sport_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_sport_trans_sum_3m_to_total_6m, 
+    transaction_sport_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_sport_trans_cnt_6m_to_total_6m, 
+    transaction_sport_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_sport_trans_sum_6m_to_total_6m, 
+    transaction_sport_trans_avg_sum_1m / NULLIF (transaction_sport_trans_avg_sum_3m, 0) AS transaction_sport_trans_avg_sum_1m_to_3m, 
+    transaction_sport_trans_avg_cnt_1m / NULLIF (transaction_sport_trans_avg_cnt_3m, 0) AS transaction_sport_trans_avg_cnt_1m_to_3m, 
+    transaction_sport_trans_avg_sum_3m / NULLIF (transaction_sport_trans_avg_sum_6m, 0) AS transaction_sport_trans_avg_sum_3m_to_6m, 
+    transaction_sport_trans_avg_cnt_3m / NULLIF (transaction_sport_trans_avg_cnt_6m, 0) AS transaction_sport_trans_avg_cnt_3m_to_6m, 
+    transaction_sport_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_sport_trans_avg_sum_1m_to_total_1m,
+    transaction_sport_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_sport_trans_avg_cnt_1m_to_total_1m,
+    transaction_sport_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_sport_trans_avg_sum_3m_to_total_3m, 
+    transaction_sport_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_sport_trans_avg_cnt_3m_to_total_3m, 
+    transaction_sport_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_sport_trans_avg_sum_3m_to_total_6m, 
+    transaction_sport_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_sport_trans_avg_cnt_3m_to_total_6m, 
+    transaction_sport_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_sport_trans_avg_sum_6m_to_total_6m, 
+    transaction_sport_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_sport_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_19 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_67 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_sber_trans_cnt_1m / NULLIF (transaction_sber_trans_cnt_3m, 0) AS transaction_sber_trans_cnt_1m_to_3m,
+    transaction_sber_trans_sum_1m / NULLIF (transaction_sber_trans_sum_3m, 0) AS transaction_sber_trans_sum_1m_to_3m,
+    transaction_sber_trans_cnt_3m / NULLIF (transaction_sber_trans_cnt_6m, 0) AS transaction_sber_trans_cnt_3m_to_6m,
+    transaction_sber_trans_sum_3m / NULLIF (transaction_sber_trans_sum_6m, 0) AS transaction_sber_trans_sum_3m_to_6m,
+    transaction_sber_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_sber_trans_cnt_1m_to_total_1m, 
+    transaction_sber_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_sber_trans_sum_1m_to_total_1m, 
+    transaction_sber_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_sber_trans_cnt_3m_to_total_3m, 
+    transaction_sber_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_sber_trans_sum_3m_to_total_3m,
+    transaction_sber_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_sber_trans_cnt_3m_to_total_6m, 
+    transaction_sber_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_sber_trans_sum_3m_to_total_6m, 
+    transaction_sber_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_sber_trans_cnt_6m_to_total_6m, 
+    transaction_sber_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_sber_trans_sum_6m_to_total_6m, 
+    transaction_sber_trans_avg_sum_1m / NULLIF (transaction_sber_trans_avg_sum_3m, 0) AS transaction_sber_trans_avg_sum_1m_to_3m, 
+    transaction_sber_trans_avg_cnt_1m / NULLIF (transaction_sber_trans_avg_cnt_3m, 0) AS transaction_sber_trans_avg_cnt_1m_to_3m, 
+    transaction_sber_trans_avg_sum_3m / NULLIF (transaction_sber_trans_avg_sum_6m, 0) AS transaction_sber_trans_avg_sum_3m_to_6m, 
+    transaction_sber_trans_avg_cnt_3m / NULLIF (transaction_sber_trans_avg_cnt_6m, 0) AS transaction_sber_trans_avg_cnt_3m_to_6m, 
+    transaction_sber_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_sber_trans_avg_sum_1m_to_total_1m,
+    transaction_sber_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_sber_trans_avg_cnt_1m_to_total_1m,
+    transaction_sber_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_sber_trans_avg_sum_3m_to_total_3m, 
+    transaction_sber_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_sber_trans_avg_cnt_3m_to_total_3m, 
+    transaction_sber_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_sber_trans_avg_sum_3m_to_total_6m, 
+    transaction_sber_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_sber_trans_avg_cnt_3m_to_total_6m, 
+    transaction_sber_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_sber_trans_avg_sum_6m_to_total_6m, 
+    transaction_sber_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_sber_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_20 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_68 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_gosuslugi_trans_cnt_1m / NULLIF (transaction_gosuslugi_trans_cnt_3m, 0) AS transaction_gosuslugi_trans_cnt_1m_to_3m,
+    transaction_gosuslugi_trans_sum_1m / NULLIF (transaction_gosuslugi_trans_sum_3m, 0) AS transaction_gosuslugi_trans_sum_1m_to_3m,
+    transaction_gosuslugi_trans_cnt_3m / NULLIF (transaction_gosuslugi_trans_cnt_6m, 0) AS transaction_gosuslugi_trans_cnt_3m_to_6m,
+    transaction_gosuslugi_trans_sum_3m / NULLIF (transaction_gosuslugi_trans_sum_6m, 0) AS transaction_gosuslugi_trans_sum_3m_to_6m,
+    transaction_gosuslugi_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_gosuslugi_trans_cnt_1m_to_total_1m, 
+    transaction_gosuslugi_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_gosuslugi_trans_sum_1m_to_total_1m, 
+    transaction_gosuslugi_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_gosuslugi_trans_cnt_3m_to_total_3m, 
+    transaction_gosuslugi_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_gosuslugi_trans_sum_3m_to_total_3m,
+    transaction_gosuslugi_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_gosuslugi_trans_cnt_3m_to_total_6m, 
+    transaction_gosuslugi_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_gosuslugi_trans_sum_3m_to_total_6m, 
+    transaction_gosuslugi_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_gosuslugi_trans_cnt_6m_to_total_6m, 
+    transaction_gosuslugi_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_gosuslugi_trans_sum_6m_to_total_6m, 
+    transaction_gosuslugi_trans_avg_sum_1m / NULLIF (transaction_gosuslugi_trans_avg_sum_3m, 0) AS transaction_gosuslugi_trans_avg_sum_1m_to_3m, 
+    transaction_gosuslugi_trans_avg_cnt_1m / NULLIF (transaction_gosuslugi_trans_avg_cnt_3m, 0) AS transaction_gosuslugi_trans_avg_cnt_1m_to_3m, 
+    transaction_gosuslugi_trans_avg_sum_3m / NULLIF (transaction_gosuslugi_trans_avg_sum_6m, 0) AS transaction_gosuslugi_trans_avg_sum_3m_to_6m, 
+    transaction_gosuslugi_trans_avg_cnt_3m / NULLIF (transaction_gosuslugi_trans_avg_cnt_6m, 0) AS transaction_gosuslugi_trans_avg_cnt_3m_to_6m, 
+    transaction_gosuslugi_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_gosuslugi_trans_avg_sum_1m_to_total_1m,
+    transaction_gosuslugi_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_gosuslugi_trans_avg_cnt_1m_to_total_1m,
+    transaction_gosuslugi_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_gosuslugi_trans_avg_sum_3m_to_total_3m, 
+    transaction_gosuslugi_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_gosuslugi_trans_avg_cnt_3m_to_total_3m, 
+    transaction_gosuslugi_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_gosuslugi_trans_avg_sum_3m_to_total_6m, 
+    transaction_gosuslugi_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_gosuslugi_trans_avg_cnt_3m_to_total_6m, 
+    transaction_gosuslugi_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_gosuslugi_trans_avg_sum_6m_to_total_6m, 
+    transaction_gosuslugi_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_gosuslugi_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_21 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_69 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_art_trans_cnt_1m / NULLIF (transaction_art_trans_cnt_3m, 0) AS transaction_art_trans_cnt_1m_to_3m,
+    transaction_art_trans_sum_1m / NULLIF (transaction_art_trans_sum_3m, 0) AS transaction_art_trans_sum_1m_to_3m,
+    transaction_art_trans_cnt_3m / NULLIF (transaction_art_trans_cnt_6m, 0) AS transaction_art_trans_cnt_3m_to_6m,
+    transaction_art_trans_sum_3m / NULLIF (transaction_art_trans_sum_6m, 0) AS transaction_art_trans_sum_3m_to_6m,
+    transaction_art_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_art_trans_cnt_1m_to_total_1m, 
+    transaction_art_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_art_trans_sum_1m_to_total_1m, 
+    transaction_art_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_art_trans_cnt_3m_to_total_3m, 
+    transaction_art_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_art_trans_sum_3m_to_total_3m,
+    transaction_art_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_art_trans_cnt_3m_to_total_6m, 
+    transaction_art_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_art_trans_sum_3m_to_total_6m, 
+    transaction_art_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_art_trans_cnt_6m_to_total_6m, 
+    transaction_art_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_art_trans_sum_6m_to_total_6m, 
+    transaction_art_trans_avg_sum_1m / NULLIF (transaction_art_trans_avg_sum_3m, 0) AS transaction_art_trans_avg_sum_1m_to_3m, 
+    transaction_art_trans_avg_cnt_1m / NULLIF (transaction_art_trans_avg_cnt_3m, 0) AS transaction_art_trans_avg_cnt_1m_to_3m, 
+    transaction_art_trans_avg_sum_3m / NULLIF (transaction_art_trans_avg_sum_6m, 0) AS transaction_art_trans_avg_sum_3m_to_6m, 
+    transaction_art_trans_avg_cnt_3m / NULLIF (transaction_art_trans_avg_cnt_6m, 0) AS transaction_art_trans_avg_cnt_3m_to_6m, 
+    transaction_art_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_art_trans_avg_sum_1m_to_total_1m,
+    transaction_art_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_art_trans_avg_cnt_1m_to_total_1m,
+    transaction_art_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_art_trans_avg_sum_3m_to_total_3m, 
+    transaction_art_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_art_trans_avg_cnt_3m_to_total_3m, 
+    transaction_art_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_art_trans_avg_sum_3m_to_total_6m, 
+    transaction_art_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_art_trans_avg_cnt_3m_to_total_6m, 
+    transaction_art_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_art_trans_avg_sum_6m_to_total_6m, 
+    transaction_art_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_art_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_22 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_70 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_pharmacies_trans_cnt_1m / NULLIF (transaction_pharmacies_trans_cnt_3m, 0) AS transaction_pharmacies_trans_cnt_1m_to_3m,
+    transaction_pharmacies_trans_sum_1m / NULLIF (transaction_pharmacies_trans_sum_3m, 0) AS transaction_pharmacies_trans_sum_1m_to_3m,
+    transaction_pharmacies_trans_cnt_3m / NULLIF (transaction_pharmacies_trans_cnt_6m, 0) AS transaction_pharmacies_trans_cnt_3m_to_6m,
+    transaction_pharmacies_trans_sum_3m / NULLIF (transaction_pharmacies_trans_sum_6m, 0) AS transaction_pharmacies_trans_sum_3m_to_6m,
+    transaction_pharmacies_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_pharmacies_trans_cnt_1m_to_total_1m, 
+    transaction_pharmacies_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_pharmacies_trans_sum_1m_to_total_1m, 
+    transaction_pharmacies_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_pharmacies_trans_cnt_3m_to_total_3m, 
+    transaction_pharmacies_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_pharmacies_trans_sum_3m_to_total_3m,
+    transaction_pharmacies_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_pharmacies_trans_cnt_3m_to_total_6m, 
+    transaction_pharmacies_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_pharmacies_trans_sum_3m_to_total_6m, 
+    transaction_pharmacies_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_pharmacies_trans_cnt_6m_to_total_6m, 
+    transaction_pharmacies_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_pharmacies_trans_sum_6m_to_total_6m, 
+    transaction_pharmacies_trans_avg_sum_1m / NULLIF (transaction_pharmacies_trans_avg_sum_3m, 0) AS transaction_pharmacies_trans_avg_sum_1m_to_3m, 
+    transaction_pharmacies_trans_avg_cnt_1m / NULLIF (transaction_pharmacies_trans_avg_cnt_3m, 0) AS transaction_pharmacies_trans_avg_cnt_1m_to_3m, 
+    transaction_pharmacies_trans_avg_sum_3m / NULLIF (transaction_pharmacies_trans_avg_sum_6m, 0) AS transaction_pharmacies_trans_avg_sum_3m_to_6m, 
+    transaction_pharmacies_trans_avg_cnt_3m / NULLIF (transaction_pharmacies_trans_avg_cnt_6m, 0) AS transaction_pharmacies_trans_avg_cnt_3m_to_6m, 
+    transaction_pharmacies_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_pharmacies_trans_avg_sum_1m_to_total_1m,
+    transaction_pharmacies_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_pharmacies_trans_avg_cnt_1m_to_total_1m,
+    transaction_pharmacies_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_pharmacies_trans_avg_sum_3m_to_total_3m, 
+    transaction_pharmacies_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_pharmacies_trans_avg_cnt_3m_to_total_3m, 
+    transaction_pharmacies_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_pharmacies_trans_avg_sum_3m_to_total_6m, 
+    transaction_pharmacies_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_pharmacies_trans_avg_cnt_3m_to_total_6m, 
+    transaction_pharmacies_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_pharmacies_trans_avg_sum_6m_to_total_6m, 
+    transaction_pharmacies_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_pharmacies_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_23 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_71 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_flowers_trans_cnt_1m / NULLIF (transaction_flowers_trans_cnt_3m, 0) AS transaction_flowers_trans_cnt_1m_to_3m,
+    transaction_flowers_trans_sum_1m / NULLIF (transaction_flowers_trans_sum_3m, 0) AS transaction_flowers_trans_sum_1m_to_3m,
+    transaction_flowers_trans_cnt_3m / NULLIF (transaction_flowers_trans_cnt_6m, 0) AS transaction_flowers_trans_cnt_3m_to_6m,
+    transaction_flowers_trans_sum_3m / NULLIF (transaction_flowers_trans_sum_6m, 0) AS transaction_flowers_trans_sum_3m_to_6m,
+    transaction_flowers_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_flowers_trans_cnt_1m_to_total_1m, 
+    transaction_flowers_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_flowers_trans_sum_1m_to_total_1m, 
+    transaction_flowers_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_flowers_trans_cnt_3m_to_total_3m, 
+    transaction_flowers_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_flowers_trans_sum_3m_to_total_3m,
+    transaction_flowers_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_flowers_trans_cnt_3m_to_total_6m, 
+    transaction_flowers_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_flowers_trans_sum_3m_to_total_6m, 
+    transaction_flowers_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_flowers_trans_cnt_6m_to_total_6m, 
+    transaction_flowers_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_flowers_trans_sum_6m_to_total_6m, 
+    transaction_flowers_trans_avg_sum_1m / NULLIF (transaction_flowers_trans_avg_sum_3m, 0) AS transaction_flowers_trans_avg_sum_1m_to_3m, 
+    transaction_flowers_trans_avg_cnt_1m / NULLIF (transaction_flowers_trans_avg_cnt_3m, 0) AS transaction_flowers_trans_avg_cnt_1m_to_3m, 
+    transaction_flowers_trans_avg_sum_3m / NULLIF (transaction_flowers_trans_avg_sum_6m, 0) AS transaction_flowers_trans_avg_sum_3m_to_6m, 
+    transaction_flowers_trans_avg_cnt_3m / NULLIF (transaction_flowers_trans_avg_cnt_6m, 0) AS transaction_flowers_trans_avg_cnt_3m_to_6m, 
+    transaction_flowers_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_flowers_trans_avg_sum_1m_to_total_1m,
+    transaction_flowers_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_flowers_trans_avg_cnt_1m_to_total_1m,
+    transaction_flowers_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_flowers_trans_avg_sum_3m_to_total_3m, 
+    transaction_flowers_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_flowers_trans_avg_cnt_3m_to_total_3m, 
+    transaction_flowers_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_flowers_trans_avg_sum_3m_to_total_6m, 
+    transaction_flowers_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_flowers_trans_avg_cnt_3m_to_total_6m, 
+    transaction_flowers_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_flowers_trans_avg_sum_6m_to_total_6m, 
+    transaction_flowers_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_flowers_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_24 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_72 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_train_trans_cnt_1m / NULLIF (transaction_train_trans_cnt_3m, 0) AS transaction_train_trans_cnt_1m_to_3m,
+    transaction_train_trans_sum_1m / NULLIF (transaction_train_trans_sum_3m, 0) AS transaction_train_trans_sum_1m_to_3m,
+    transaction_train_trans_cnt_3m / NULLIF (transaction_train_trans_cnt_6m, 0) AS transaction_train_trans_cnt_3m_to_6m,
+    transaction_train_trans_sum_3m / NULLIF (transaction_train_trans_sum_6m, 0) AS transaction_train_trans_sum_3m_to_6m,
+    transaction_train_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_train_trans_cnt_1m_to_total_1m, 
+    transaction_train_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_train_trans_sum_1m_to_total_1m, 
+    transaction_train_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_train_trans_cnt_3m_to_total_3m, 
+    transaction_train_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_train_trans_sum_3m_to_total_3m,
+    transaction_train_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_train_trans_cnt_3m_to_total_6m, 
+    transaction_train_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_train_trans_sum_3m_to_total_6m, 
+    transaction_train_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_train_trans_cnt_6m_to_total_6m, 
+    transaction_train_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_train_trans_sum_6m_to_total_6m, 
+    transaction_train_trans_avg_sum_1m / NULLIF (transaction_train_trans_avg_sum_3m, 0) AS transaction_train_trans_avg_sum_1m_to_3m, 
+    transaction_train_trans_avg_cnt_1m / NULLIF (transaction_train_trans_avg_cnt_3m, 0) AS transaction_train_trans_avg_cnt_1m_to_3m, 
+    transaction_train_trans_avg_sum_3m / NULLIF (transaction_train_trans_avg_sum_6m, 0) AS transaction_train_trans_avg_sum_3m_to_6m, 
+    transaction_train_trans_avg_cnt_3m / NULLIF (transaction_train_trans_avg_cnt_6m, 0) AS transaction_train_trans_avg_cnt_3m_to_6m, 
+    transaction_train_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_train_trans_avg_sum_1m_to_total_1m,
+    transaction_train_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_train_trans_avg_cnt_1m_to_total_1m,
+    transaction_train_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_train_trans_avg_sum_3m_to_total_3m, 
+    transaction_train_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_train_trans_avg_cnt_3m_to_total_3m, 
+    transaction_train_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_train_trans_avg_sum_3m_to_total_6m, 
+    transaction_train_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_train_trans_avg_cnt_3m_to_total_6m, 
+    transaction_train_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_train_trans_avg_sum_6m_to_total_6m, 
+    transaction_train_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_train_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_25 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_73 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_gambling_trans_cnt_1m / NULLIF (transaction_gambling_trans_cnt_3m, 0) AS transaction_gambling_trans_cnt_1m_to_3m,
+    transaction_gambling_trans_sum_1m / NULLIF (transaction_gambling_trans_sum_3m, 0) AS transaction_gambling_trans_sum_1m_to_3m,
+    transaction_gambling_trans_cnt_3m / NULLIF (transaction_gambling_trans_cnt_6m, 0) AS transaction_gambling_trans_cnt_3m_to_6m,
+    transaction_gambling_trans_sum_3m / NULLIF (transaction_gambling_trans_sum_6m, 0) AS transaction_gambling_trans_sum_3m_to_6m,
+    transaction_gambling_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_gambling_trans_cnt_1m_to_total_1m, 
+    transaction_gambling_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_gambling_trans_sum_1m_to_total_1m, 
+    transaction_gambling_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_gambling_trans_cnt_3m_to_total_3m, 
+    transaction_gambling_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_gambling_trans_sum_3m_to_total_3m,
+    transaction_gambling_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_gambling_trans_cnt_3m_to_total_6m, 
+    transaction_gambling_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_gambling_trans_sum_3m_to_total_6m, 
+    transaction_gambling_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_gambling_trans_cnt_6m_to_total_6m, 
+    transaction_gambling_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_gambling_trans_sum_6m_to_total_6m, 
+    transaction_gambling_trans_avg_sum_1m / NULLIF (transaction_gambling_trans_avg_sum_3m, 0) AS transaction_gambling_trans_avg_sum_1m_to_3m, 
+    transaction_gambling_trans_avg_cnt_1m / NULLIF (transaction_gambling_trans_avg_cnt_3m, 0) AS transaction_gambling_trans_avg_cnt_1m_to_3m, 
+    transaction_gambling_trans_avg_sum_3m / NULLIF (transaction_gambling_trans_avg_sum_6m, 0) AS transaction_gambling_trans_avg_sum_3m_to_6m, 
+    transaction_gambling_trans_avg_cnt_3m / NULLIF (transaction_gambling_trans_avg_cnt_6m, 0) AS transaction_gambling_trans_avg_cnt_3m_to_6m, 
+    transaction_gambling_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_gambling_trans_avg_sum_1m_to_total_1m,
+    transaction_gambling_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_gambling_trans_avg_cnt_1m_to_total_1m,
+    transaction_gambling_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_gambling_trans_avg_sum_3m_to_total_3m, 
+    transaction_gambling_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_gambling_trans_avg_cnt_3m_to_total_3m, 
+    transaction_gambling_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_gambling_trans_avg_sum_3m_to_total_6m, 
+    transaction_gambling_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_gambling_trans_avg_cnt_3m_to_total_6m, 
+    transaction_gambling_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_gambling_trans_avg_sum_6m_to_total_6m, 
+    transaction_gambling_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_gambling_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_26 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_74 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_digital_goods_trans_cnt_1m / NULLIF (transaction_digital_goods_trans_cnt_3m, 0) AS transaction_digital_goods_trans_cnt_1m_to_3m,
+    transaction_digital_goods_trans_sum_1m / NULLIF (transaction_digital_goods_trans_sum_3m, 0) AS transaction_digital_goods_trans_sum_1m_to_3m,
+    transaction_digital_goods_trans_cnt_3m / NULLIF (transaction_digital_goods_trans_cnt_6m, 0) AS transaction_digital_goods_trans_cnt_3m_to_6m,
+    transaction_digital_goods_trans_sum_3m / NULLIF (transaction_digital_goods_trans_sum_6m, 0) AS transaction_digital_goods_trans_sum_3m_to_6m,
+    transaction_digital_goods_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_digital_goods_trans_cnt_1m_to_total_1m, 
+    transaction_digital_goods_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_digital_goods_trans_sum_1m_to_total_1m, 
+    transaction_digital_goods_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_digital_goods_trans_cnt_3m_to_total_3m, 
+    transaction_digital_goods_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_digital_goods_trans_sum_3m_to_total_3m,
+    transaction_digital_goods_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_digital_goods_trans_cnt_3m_to_total_6m, 
+    transaction_digital_goods_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_digital_goods_trans_sum_3m_to_total_6m, 
+    transaction_digital_goods_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_digital_goods_trans_cnt_6m_to_total_6m, 
+    transaction_digital_goods_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_digital_goods_trans_sum_6m_to_total_6m, 
+    transaction_digital_goods_trans_avg_sum_1m / NULLIF (transaction_digital_goods_trans_avg_sum_3m, 0) AS transaction_digital_goods_trans_avg_sum_1m_to_3m, 
+    transaction_digital_goods_trans_avg_cnt_1m / NULLIF (transaction_digital_goods_trans_avg_cnt_3m, 0) AS transaction_digital_goods_trans_avg_cnt_1m_to_3m, 
+    transaction_digital_goods_trans_avg_sum_3m / NULLIF (transaction_digital_goods_trans_avg_sum_6m, 0) AS transaction_digital_goods_trans_avg_sum_3m_to_6m, 
+    transaction_digital_goods_trans_avg_cnt_3m / NULLIF (transaction_digital_goods_trans_avg_cnt_6m, 0) AS transaction_digital_goods_trans_avg_cnt_3m_to_6m, 
+    transaction_digital_goods_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_digital_goods_trans_avg_sum_1m_to_total_1m,
+    transaction_digital_goods_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_digital_goods_trans_avg_cnt_1m_to_total_1m,
+    transaction_digital_goods_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_digital_goods_trans_avg_sum_3m_to_total_3m, 
+    transaction_digital_goods_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_digital_goods_trans_avg_cnt_3m_to_total_3m, 
+    transaction_digital_goods_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_digital_goods_trans_avg_sum_3m_to_total_6m, 
+    transaction_digital_goods_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_digital_goods_trans_avg_cnt_3m_to_total_6m, 
+    transaction_digital_goods_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_digital_goods_trans_avg_sum_6m_to_total_6m, 
+    transaction_digital_goods_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_digital_goods_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_27 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_75 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_books_trans_cnt_1m / NULLIF (transaction_books_trans_cnt_3m, 0) AS transaction_books_trans_cnt_1m_to_3m,
+    transaction_books_trans_sum_1m / NULLIF (transaction_books_trans_sum_3m, 0) AS transaction_books_trans_sum_1m_to_3m,
+    transaction_books_trans_cnt_3m / NULLIF (transaction_books_trans_cnt_6m, 0) AS transaction_books_trans_cnt_3m_to_6m,
+    transaction_books_trans_sum_3m / NULLIF (transaction_books_trans_sum_6m, 0) AS transaction_books_trans_sum_3m_to_6m,
+    transaction_books_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_books_trans_cnt_1m_to_total_1m, 
+    transaction_books_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_books_trans_sum_1m_to_total_1m, 
+    transaction_books_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_books_trans_cnt_3m_to_total_3m, 
+    transaction_books_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_books_trans_sum_3m_to_total_3m,
+    transaction_books_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_books_trans_cnt_3m_to_total_6m, 
+    transaction_books_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_books_trans_sum_3m_to_total_6m, 
+    transaction_books_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_books_trans_cnt_6m_to_total_6m, 
+    transaction_books_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_books_trans_sum_6m_to_total_6m, 
+    transaction_books_trans_avg_sum_1m / NULLIF (transaction_books_trans_avg_sum_3m, 0) AS transaction_books_trans_avg_sum_1m_to_3m, 
+    transaction_books_trans_avg_cnt_1m / NULLIF (transaction_books_trans_avg_cnt_3m, 0) AS transaction_books_trans_avg_cnt_1m_to_3m, 
+    transaction_books_trans_avg_sum_3m / NULLIF (transaction_books_trans_avg_sum_6m, 0) AS transaction_books_trans_avg_sum_3m_to_6m, 
+    transaction_books_trans_avg_cnt_3m / NULLIF (transaction_books_trans_avg_cnt_6m, 0) AS transaction_books_trans_avg_cnt_3m_to_6m, 
+    transaction_books_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_books_trans_avg_sum_1m_to_total_1m,
+    transaction_books_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_books_trans_avg_cnt_1m_to_total_1m,
+    transaction_books_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_books_trans_avg_sum_3m_to_total_3m, 
+    transaction_books_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_books_trans_avg_cnt_3m_to_total_3m, 
+    transaction_books_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_books_trans_avg_sum_3m_to_total_6m, 
+    transaction_books_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_books_trans_avg_cnt_3m_to_total_6m, 
+    transaction_books_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_books_trans_avg_sum_6m_to_total_6m, 
+    transaction_books_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_books_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_28 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_76 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_fuel_trans_cnt_1m / NULLIF (transaction_fuel_trans_cnt_3m, 0) AS transaction_fuel_trans_cnt_1m_to_3m,
+    transaction_fuel_trans_sum_1m / NULLIF (transaction_fuel_trans_sum_3m, 0) AS transaction_fuel_trans_sum_1m_to_3m,
+    transaction_fuel_trans_cnt_3m / NULLIF (transaction_fuel_trans_cnt_6m, 0) AS transaction_fuel_trans_cnt_3m_to_6m,
+    transaction_fuel_trans_sum_3m / NULLIF (transaction_fuel_trans_sum_6m, 0) AS transaction_fuel_trans_sum_3m_to_6m,
+    transaction_fuel_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_fuel_trans_cnt_1m_to_total_1m, 
+    transaction_fuel_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_fuel_trans_sum_1m_to_total_1m, 
+    transaction_fuel_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_fuel_trans_cnt_3m_to_total_3m, 
+    transaction_fuel_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_fuel_trans_sum_3m_to_total_3m,
+    transaction_fuel_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_fuel_trans_cnt_3m_to_total_6m, 
+    transaction_fuel_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_fuel_trans_sum_3m_to_total_6m, 
+    transaction_fuel_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_fuel_trans_cnt_6m_to_total_6m, 
+    transaction_fuel_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_fuel_trans_sum_6m_to_total_6m, 
+    transaction_fuel_trans_avg_sum_1m / NULLIF (transaction_fuel_trans_avg_sum_3m, 0) AS transaction_fuel_trans_avg_sum_1m_to_3m, 
+    transaction_fuel_trans_avg_cnt_1m / NULLIF (transaction_fuel_trans_avg_cnt_3m, 0) AS transaction_fuel_trans_avg_cnt_1m_to_3m, 
+    transaction_fuel_trans_avg_sum_3m / NULLIF (transaction_fuel_trans_avg_sum_6m, 0) AS transaction_fuel_trans_avg_sum_3m_to_6m, 
+    transaction_fuel_trans_avg_cnt_3m / NULLIF (transaction_fuel_trans_avg_cnt_6m, 0) AS transaction_fuel_trans_avg_cnt_3m_to_6m, 
+    transaction_fuel_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_fuel_trans_avg_sum_1m_to_total_1m,
+    transaction_fuel_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_fuel_trans_avg_cnt_1m_to_total_1m,
+    transaction_fuel_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_fuel_trans_avg_sum_3m_to_total_3m, 
+    transaction_fuel_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_fuel_trans_avg_cnt_3m_to_total_3m, 
+    transaction_fuel_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_fuel_trans_avg_sum_3m_to_total_6m, 
+    transaction_fuel_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_fuel_trans_avg_cnt_3m_to_total_6m, 
+    transaction_fuel_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_fuel_trans_avg_sum_6m_to_total_6m, 
+    transaction_fuel_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_fuel_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_29 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_77 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_yandex_trans_cnt_1m / NULLIF (transaction_yandex_trans_cnt_3m, 0) AS transaction_yandex_trans_cnt_1m_to_3m,
+    transaction_yandex_trans_sum_1m / NULLIF (transaction_yandex_trans_sum_3m, 0) AS transaction_yandex_trans_sum_1m_to_3m,
+    transaction_yandex_trans_cnt_3m / NULLIF (transaction_yandex_trans_cnt_6m, 0) AS transaction_yandex_trans_cnt_3m_to_6m,
+    transaction_yandex_trans_sum_3m / NULLIF (transaction_yandex_trans_sum_6m, 0) AS transaction_yandex_trans_sum_3m_to_6m,
+    transaction_yandex_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_yandex_trans_cnt_1m_to_total_1m, 
+    transaction_yandex_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_yandex_trans_sum_1m_to_total_1m, 
+    transaction_yandex_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_yandex_trans_cnt_3m_to_total_3m, 
+    transaction_yandex_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_yandex_trans_sum_3m_to_total_3m,
+    transaction_yandex_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_yandex_trans_cnt_3m_to_total_6m, 
+    transaction_yandex_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_yandex_trans_sum_3m_to_total_6m, 
+    transaction_yandex_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_yandex_trans_cnt_6m_to_total_6m, 
+    transaction_yandex_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_yandex_trans_sum_6m_to_total_6m, 
+    transaction_yandex_trans_avg_sum_1m / NULLIF (transaction_yandex_trans_avg_sum_3m, 0) AS transaction_yandex_trans_avg_sum_1m_to_3m, 
+    transaction_yandex_trans_avg_cnt_1m / NULLIF (transaction_yandex_trans_avg_cnt_3m, 0) AS transaction_yandex_trans_avg_cnt_1m_to_3m, 
+    transaction_yandex_trans_avg_sum_3m / NULLIF (transaction_yandex_trans_avg_sum_6m, 0) AS transaction_yandex_trans_avg_sum_3m_to_6m, 
+    transaction_yandex_trans_avg_cnt_3m / NULLIF (transaction_yandex_trans_avg_cnt_6m, 0) AS transaction_yandex_trans_avg_cnt_3m_to_6m, 
+    transaction_yandex_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_yandex_trans_avg_sum_1m_to_total_1m,
+    transaction_yandex_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_yandex_trans_avg_cnt_1m_to_total_1m,
+    transaction_yandex_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_yandex_trans_avg_sum_3m_to_total_3m, 
+    transaction_yandex_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_yandex_trans_avg_cnt_3m_to_total_3m, 
+    transaction_yandex_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_yandex_trans_avg_sum_3m_to_total_6m, 
+    transaction_yandex_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_yandex_trans_avg_cnt_3m_to_total_6m, 
+    transaction_yandex_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_yandex_trans_avg_sum_6m_to_total_6m, 
+    transaction_yandex_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_yandex_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_30 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_78 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_beauty_trans_cnt_1m / NULLIF (transaction_beauty_trans_cnt_3m, 0) AS transaction_beauty_trans_cnt_1m_to_3m,
+    transaction_beauty_trans_sum_1m / NULLIF (transaction_beauty_trans_sum_3m, 0) AS transaction_beauty_trans_sum_1m_to_3m,
+    transaction_beauty_trans_cnt_3m / NULLIF (transaction_beauty_trans_cnt_6m, 0) AS transaction_beauty_trans_cnt_3m_to_6m,
+    transaction_beauty_trans_sum_3m / NULLIF (transaction_beauty_trans_sum_6m, 0) AS transaction_beauty_trans_sum_3m_to_6m,
+    transaction_beauty_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_beauty_trans_cnt_1m_to_total_1m, 
+    transaction_beauty_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_beauty_trans_sum_1m_to_total_1m, 
+    transaction_beauty_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_beauty_trans_cnt_3m_to_total_3m, 
+    transaction_beauty_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_beauty_trans_sum_3m_to_total_3m,
+    transaction_beauty_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_beauty_trans_cnt_3m_to_total_6m, 
+    transaction_beauty_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_beauty_trans_sum_3m_to_total_6m, 
+    transaction_beauty_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_beauty_trans_cnt_6m_to_total_6m, 
+    transaction_beauty_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_beauty_trans_sum_6m_to_total_6m, 
+    transaction_beauty_trans_avg_sum_1m / NULLIF (transaction_beauty_trans_avg_sum_3m, 0) AS transaction_beauty_trans_avg_sum_1m_to_3m, 
+    transaction_beauty_trans_avg_cnt_1m / NULLIF (transaction_beauty_trans_avg_cnt_3m, 0) AS transaction_beauty_trans_avg_cnt_1m_to_3m, 
+    transaction_beauty_trans_avg_sum_3m / NULLIF (transaction_beauty_trans_avg_sum_6m, 0) AS transaction_beauty_trans_avg_sum_3m_to_6m, 
+    transaction_beauty_trans_avg_cnt_3m / NULLIF (transaction_beauty_trans_avg_cnt_6m, 0) AS transaction_beauty_trans_avg_cnt_3m_to_6m, 
+    transaction_beauty_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_beauty_trans_avg_sum_1m_to_total_1m,
+    transaction_beauty_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_beauty_trans_avg_cnt_1m_to_total_1m,
+    transaction_beauty_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_beauty_trans_avg_sum_3m_to_total_3m, 
+    transaction_beauty_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_beauty_trans_avg_cnt_3m_to_total_3m, 
+    transaction_beauty_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_beauty_trans_avg_sum_3m_to_total_6m, 
+    transaction_beauty_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_beauty_trans_avg_cnt_3m_to_total_6m, 
+    transaction_beauty_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_beauty_trans_avg_sum_6m_to_total_6m, 
+    transaction_beauty_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_beauty_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_31 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_79 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_cinema_trans_cnt_1m / NULLIF (transaction_cinema_trans_cnt_3m, 0) AS transaction_cinema_trans_cnt_1m_to_3m,
+    transaction_cinema_trans_sum_1m / NULLIF (transaction_cinema_trans_sum_3m, 0) AS transaction_cinema_trans_sum_1m_to_3m,
+    transaction_cinema_trans_cnt_3m / NULLIF (transaction_cinema_trans_cnt_6m, 0) AS transaction_cinema_trans_cnt_3m_to_6m,
+    transaction_cinema_trans_sum_3m / NULLIF (transaction_cinema_trans_sum_6m, 0) AS transaction_cinema_trans_sum_3m_to_6m,
+    transaction_cinema_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_cinema_trans_cnt_1m_to_total_1m, 
+    transaction_cinema_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_cinema_trans_sum_1m_to_total_1m, 
+    transaction_cinema_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_cinema_trans_cnt_3m_to_total_3m, 
+    transaction_cinema_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_cinema_trans_sum_3m_to_total_3m,
+    transaction_cinema_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cinema_trans_cnt_3m_to_total_6m, 
+    transaction_cinema_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cinema_trans_sum_3m_to_total_6m, 
+    transaction_cinema_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cinema_trans_cnt_6m_to_total_6m, 
+    transaction_cinema_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cinema_trans_sum_6m_to_total_6m, 
+    transaction_cinema_trans_avg_sum_1m / NULLIF (transaction_cinema_trans_avg_sum_3m, 0) AS transaction_cinema_trans_avg_sum_1m_to_3m, 
+    transaction_cinema_trans_avg_cnt_1m / NULLIF (transaction_cinema_trans_avg_cnt_3m, 0) AS transaction_cinema_trans_avg_cnt_1m_to_3m, 
+    transaction_cinema_trans_avg_sum_3m / NULLIF (transaction_cinema_trans_avg_sum_6m, 0) AS transaction_cinema_trans_avg_sum_3m_to_6m, 
+    transaction_cinema_trans_avg_cnt_3m / NULLIF (transaction_cinema_trans_avg_cnt_6m, 0) AS transaction_cinema_trans_avg_cnt_3m_to_6m, 
+    transaction_cinema_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_cinema_trans_avg_sum_1m_to_total_1m,
+    transaction_cinema_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_cinema_trans_avg_cnt_1m_to_total_1m,
+    transaction_cinema_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_cinema_trans_avg_sum_3m_to_total_3m, 
+    transaction_cinema_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_cinema_trans_avg_cnt_3m_to_total_3m, 
+    transaction_cinema_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cinema_trans_avg_sum_3m_to_total_6m, 
+    transaction_cinema_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cinema_trans_avg_cnt_3m_to_total_6m, 
+    transaction_cinema_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cinema_trans_avg_sum_6m_to_total_6m, 
+    transaction_cinema_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cinema_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_32 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_80 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_charity_trans_cnt_1m / NULLIF (transaction_charity_trans_cnt_3m, 0) AS transaction_charity_trans_cnt_1m_to_3m,
+    transaction_charity_trans_sum_1m / NULLIF (transaction_charity_trans_sum_3m, 0) AS transaction_charity_trans_sum_1m_to_3m,
+    transaction_charity_trans_cnt_3m / NULLIF (transaction_charity_trans_cnt_6m, 0) AS transaction_charity_trans_cnt_3m_to_6m,
+    transaction_charity_trans_sum_3m / NULLIF (transaction_charity_trans_sum_6m, 0) AS transaction_charity_trans_sum_3m_to_6m,
+    transaction_charity_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_charity_trans_cnt_1m_to_total_1m, 
+    transaction_charity_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_charity_trans_sum_1m_to_total_1m, 
+    transaction_charity_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_charity_trans_cnt_3m_to_total_3m, 
+    transaction_charity_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_charity_trans_sum_3m_to_total_3m,
+    transaction_charity_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_charity_trans_cnt_3m_to_total_6m, 
+    transaction_charity_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_charity_trans_sum_3m_to_total_6m, 
+    transaction_charity_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_charity_trans_cnt_6m_to_total_6m, 
+    transaction_charity_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_charity_trans_sum_6m_to_total_6m, 
+    transaction_charity_trans_avg_sum_1m / NULLIF (transaction_charity_trans_avg_sum_3m, 0) AS transaction_charity_trans_avg_sum_1m_to_3m, 
+    transaction_charity_trans_avg_cnt_1m / NULLIF (transaction_charity_trans_avg_cnt_3m, 0) AS transaction_charity_trans_avg_cnt_1m_to_3m, 
+    transaction_charity_trans_avg_sum_3m / NULLIF (transaction_charity_trans_avg_sum_6m, 0) AS transaction_charity_trans_avg_sum_3m_to_6m, 
+    transaction_charity_trans_avg_cnt_3m / NULLIF (transaction_charity_trans_avg_cnt_6m, 0) AS transaction_charity_trans_avg_cnt_3m_to_6m, 
+    transaction_charity_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_charity_trans_avg_sum_1m_to_total_1m,
+    transaction_charity_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_charity_trans_avg_cnt_1m_to_total_1m,
+    transaction_charity_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_charity_trans_avg_sum_3m_to_total_3m, 
+    transaction_charity_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_charity_trans_avg_cnt_3m_to_total_3m, 
+    transaction_charity_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_charity_trans_avg_sum_3m_to_total_6m, 
+    transaction_charity_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_charity_trans_avg_cnt_3m_to_total_6m, 
+    transaction_charity_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_charity_trans_avg_sum_6m_to_total_6m, 
+    transaction_charity_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_charity_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_33 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_81 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_money_transfers_trans_cnt_1m / NULLIF (transaction_money_transfers_trans_cnt_3m, 0) AS transaction_money_transfers_trans_cnt_1m_to_3m,
+    transaction_money_transfers_trans_sum_1m / NULLIF (transaction_money_transfers_trans_sum_3m, 0) AS transaction_money_transfers_trans_sum_1m_to_3m,
+    transaction_money_transfers_trans_cnt_3m / NULLIF (transaction_money_transfers_trans_cnt_6m, 0) AS transaction_money_transfers_trans_cnt_3m_to_6m,
+    transaction_money_transfers_trans_sum_3m / NULLIF (transaction_money_transfers_trans_sum_6m, 0) AS transaction_money_transfers_trans_sum_3m_to_6m,
+    transaction_money_transfers_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_money_transfers_trans_cnt_1m_to_total_1m, 
+    transaction_money_transfers_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_money_transfers_trans_sum_1m_to_total_1m, 
+    transaction_money_transfers_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_money_transfers_trans_cnt_3m_to_total_3m, 
+    transaction_money_transfers_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_money_transfers_trans_sum_3m_to_total_3m,
+    transaction_money_transfers_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_money_transfers_trans_cnt_3m_to_total_6m, 
+    transaction_money_transfers_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_money_transfers_trans_sum_3m_to_total_6m, 
+    transaction_money_transfers_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_money_transfers_trans_cnt_6m_to_total_6m, 
+    transaction_money_transfers_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_money_transfers_trans_sum_6m_to_total_6m, 
+    transaction_money_transfers_trans_avg_sum_1m / NULLIF (transaction_money_transfers_trans_avg_sum_3m, 0) AS transaction_money_transfers_trans_avg_sum_1m_to_3m, 
+    transaction_money_transfers_trans_avg_cnt_1m / NULLIF (transaction_money_transfers_trans_avg_cnt_3m, 0) AS transaction_money_transfers_trans_avg_cnt_1m_to_3m, 
+    transaction_money_transfers_trans_avg_sum_3m / NULLIF (transaction_money_transfers_trans_avg_sum_6m, 0) AS transaction_money_transfers_trans_avg_sum_3m_to_6m, 
+    transaction_money_transfers_trans_avg_cnt_3m / NULLIF (transaction_money_transfers_trans_avg_cnt_6m, 0) AS transaction_money_transfers_trans_avg_cnt_3m_to_6m, 
+    transaction_money_transfers_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_money_transfers_trans_avg_sum_1m_to_total_1m,
+    transaction_money_transfers_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_money_transfers_trans_avg_cnt_1m_to_total_1m,
+    transaction_money_transfers_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_money_transfers_trans_avg_sum_3m_to_total_3m, 
+    transaction_money_transfers_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_money_transfers_trans_avg_cnt_3m_to_total_3m, 
+    transaction_money_transfers_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_money_transfers_trans_avg_sum_3m_to_total_6m, 
+    transaction_money_transfers_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_money_transfers_trans_avg_cnt_3m_to_total_6m, 
+    transaction_money_transfers_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_money_transfers_trans_avg_sum_6m_to_total_6m, 
+    transaction_money_transfers_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_money_transfers_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_34 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_82 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_auto_services_trans_cnt_1m / NULLIF (transaction_auto_services_trans_cnt_3m, 0) AS transaction_auto_services_trans_cnt_1m_to_3m,
+    transaction_auto_services_trans_sum_1m / NULLIF (transaction_auto_services_trans_sum_3m, 0) AS transaction_auto_services_trans_sum_1m_to_3m,
+    transaction_auto_services_trans_cnt_3m / NULLIF (transaction_auto_services_trans_cnt_6m, 0) AS transaction_auto_services_trans_cnt_3m_to_6m,
+    transaction_auto_services_trans_sum_3m / NULLIF (transaction_auto_services_trans_sum_6m, 0) AS transaction_auto_services_trans_sum_3m_to_6m,
+    transaction_auto_services_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_auto_services_trans_cnt_1m_to_total_1m, 
+    transaction_auto_services_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_auto_services_trans_sum_1m_to_total_1m, 
+    transaction_auto_services_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_auto_services_trans_cnt_3m_to_total_3m, 
+    transaction_auto_services_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_auto_services_trans_sum_3m_to_total_3m,
+    transaction_auto_services_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_auto_services_trans_cnt_3m_to_total_6m, 
+    transaction_auto_services_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_auto_services_trans_sum_3m_to_total_6m, 
+    transaction_auto_services_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_auto_services_trans_cnt_6m_to_total_6m, 
+    transaction_auto_services_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_auto_services_trans_sum_6m_to_total_6m, 
+    transaction_auto_services_trans_avg_sum_1m / NULLIF (transaction_auto_services_trans_avg_sum_3m, 0) AS transaction_auto_services_trans_avg_sum_1m_to_3m, 
+    transaction_auto_services_trans_avg_cnt_1m / NULLIF (transaction_auto_services_trans_avg_cnt_3m, 0) AS transaction_auto_services_trans_avg_cnt_1m_to_3m, 
+    transaction_auto_services_trans_avg_sum_3m / NULLIF (transaction_auto_services_trans_avg_sum_6m, 0) AS transaction_auto_services_trans_avg_sum_3m_to_6m, 
+    transaction_auto_services_trans_avg_cnt_3m / NULLIF (transaction_auto_services_trans_avg_cnt_6m, 0) AS transaction_auto_services_trans_avg_cnt_3m_to_6m, 
+    transaction_auto_services_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_auto_services_trans_avg_sum_1m_to_total_1m,
+    transaction_auto_services_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_auto_services_trans_avg_cnt_1m_to_total_1m,
+    transaction_auto_services_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_auto_services_trans_avg_sum_3m_to_total_3m, 
+    transaction_auto_services_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_auto_services_trans_avg_cnt_3m_to_total_3m, 
+    transaction_auto_services_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_auto_services_trans_avg_sum_3m_to_total_6m, 
+    transaction_auto_services_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_auto_services_trans_avg_cnt_3m_to_total_6m, 
+    transaction_auto_services_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_auto_services_trans_avg_sum_6m_to_total_6m, 
+    transaction_auto_services_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_auto_services_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_35 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_83 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_consulting_trans_cnt_1m / NULLIF (transaction_consulting_trans_cnt_3m, 0) AS transaction_consulting_trans_cnt_1m_to_3m,
+    transaction_consulting_trans_sum_1m / NULLIF (transaction_consulting_trans_sum_3m, 0) AS transaction_consulting_trans_sum_1m_to_3m,
+    transaction_consulting_trans_cnt_3m / NULLIF (transaction_consulting_trans_cnt_6m, 0) AS transaction_consulting_trans_cnt_3m_to_6m,
+    transaction_consulting_trans_sum_3m / NULLIF (transaction_consulting_trans_sum_6m, 0) AS transaction_consulting_trans_sum_3m_to_6m,
+    transaction_consulting_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_consulting_trans_cnt_1m_to_total_1m, 
+    transaction_consulting_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_consulting_trans_sum_1m_to_total_1m, 
+    transaction_consulting_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_consulting_trans_cnt_3m_to_total_3m, 
+    transaction_consulting_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_consulting_trans_sum_3m_to_total_3m,
+    transaction_consulting_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_consulting_trans_cnt_3m_to_total_6m, 
+    transaction_consulting_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_consulting_trans_sum_3m_to_total_6m, 
+    transaction_consulting_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_consulting_trans_cnt_6m_to_total_6m, 
+    transaction_consulting_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_consulting_trans_sum_6m_to_total_6m, 
+    transaction_consulting_trans_avg_sum_1m / NULLIF (transaction_consulting_trans_avg_sum_3m, 0) AS transaction_consulting_trans_avg_sum_1m_to_3m, 
+    transaction_consulting_trans_avg_cnt_1m / NULLIF (transaction_consulting_trans_avg_cnt_3m, 0) AS transaction_consulting_trans_avg_cnt_1m_to_3m, 
+    transaction_consulting_trans_avg_sum_3m / NULLIF (transaction_consulting_trans_avg_sum_6m, 0) AS transaction_consulting_trans_avg_sum_3m_to_6m, 
+    transaction_consulting_trans_avg_cnt_3m / NULLIF (transaction_consulting_trans_avg_cnt_6m, 0) AS transaction_consulting_trans_avg_cnt_3m_to_6m, 
+    transaction_consulting_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_consulting_trans_avg_sum_1m_to_total_1m,
+    transaction_consulting_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_consulting_trans_avg_cnt_1m_to_total_1m,
+    transaction_consulting_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_consulting_trans_avg_sum_3m_to_total_3m, 
+    transaction_consulting_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_consulting_trans_avg_cnt_3m_to_total_3m, 
+    transaction_consulting_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_consulting_trans_avg_sum_3m_to_total_6m, 
+    transaction_consulting_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_consulting_trans_avg_cnt_3m_to_total_6m, 
+    transaction_consulting_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_consulting_trans_avg_sum_6m_to_total_6m, 
+    transaction_consulting_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_consulting_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_36 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_84 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_cash_trans_cnt_1m / NULLIF (transaction_cash_trans_cnt_3m, 0) AS transaction_cash_trans_cnt_1m_to_3m,
+    transaction_cash_trans_sum_1m / NULLIF (transaction_cash_trans_sum_3m, 0) AS transaction_cash_trans_sum_1m_to_3m,
+    transaction_cash_trans_cnt_3m / NULLIF (transaction_cash_trans_cnt_6m, 0) AS transaction_cash_trans_cnt_3m_to_6m,
+    transaction_cash_trans_sum_3m / NULLIF (transaction_cash_trans_sum_6m, 0) AS transaction_cash_trans_sum_3m_to_6m,
+    transaction_cash_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_cash_trans_cnt_1m_to_total_1m, 
+    transaction_cash_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_cash_trans_sum_1m_to_total_1m, 
+    transaction_cash_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_cash_trans_cnt_3m_to_total_3m, 
+    transaction_cash_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_cash_trans_sum_3m_to_total_3m,
+    transaction_cash_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cash_trans_cnt_3m_to_total_6m, 
+    transaction_cash_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cash_trans_sum_3m_to_total_6m, 
+    transaction_cash_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cash_trans_cnt_6m_to_total_6m, 
+    transaction_cash_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cash_trans_sum_6m_to_total_6m, 
+    transaction_cash_trans_avg_sum_1m / NULLIF (transaction_cash_trans_avg_sum_3m, 0) AS transaction_cash_trans_avg_sum_1m_to_3m, 
+    transaction_cash_trans_avg_cnt_1m / NULLIF (transaction_cash_trans_avg_cnt_3m, 0) AS transaction_cash_trans_avg_cnt_1m_to_3m, 
+    transaction_cash_trans_avg_sum_3m / NULLIF (transaction_cash_trans_avg_sum_6m, 0) AS transaction_cash_trans_avg_sum_3m_to_6m, 
+    transaction_cash_trans_avg_cnt_3m / NULLIF (transaction_cash_trans_avg_cnt_6m, 0) AS transaction_cash_trans_avg_cnt_3m_to_6m, 
+    transaction_cash_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_cash_trans_avg_sum_1m_to_total_1m,
+    transaction_cash_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_cash_trans_avg_cnt_1m_to_total_1m,
+    transaction_cash_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_cash_trans_avg_sum_3m_to_total_3m, 
+    transaction_cash_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_cash_trans_avg_cnt_3m_to_total_3m, 
+    transaction_cash_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cash_trans_avg_sum_3m_to_total_6m, 
+    transaction_cash_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cash_trans_avg_cnt_3m_to_total_6m, 
+    transaction_cash_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cash_trans_avg_sum_6m_to_total_6m, 
+    transaction_cash_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cash_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_37 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_85 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_other_trans_cnt_1m / NULLIF (transaction_other_trans_cnt_3m, 0) AS transaction_other_trans_cnt_1m_to_3m,
+    transaction_other_trans_sum_1m / NULLIF (transaction_other_trans_sum_3m, 0) AS transaction_other_trans_sum_1m_to_3m,
+    transaction_other_trans_cnt_3m / NULLIF (transaction_other_trans_cnt_6m, 0) AS transaction_other_trans_cnt_3m_to_6m,
+    transaction_other_trans_sum_3m / NULLIF (transaction_other_trans_sum_6m, 0) AS transaction_other_trans_sum_3m_to_6m,
+    transaction_other_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_other_trans_cnt_1m_to_total_1m, 
+    transaction_other_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_other_trans_sum_1m_to_total_1m, 
+    transaction_other_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_other_trans_cnt_3m_to_total_3m, 
+    transaction_other_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_other_trans_sum_3m_to_total_3m,
+    transaction_other_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_other_trans_cnt_3m_to_total_6m, 
+    transaction_other_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_other_trans_sum_3m_to_total_6m, 
+    transaction_other_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_other_trans_cnt_6m_to_total_6m, 
+    transaction_other_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_other_trans_sum_6m_to_total_6m, 
+    transaction_other_trans_avg_sum_1m / NULLIF (transaction_other_trans_avg_sum_3m, 0) AS transaction_other_trans_avg_sum_1m_to_3m, 
+    transaction_other_trans_avg_cnt_1m / NULLIF (transaction_other_trans_avg_cnt_3m, 0) AS transaction_other_trans_avg_cnt_1m_to_3m, 
+    transaction_other_trans_avg_sum_3m / NULLIF (transaction_other_trans_avg_sum_6m, 0) AS transaction_other_trans_avg_sum_3m_to_6m, 
+    transaction_other_trans_avg_cnt_3m / NULLIF (transaction_other_trans_avg_cnt_6m, 0) AS transaction_other_trans_avg_cnt_3m_to_6m, 
+    transaction_other_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_other_trans_avg_sum_1m_to_total_1m,
+    transaction_other_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_other_trans_avg_cnt_1m_to_total_1m,
+    transaction_other_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_other_trans_avg_sum_3m_to_total_3m, 
+    transaction_other_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_other_trans_avg_cnt_3m_to_total_3m, 
+    transaction_other_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_other_trans_avg_sum_3m_to_total_6m, 
+    transaction_other_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_other_trans_avg_cnt_3m_to_total_6m, 
+    transaction_other_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_other_trans_avg_sum_6m_to_total_6m, 
+    transaction_other_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_other_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_38 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_86 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_utilities_trans_cnt_1m / NULLIF (transaction_utilities_trans_cnt_3m, 0) AS transaction_utilities_trans_cnt_1m_to_3m,
+    transaction_utilities_trans_sum_1m / NULLIF (transaction_utilities_trans_sum_3m, 0) AS transaction_utilities_trans_sum_1m_to_3m,
+    transaction_utilities_trans_cnt_3m / NULLIF (transaction_utilities_trans_cnt_6m, 0) AS transaction_utilities_trans_cnt_3m_to_6m,
+    transaction_utilities_trans_sum_3m / NULLIF (transaction_utilities_trans_sum_6m, 0) AS transaction_utilities_trans_sum_3m_to_6m,
+    transaction_utilities_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_utilities_trans_cnt_1m_to_total_1m, 
+    transaction_utilities_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_utilities_trans_sum_1m_to_total_1m, 
+    transaction_utilities_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_utilities_trans_cnt_3m_to_total_3m, 
+    transaction_utilities_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_utilities_trans_sum_3m_to_total_3m,
+    transaction_utilities_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_utilities_trans_cnt_3m_to_total_6m, 
+    transaction_utilities_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_utilities_trans_sum_3m_to_total_6m, 
+    transaction_utilities_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_utilities_trans_cnt_6m_to_total_6m, 
+    transaction_utilities_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_utilities_trans_sum_6m_to_total_6m, 
+    transaction_utilities_trans_avg_sum_1m / NULLIF (transaction_utilities_trans_avg_sum_3m, 0) AS transaction_utilities_trans_avg_sum_1m_to_3m, 
+    transaction_utilities_trans_avg_cnt_1m / NULLIF (transaction_utilities_trans_avg_cnt_3m, 0) AS transaction_utilities_trans_avg_cnt_1m_to_3m, 
+    transaction_utilities_trans_avg_sum_3m / NULLIF (transaction_utilities_trans_avg_sum_6m, 0) AS transaction_utilities_trans_avg_sum_3m_to_6m, 
+    transaction_utilities_trans_avg_cnt_3m / NULLIF (transaction_utilities_trans_avg_cnt_6m, 0) AS transaction_utilities_trans_avg_cnt_3m_to_6m, 
+    transaction_utilities_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_utilities_trans_avg_sum_1m_to_total_1m,
+    transaction_utilities_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_utilities_trans_avg_cnt_1m_to_total_1m,
+    transaction_utilities_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_utilities_trans_avg_sum_3m_to_total_3m, 
+    transaction_utilities_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_utilities_trans_avg_cnt_3m_to_total_3m, 
+    transaction_utilities_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_utilities_trans_avg_sum_3m_to_total_6m, 
+    transaction_utilities_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_utilities_trans_avg_cnt_3m_to_total_6m, 
+    transaction_utilities_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_utilities_trans_avg_sum_6m_to_total_6m, 
+    transaction_utilities_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_utilities_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_39 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_87 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_tech_trans_cnt_1m / NULLIF (transaction_tech_trans_cnt_3m, 0) AS transaction_tech_trans_cnt_1m_to_3m,
+    transaction_tech_trans_sum_1m / NULLIF (transaction_tech_trans_sum_3m, 0) AS transaction_tech_trans_sum_1m_to_3m,
+    transaction_tech_trans_cnt_3m / NULLIF (transaction_tech_trans_cnt_6m, 0) AS transaction_tech_trans_cnt_3m_to_6m,
+    transaction_tech_trans_sum_3m / NULLIF (transaction_tech_trans_sum_6m, 0) AS transaction_tech_trans_sum_3m_to_6m,
+    transaction_tech_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_tech_trans_cnt_1m_to_total_1m, 
+    transaction_tech_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_tech_trans_sum_1m_to_total_1m, 
+    transaction_tech_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_tech_trans_cnt_3m_to_total_3m, 
+    transaction_tech_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_tech_trans_sum_3m_to_total_3m,
+    transaction_tech_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_tech_trans_cnt_3m_to_total_6m, 
+    transaction_tech_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_tech_trans_sum_3m_to_total_6m, 
+    transaction_tech_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_tech_trans_cnt_6m_to_total_6m, 
+    transaction_tech_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_tech_trans_sum_6m_to_total_6m, 
+    transaction_tech_trans_avg_sum_1m / NULLIF (transaction_tech_trans_avg_sum_3m, 0) AS transaction_tech_trans_avg_sum_1m_to_3m, 
+    transaction_tech_trans_avg_cnt_1m / NULLIF (transaction_tech_trans_avg_cnt_3m, 0) AS transaction_tech_trans_avg_cnt_1m_to_3m, 
+    transaction_tech_trans_avg_sum_3m / NULLIF (transaction_tech_trans_avg_sum_6m, 0) AS transaction_tech_trans_avg_sum_3m_to_6m, 
+    transaction_tech_trans_avg_cnt_3m / NULLIF (transaction_tech_trans_avg_cnt_6m, 0) AS transaction_tech_trans_avg_cnt_3m_to_6m, 
+    transaction_tech_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_tech_trans_avg_sum_1m_to_total_1m,
+    transaction_tech_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_tech_trans_avg_cnt_1m_to_total_1m,
+    transaction_tech_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_tech_trans_avg_sum_3m_to_total_3m, 
+    transaction_tech_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_tech_trans_avg_cnt_3m_to_total_3m, 
+    transaction_tech_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_tech_trans_avg_sum_3m_to_total_6m, 
+    transaction_tech_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_tech_trans_avg_cnt_3m_to_total_6m, 
+    transaction_tech_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_tech_trans_avg_sum_6m_to_total_6m, 
+    transaction_tech_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_tech_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_40 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_88 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_jewelry_trans_cnt_1m / NULLIF (transaction_jewelry_trans_cnt_3m, 0) AS transaction_jewelry_trans_cnt_1m_to_3m,
+    transaction_jewelry_trans_sum_1m / NULLIF (transaction_jewelry_trans_sum_3m, 0) AS transaction_jewelry_trans_sum_1m_to_3m,
+    transaction_jewelry_trans_cnt_3m / NULLIF (transaction_jewelry_trans_cnt_6m, 0) AS transaction_jewelry_trans_cnt_3m_to_6m,
+    transaction_jewelry_trans_sum_3m / NULLIF (transaction_jewelry_trans_sum_6m, 0) AS transaction_jewelry_trans_sum_3m_to_6m,
+    transaction_jewelry_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_jewelry_trans_cnt_1m_to_total_1m, 
+    transaction_jewelry_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_jewelry_trans_sum_1m_to_total_1m, 
+    transaction_jewelry_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_jewelry_trans_cnt_3m_to_total_3m, 
+    transaction_jewelry_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_jewelry_trans_sum_3m_to_total_3m,
+    transaction_jewelry_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_jewelry_trans_cnt_3m_to_total_6m, 
+    transaction_jewelry_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_jewelry_trans_sum_3m_to_total_6m, 
+    transaction_jewelry_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_jewelry_trans_cnt_6m_to_total_6m, 
+    transaction_jewelry_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_jewelry_trans_sum_6m_to_total_6m, 
+    transaction_jewelry_trans_avg_sum_1m / NULLIF (transaction_jewelry_trans_avg_sum_3m, 0) AS transaction_jewelry_trans_avg_sum_1m_to_3m, 
+    transaction_jewelry_trans_avg_cnt_1m / NULLIF (transaction_jewelry_trans_avg_cnt_3m, 0) AS transaction_jewelry_trans_avg_cnt_1m_to_3m, 
+    transaction_jewelry_trans_avg_sum_3m / NULLIF (transaction_jewelry_trans_avg_sum_6m, 0) AS transaction_jewelry_trans_avg_sum_3m_to_6m, 
+    transaction_jewelry_trans_avg_cnt_3m / NULLIF (transaction_jewelry_trans_avg_cnt_6m, 0) AS transaction_jewelry_trans_avg_cnt_3m_to_6m, 
+    transaction_jewelry_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_jewelry_trans_avg_sum_1m_to_total_1m,
+    transaction_jewelry_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_jewelry_trans_avg_cnt_1m_to_total_1m,
+    transaction_jewelry_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_jewelry_trans_avg_sum_3m_to_total_3m, 
+    transaction_jewelry_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_jewelry_trans_avg_cnt_3m_to_total_3m, 
+    transaction_jewelry_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_jewelry_trans_avg_sum_3m_to_total_6m, 
+    transaction_jewelry_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_jewelry_trans_avg_cnt_3m_to_total_6m, 
+    transaction_jewelry_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_jewelry_trans_avg_sum_6m_to_total_6m, 
+    transaction_jewelry_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_jewelry_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_41 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_89 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_clothes_trans_cnt_1m / NULLIF (transaction_clothes_trans_cnt_3m, 0) AS transaction_clothes_trans_cnt_1m_to_3m,
+    transaction_clothes_trans_sum_1m / NULLIF (transaction_clothes_trans_sum_3m, 0) AS transaction_clothes_trans_sum_1m_to_3m,
+    transaction_clothes_trans_cnt_3m / NULLIF (transaction_clothes_trans_cnt_6m, 0) AS transaction_clothes_trans_cnt_3m_to_6m,
+    transaction_clothes_trans_sum_3m / NULLIF (transaction_clothes_trans_sum_6m, 0) AS transaction_clothes_trans_sum_3m_to_6m,
+    transaction_clothes_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_clothes_trans_cnt_1m_to_total_1m, 
+    transaction_clothes_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_clothes_trans_sum_1m_to_total_1m, 
+    transaction_clothes_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_clothes_trans_cnt_3m_to_total_3m, 
+    transaction_clothes_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_clothes_trans_sum_3m_to_total_3m,
+    transaction_clothes_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_clothes_trans_cnt_3m_to_total_6m, 
+    transaction_clothes_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_clothes_trans_sum_3m_to_total_6m, 
+    transaction_clothes_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_clothes_trans_cnt_6m_to_total_6m, 
+    transaction_clothes_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_clothes_trans_sum_6m_to_total_6m, 
+    transaction_clothes_trans_avg_sum_1m / NULLIF (transaction_clothes_trans_avg_sum_3m, 0) AS transaction_clothes_trans_avg_sum_1m_to_3m, 
+    transaction_clothes_trans_avg_cnt_1m / NULLIF (transaction_clothes_trans_avg_cnt_3m, 0) AS transaction_clothes_trans_avg_cnt_1m_to_3m, 
+    transaction_clothes_trans_avg_sum_3m / NULLIF (transaction_clothes_trans_avg_sum_6m, 0) AS transaction_clothes_trans_avg_sum_3m_to_6m, 
+    transaction_clothes_trans_avg_cnt_3m / NULLIF (transaction_clothes_trans_avg_cnt_6m, 0) AS transaction_clothes_trans_avg_cnt_3m_to_6m, 
+    transaction_clothes_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_clothes_trans_avg_sum_1m_to_total_1m,
+    transaction_clothes_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_clothes_trans_avg_cnt_1m_to_total_1m,
+    transaction_clothes_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_clothes_trans_avg_sum_3m_to_total_3m, 
+    transaction_clothes_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_clothes_trans_avg_cnt_3m_to_total_3m, 
+    transaction_clothes_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_clothes_trans_avg_sum_3m_to_total_6m, 
+    transaction_clothes_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_clothes_trans_avg_cnt_3m_to_total_6m, 
+    transaction_clothes_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_clothes_trans_avg_sum_6m_to_total_6m, 
+    transaction_clothes_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_clothes_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_42 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_90 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_education_trans_cnt_1m / NULLIF (transaction_education_trans_cnt_3m, 0) AS transaction_education_trans_cnt_1m_to_3m,
+    transaction_education_trans_sum_1m / NULLIF (transaction_education_trans_sum_3m, 0) AS transaction_education_trans_sum_1m_to_3m,
+    transaction_education_trans_cnt_3m / NULLIF (transaction_education_trans_cnt_6m, 0) AS transaction_education_trans_cnt_3m_to_6m,
+    transaction_education_trans_sum_3m / NULLIF (transaction_education_trans_sum_6m, 0) AS transaction_education_trans_sum_3m_to_6m,
+    transaction_education_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_education_trans_cnt_1m_to_total_1m, 
+    transaction_education_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_education_trans_sum_1m_to_total_1m, 
+    transaction_education_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_education_trans_cnt_3m_to_total_3m, 
+    transaction_education_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_education_trans_sum_3m_to_total_3m,
+    transaction_education_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_education_trans_cnt_3m_to_total_6m, 
+    transaction_education_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_education_trans_sum_3m_to_total_6m, 
+    transaction_education_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_education_trans_cnt_6m_to_total_6m, 
+    transaction_education_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_education_trans_sum_6m_to_total_6m, 
+    transaction_education_trans_avg_sum_1m / NULLIF (transaction_education_trans_avg_sum_3m, 0) AS transaction_education_trans_avg_sum_1m_to_3m, 
+    transaction_education_trans_avg_cnt_1m / NULLIF (transaction_education_trans_avg_cnt_3m, 0) AS transaction_education_trans_avg_cnt_1m_to_3m, 
+    transaction_education_trans_avg_sum_3m / NULLIF (transaction_education_trans_avg_sum_6m, 0) AS transaction_education_trans_avg_sum_3m_to_6m, 
+    transaction_education_trans_avg_cnt_3m / NULLIF (transaction_education_trans_avg_cnt_6m, 0) AS transaction_education_trans_avg_cnt_3m_to_6m, 
+    transaction_education_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_education_trans_avg_sum_1m_to_total_1m,
+    transaction_education_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_education_trans_avg_cnt_1m_to_total_1m,
+    transaction_education_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_education_trans_avg_sum_3m_to_total_3m, 
+    transaction_education_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_education_trans_avg_cnt_3m_to_total_3m, 
+    transaction_education_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_education_trans_avg_sum_3m_to_total_6m, 
+    transaction_education_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_education_trans_avg_cnt_3m_to_total_6m, 
+    transaction_education_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_education_trans_avg_sum_6m_to_total_6m, 
+    transaction_education_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_education_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_43 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
+
+execute immediate
+create table EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_91 as 
+select /*+parallel (8)*/ 
+    p1.client_did, 
+    p1.report_date,
+    transaction_finance_trans_cnt_1m / NULLIF (transaction_finance_trans_cnt_3m, 0) AS transaction_finance_trans_cnt_1m_to_3m,
+    transaction_finance_trans_sum_1m / NULLIF (transaction_finance_trans_sum_3m, 0) AS transaction_finance_trans_sum_1m_to_3m,
+    transaction_finance_trans_cnt_3m / NULLIF (transaction_finance_trans_cnt_6m, 0) AS transaction_finance_trans_cnt_3m_to_6m,
+    transaction_finance_trans_sum_3m / NULLIF (transaction_finance_trans_sum_6m, 0) AS transaction_finance_trans_sum_3m_to_6m,
+    transaction_finance_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_finance_trans_cnt_1m_to_total_1m, 
+    transaction_finance_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_finance_trans_sum_1m_to_total_1m, 
+    transaction_finance_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_finance_trans_cnt_3m_to_total_3m, 
+    transaction_finance_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_finance_trans_sum_3m_to_total_3m,
+    transaction_finance_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_finance_trans_cnt_3m_to_total_6m, 
+    transaction_finance_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_finance_trans_sum_3m_to_total_6m, 
+    transaction_finance_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_finance_trans_cnt_6m_to_total_6m, 
+    transaction_finance_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_finance_trans_sum_6m_to_total_6m, 
+    transaction_finance_trans_avg_sum_1m / NULLIF (transaction_finance_trans_avg_sum_3m, 0) AS transaction_finance_trans_avg_sum_1m_to_3m, 
+    transaction_finance_trans_avg_cnt_1m / NULLIF (transaction_finance_trans_avg_cnt_3m, 0) AS transaction_finance_trans_avg_cnt_1m_to_3m, 
+    transaction_finance_trans_avg_sum_3m / NULLIF (transaction_finance_trans_avg_sum_6m, 0) AS transaction_finance_trans_avg_sum_3m_to_6m, 
+    transaction_finance_trans_avg_cnt_3m / NULLIF (transaction_finance_trans_avg_cnt_6m, 0) AS transaction_finance_trans_avg_cnt_3m_to_6m, 
+    transaction_finance_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_finance_trans_avg_sum_1m_to_total_1m,
+    transaction_finance_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_finance_trans_avg_cnt_1m_to_total_1m,
+    transaction_finance_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_finance_trans_avg_sum_3m_to_total_3m, 
+    transaction_finance_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_finance_trans_avg_cnt_3m_to_total_3m, 
+    transaction_finance_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_finance_trans_avg_sum_3m_to_total_6m, 
+    transaction_finance_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_finance_trans_avg_cnt_3m_to_total_6m, 
+    transaction_finance_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_finance_trans_avg_sum_6m_to_total_6m, 
+    transaction_finance_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_finance_trans_avg_cnt_6m_to_total_6m
+FROM EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_44 p1 
+left join EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_0 p2
+    on p1.client_did = p2.client_did
+    and p1.report_date = p2.report_date;
