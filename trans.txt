@@ -1,135 +1,504 @@
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_48 t48
-    ON t48.client_did = a.client_did
-    AND t48.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_49 t49
-    ON t49.client_did = a.client_did
-    AND t49.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_50 t50
-    ON t50.client_did = a.client_did
-    AND t50.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_51 t51
-    ON t51.client_did = a.client_did
-    AND t51.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_52 t52
-    ON t52.client_did = a.client_did
-    AND t52.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_53 t53
-    ON t53.client_did = a.client_did
-    AND t53.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_54 t54
-    ON t54.client_did = a.client_did
-    AND t54.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_55 t55
-    ON t55.client_did = a.client_did
-    AND t55.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_56 t56
-    ON t56.client_did = a.client_did
-    AND t56.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_57 t57
-    ON t57.client_did = a.client_did
-    AND t57.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_58 t58
-    ON t58.client_did = a.client_did
-    AND t58.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_59 t59
-    ON t59.client_did = a.client_did
-    AND t59.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_60 t60
-    ON t60.client_did = a.client_did
-    AND t60.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_61 t61
-    ON t61.client_did = a.client_did
-    AND t61.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_62 t62
-    ON t62.client_did = a.client_did
-    AND t62.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_63 t63
-    ON t63.client_did = a.client_did
-    AND t63.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_64 t64
-    ON t64.client_did = a.client_did
-    AND t64.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_65 t65
-    ON t65.client_did = a.client_did
-    AND t65.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_66 t66
-    ON t66.client_did = a.client_did
-    AND t66.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_67 t67
-    ON t67.client_did = a.client_did
-    AND t67.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_68 t68
-    ON t68.client_did = a.client_did
-    AND t68.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_69 t69
-    ON t69.client_did = a.client_did
-    AND t69.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_70 t70
-    ON t70.client_did = a.client_did
-    AND t70.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_71 t71
-    ON t71.client_did = a.client_did
-    AND t71.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_72 t72
-    ON t72.client_did = a.client_did
-    AND t72.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_73 t73
-    ON t73.client_did = a.client_did
-    AND t73.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_74 t74
-    ON t74.client_did = a.client_did
-    AND t74.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_75 t75
-    ON t75.client_did = a.client_did
-    AND t75.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_76 t76
-    ON t76.client_did = a.client_did
-    AND t76.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_77 t77
-    ON t77.client_did = a.client_did
-    AND t77.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_78 t78
-    ON t78.client_did = a.client_did
-    AND t78.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_79 t79
-    ON t79.client_did = a.client_did
-    AND t79.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_80 t80
-    ON t80.client_did = a.client_did
-    AND t80.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_81 t81
-    ON t81.client_did = a.client_did
-    AND t81.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_82 t82
-    ON t82.client_did = a.client_did
-    AND t82.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_83 t83
-    ON t83.client_did = a.client_did
-    AND t83.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_84 t84
-    ON t84.client_did = a.client_did
-    AND t84.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_85 t85
-    ON t85.client_did = a.client_did
-    AND t85.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_86 t86
-    ON t86.client_did = a.client_did
-    AND t86.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_87 t87
-    ON t87.client_did = a.client_did
-    AND t87.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_88 t88
-    ON t88.client_did = a.client_did
-    AND t88.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_89 t89
-    ON t89.client_did = a.client_did
-    AND t89.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_90 t90
-    ON t90.client_did = a.client_did
-    AND t90.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_91 t91
-    ON t91.client_did = a.client_did
-    AND t91.report_date = a.report_date
-LEFT JOIN EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_TEMP_92 t92
-    ON t92.client_did = a.client_did
-    AND t92.report_date = a.report_date
+CREATE OR REPLACE PROCEDURE build_ml_deposit_features_tab (
+  in_table  IN VARCHAR2,   -- входная таблица: (client_did, report_date)
+  out_table IN VARCHAR2    -- имя выходной таблицы (будет создана заново)
+) IS
+  v_tag VARCHAR2(30) := TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS');
+BEGIN
+  ---------------------------------------------------------------------------
+  -- 0) Нормализуем вход и формируем месяц-срез
+  ---------------------------------------------------------------------------
+  EXECUTE IMMEDIATE '
+    CREATE TABLE TMP_IN_'||v_tag||' AS
+    SELECT DISTINCT
+           client_did,
+           TRUNC(report_date, ''MM'') AS report_month
+    FROM '||in_table;
+
+  ---------------------------------------------------------------------------
+  -- 1) Источник до report_month (исключая сам месяц среза)
+  ---------------------------------------------------------------------------
+  EXECUTE IMMEDIATE '
+    CREATE TABLE TMP_SRC_'||v_tag||' NOLOGGING AS
+    SELECT
+      i.client_did,
+      i.report_month,
+      s.contract_uid,
+      s.payment_month,
+      s.payment_sum,
+      s.last_payment_dt,
+      s.contract_status_nm,
+      s.contract_beg_dt,
+      s.product_nm
+    FROM DM_MRK.DM_MRK_DIRECT_DEBIT_AUTOBANK s
+    JOIN TMP_IN_'||v_tag||' i
+      ON i.client_did = s.client_did
+    WHERE s.product_nm IN (
+      ''(001) Карточный вклад (RUB)'',
+      ''(001) Карточный пенсионный вклад (RUB)'',
+      ''(001) Текущий счет Банки-партнеры (RUB)''
+    )
+      AND s.payment_month < i.report_month';
+
+  ---------------------------------------------------------------------------
+  -- 2) Последняя карточка контракта до среза
+  ---------------------------------------------------------------------------
+  EXECUTE IMMEDIATE '
+    CREATE TABLE TMP_LAST_CARD_'||v_tag||' NOLOGGING AS
+    SELECT *
+    FROM (
+      SELECT t.*,
+             ROW_NUMBER() OVER (
+               PARTITION BY t.client_did, t.report_month, t.contract_uid
+               ORDER BY t.payment_month DESC
+             ) AS rn
+      FROM TMP_SRC_'||v_tag||' t
+    )
+    WHERE rn = 1';
+
+  ---------------------------------------------------------------------------
+  -- 3) Статусы/продукты на срез + перекрёстные показатели продукт × статус
+  ---------------------------------------------------------------------------
+  EXECUTE IMMEDIATE '
+    CREATE TABLE TMP_STATUS_'||v_tag||' NOLOGGING AS
+    SELECT
+      client_did,
+      report_month,
+
+      /* агрегаты по контрактам */
+      COUNT(*) AS DIRECT_DEBIT_AUTOBANK_count_contracts_total,
+      SUM(CASE WHEN contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_contracts_active,
+      SUM(CASE WHEN contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_contracts_closed,
+      SUM(CASE WHEN contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_contracts_arrest,
+      CASE WHEN MAX(CASE WHEN contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END AS DIRECT_DEBIT_AUTOBANK_has_any_arrested,
+
+      /* распределение по продуктам */
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)''             THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_products_card_deposit,
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_products_card_pension_deposit,
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_products_current_account_partners,
+
+      /* перекрестные: продукт × статус */
+      -- (001) Карточный вклад (RUB)
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_deposit_active,
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_deposit_closed,
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_deposit_arrested,
+
+      -- (001) Карточный пенсионный вклад (RUB)
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_active,
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_closed,
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_arrested,
+
+      -- (001) Текущий счет Банки-партнеры (RUB)
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_current_account_partners_active,
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_current_account_partners_closed,
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_current_account_partners_arrested,
+
+      /* даты для давности/стажа */
+      MIN(contract_beg_dt) AS DIRECT_DEBIT_AUTOBANK_min_contract_begin_dt,
+      MAX(last_payment_dt) AS DIRECT_DEBIT_AUTOBANK_max_last_payment_dt
+    FROM TMP_LAST_CARD_'||v_tag||'
+    GROUP BY client_did, report_month';
+
+  ---------------------------------------------------------------------------
+  -- 4) Оконные агрегаты 1/3/6/12 мес + разрезы + отношения
+  ---------------------------------------------------------------------------
+  EXECUTE IMMEDIATE '
+    CREATE TABLE TMP_PAY_WIN_'||v_tag||' NOLOGGING AS
+    SELECT
+      client_did,
+      report_month,
+
+      /* ===== ОБЩИЕ АГРЕГАТЫ ===== */
+      -- 1m
+      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_1m,
+      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_1m,
+      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_1m,
+      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_1m,
+      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_pay_cnt_1m,
+      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_1m,
+
+      -- 3m
+      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_3m,
+      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_3m,
+      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_3m,
+      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_3m,
+      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_pay_cnt_3m,
+      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_3m,
+
+      -- 6m
+      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_6m,
+      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_6m,
+      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_6m,
+      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_6m,
+      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_pay_cnt_6m,
+      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_6m,
+
+      -- 12m
+      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_12m,
+      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_12m,
+      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_12m,
+      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_12m,
+      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_pay_cnt_12m,
+      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_12m,
+
+      /* ===== РАЗРЕЗЫ ПО ПРОДУКТАМ ===== */
+      /* (001) Карточный вклад (RUB) */
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_deposit,
+
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_deposit,
+
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_deposit,
+
+      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_deposit,
+
+      /* (001) Карточный пенсионный вклад (RUB) */
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_pension_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_pension_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_pension_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_pension_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_pension_deposit,
+
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_pension_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_pension_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_pension_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_pension_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_pension_deposit,
+
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_pension_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_pension_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_pension_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_pension_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_pension_deposit,
+
+      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_pension_deposit,
+      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_pension_deposit,
+      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_pension_deposit,
+      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_pension_deposit,
+      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_pension_deposit,
+
+      /* (001) Текущий счет Банки-партнеры (RUB) */
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_current_account_partners,
+      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_current_account_partners,
+      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_product_current_account_partners,
+      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_product_current_account_partners,
+      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_current_account_partners,
+
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_current_account_partners,
+      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_current_account_partners,
+      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_product_current_account_partners,
+      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_product_current_account_partners,
+      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_current_account_partners,
+
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_current_account_partners,
+      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_current_account_partners,
+      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_product_current_account_partners,
+      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_product_current_account_partners,
+      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_current_account_partners,
+
+      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_current_account_partners,
+      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_current_account_partners,
+      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_product_current_account_partners,
+      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_product_current_account_partners,
+      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_current_account_partners,
+
+      /* ===== ПО СТАТУСУ "Работает" (для отношений) ===== */
+      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_status_active,
+      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_status_active,
+      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_status_active,
+      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_status_active,
+      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_status_active,
+
+      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_status_active,
+      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_status_active,
+      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_status_active,
+      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_status_active,
+      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_status_active,
+
+      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_status_active,
+      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_status_active,
+      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_status_active,
+      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_status_active,
+      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_status_active,
+
+      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_status_active,
+      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_status_active,
+      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_status_active,
+      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_status_active,
+      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_status_active,
+
+      /* ===== ОТНОШЕНИЯ (RATIOS) ===== */
+      -- общие суммы: 1→3, 3→6, 6→12
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL
+           ELSE SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+                NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_sum_1m_to_3m,
+
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL
+           ELSE SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+                NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_sum_3m_to_6m,
+
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL
+           ELSE SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+                NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_sum_6m_to_12m,
+
+      -- "Работает" к "всем": 1м/1м, 3м/3м, 3м/6м, 6м/6м, 6м/12м, 12м/12м
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL ELSE
+           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_1m_to_all_1m,
+
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL ELSE
+           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_3m,
+
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL ELSE
+           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_6m,
+
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL ELSE
+           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_6m,
+
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL ELSE
+           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_12m,
+
+      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
+           THEN NULL ELSE
+           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) /
+           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
+      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_12m_to_all_12m
+
+    FROM TMP_SRC_'||v_tag||'
+    GROUP BY client_did, report_month';
+
+  ---------------------------------------------------------------------------
+  -- 5) Выход: создаём итоговую таблицу (NULL сохраняем как есть)
+  ---------------------------------------------------------------------------
+  BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE '||out_table||' PURGE';
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+
+  EXECUTE IMMEDIATE '
+    CREATE TABLE '||out_table||' NOLOGGING AS
+    SELECT
+      i.report_month AS DIRECT_DEBIT_AUTOBANK_report_date,
+      i.client_did   AS DIRECT_DEBIT_AUTOBANK_client_did,
+
+      /* ===== ОБЩИЕ АГРЕГАТЫ ===== */
+      p.DIRECT_DEBIT_AUTOBANK_pay_sum_1m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_avg_1m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_max_1m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_min_1m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_1m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_1m,
+
+      p.DIRECT_DEBIT_AUTOBANK_pay_sum_3m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_avg_3m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_max_3m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_min_3m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_3m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_3m,
+
+      p.DIRECT_DEBIT_AUTOBANK_pay_sum_6m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_avg_6m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_max_6m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_min_6m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_6m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_6m,
+
+      p.DIRECT_DEBIT_AUTOBANK_pay_sum_12m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_avg_12m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_max_12m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_min_12m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_12m,
+      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_12m,
+
+      /* ===== ПО ПРОДУКТАМ ===== */
+      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_pension_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_pension_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_pension_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_pension_deposit,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_pension_deposit,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_current_account_partners,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_current_account_partners,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_current_account_partners,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_product_current_account_partners,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_current_account_partners,
+
+      /* ===== ПО СТАТУСУ "Работает" ===== */
+      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_status_active,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_status_active,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_status_active,
+
+      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_status_active,
+      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_status_active,
+
+      /* ===== ОТНОШЕНИЯ ===== */
+      p.DIRECT_DEBIT_AUTOBANK_ratio_sum_1m_to_3m,
+      p.DIRECT_DEBIT_AUTOBANK_ratio_sum_3m_to_6m,
+      p.DIRECT_DEBIT_AUTOBANK_ratio_sum_6m_to_12m,
+
+      p.DIRECT_DEBIT_AUTOBANK_ratio_active_1m_to_all_1m,
+      p.DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_3m,
+      p.DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_6m,
+      p.DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_6m,
+      p.DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_12m,
+      p.DIRECT_DEBIT_AUTOBANK_ratio_active_12m_to_all_12m,
+
+      /* ===== КАРТОЧКА СТАТУСОВ/ДАТ ===== */
+      st.DIRECT_DEBIT_AUTOBANK_count_contracts_total,
+      st.DIRECT_DEBIT_AUTOBANK_count_contracts_active,
+      st.DIRECT_DEBIT_AUTOBANK_count_contracts_closed,
+      st.DIRECT_DEBIT_AUTOBANK_count_contracts_arrest,
+      st.DIRECT_DEBIT_AUTOBANK_has_any_arrested,
+
+      st.DIRECT_DEBIT_AUTOBANK_count_products_card_deposit,
+      st.DIRECT_DEBIT_AUTOBANK_count_products_card_pension_deposit,
+      st.DIRECT_DEBIT_AUTOBANK_count_products_current_account_partners,
+
+      st.DIRECT_DEBIT_AUTOBANK_count_card_deposit_active,
+      st.DIRECT_DEBIT_AUTOBANK_count_card_deposit_closed,
+      st.DIRECT_DEBIT_AUTOBANK_count_card_deposit_arrested,
+
+      st.DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_active,
+      st.DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_closed,
+      st.DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_arrested,
+
+      st.DIRECT_DEBIT_AUTOBANK_count_current_account_partners_active,
+      st.DIRECT_DEBIT_AUTOBANK_count_current_account_partners_closed,
+      st.DIRECT_DEBIT_AUTOBANK_count_current_account_partners_arrested,
+
+      CASE WHEN st.DIRECT_DEBIT_AUTOBANK_max_last_payment_dt IS NOT NULL
+           THEN TRUNC(i.report_month - st.DIRECT_DEBIT_AUTOBANK_max_last_payment_dt)
+      END AS DIRECT_DEBIT_AUTOBANK_days_since_last_payment,
+
+      CASE WHEN st.DIRECT_DEBIT_AUTOBANK_min_contract_begin_dt IS NOT NULL
+           THEN TRUNC(MONTHS_BETWEEN(i.report_month, st.DIRECT_DEBIT_AUTOBANK_min_contract_begin_dt))
+      END AS DIRECT_DEBIT_AUTOBANK_tenure_months
+    FROM TMP_IN_'||v_tag||' i
+    LEFT JOIN TMP_PAY_WIN_'||v_tag||' p
+      ON p.client_did = i.client_did AND p.report_month = i.report_month
+    LEFT JOIN TMP_STATUS_'||v_tag||' st
+      ON st.client_did = i.client_did AND st.report_month = i.report_month';
+
+  ---------------------------------------------------------------------------
+  -- 6) Уборка
+  ---------------------------------------------------------------------------
+  EXECUTE IMMEDIATE 'DROP TABLE TMP_STATUS_'||v_tag||' PURGE';
+  EXECUTE IMMEDIATE 'DROP TABLE TMP_PAY_WIN_'||v_tag||' PURGE';
+  EXECUTE IMMEDIATE 'DROP TABLE TMP_LAST_CARD_'||v_tag||' PURGE';
+  EXECUTE IMMEDIATE 'DROP TABLE TMP_SRC_'||v_tag||' PURGE';
+  EXECUTE IMMEDIATE 'DROP TABLE TMP_IN_'||v_tag||' PURGE';
+
+  COMMIT;
+END;
+/
