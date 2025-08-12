@@ -502,3 +502,116 @@ BEGIN
   COMMIT;
 END;
 /
+
+
+
+# We'll build the Excel data dictionary for the final CTAS columns.
+
+import pandas as pd
+
+rows = []
+
+def add(name, desc, typ):
+    rows.append({
+        "Название переменной": name,
+        "Описание переменной": desc,
+        "Тип переменной": typ
+    })
+
+# IDs / keys
+add("DIRECT_DEBIT_AUTOBANK_report_date",
+    "Дата отчётного месяца (начало месяца), по которому строятся окна; текущий месяц не включается.",
+    "date")
+add("DIRECT_DEBIT_AUTOBANK_client_did",
+    "Идентификатор клиента.",
+    "id")
+
+# Helper functions for repeated fields
+def add_win_agg(prefix, window, scope_desc, base_name="DIRECT_DEBIT_AUTOBANK"):
+    # prefix describes the semantic scope, e.g., "pay" or "sum_1m_by_product_card_deposit" etc.
+    # For general pay_* aggregates
+    if prefix == "pay":
+        add(f"{base_name}_{prefix}_sum_{window}", f"Сумма платежей {scope_desc} за последние {window.replace('m',' мес.')} до report_date.", "float")
+        add(f"{base_name}_{prefix}_avg_{window}", f"Средний размер платежа {scope_desc} за {window.replace('m',' мес.')}.", "float")
+        add(f"{base_name}_{prefix}_max_{window}", f"Максимальный платеж {scope_desc} за {window.replace('m',' мес.')}.", "float")
+        add(f"{base_name}_{prefix}_min_{window}", f"Минимальный платеж {scope_desc} за {window.replace('m',' мес.')}.", "float")
+        add(f"{base_name}_{prefix}_cnt_{window}", f"Количество платежей {scope_desc} за {window.replace('m',' мес.')}.", "int")
+        add(f"{base_name}_{prefix}_cnt_months_{window}", f"Количество месяцев с платежами {scope_desc} в окне {window.replace('m',' мес.')}.", "int")
+    else:
+        # For product/status splits where names are already embedded in prefix
+        add(f"{base_name}_{prefix.replace('sum_', 'sum_')}", f"Сумма платежей {scope_desc}.", "float")
+        add(f"{base_name}_{prefix.replace('sum_', 'avg_')}", f"Средний размер платежа {scope_desc}.", "float")
+        add(f"{base_name}_{prefix.replace('sum_', 'max_')}", f"Максимальный платеж {scope_desc}.", "float")
+        add(f"{base_name}_{prefix.replace('sum_', 'min_')}", f"Минимальный платеж {scope_desc}.", "float")
+        add(f"{base_name}_{prefix.replace('sum_', 'cnt_')}", f"Количество платежей {scope_desc}.", "int")
+
+# General aggregates
+for w in ["1m","3m","6m","12m"]:
+    add_win_agg("pay", w, "по всем контрактам")
+
+# Product splits
+products = [
+    ("by_product_card_deposit", "по продукту «(001) Карточный вклад (RUB)»"),
+    ("by_product_card_pension_deposit", "по продукту «(001) Карточный пенсионный вклад (RUB)»"),
+    ("by_product_current_account_partners", "по продукту «(001) Текущий счет Банки-партнеры (RUB)»")
+]
+
+for suffix, scope in products:
+    for w in ["1m","3m","6m","12m"]:
+        # Compose the 'sum' name used to generate others via replace in add_win_agg
+        prefix = f"sum_{w}_{suffix}"
+        add_win_agg(prefix, w, scope)
+
+# Status = Работает aggregates
+status_scope = "по платежам со статусом договора «Работает»"
+for w in ["1m","3m","6m","12m"]:
+    prefix = f"sum_{w}_by_status_active"
+    add_win_agg(prefix, w, status_scope)
+
+# Ratios
+add("DIRECT_DEBIT_AUTOBANK_ratio_sum_1m_to_3m", "Отношение суммы всех платежей за 1 мес. к сумме за 3 мес. (1м/3м).", "float")
+add("DIRECT_DEBIT_AUTOBANK_ratio_sum_3m_to_6m", "Отношение суммы всех платежей за 3 мес. к сумме за 6 мес. (3м/6м).", "float")
+add("DIRECT_DEBIT_AUTOBANK_ratio_sum_6m_to_12m", "Отношение суммы всех платежей за 6 мес. к сумме за 12 мес. (6м/12м).", "float")
+
+add("DIRECT_DEBIT_AUTOBANK_ratio_active_1m_to_all_1m", "Доля суммы платежей «Работает» в общей сумме за 1 мес. (1м актив / 1м все).", "float")
+add("DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_3m", "Доля суммы платежей «Работает» в общей сумме за 3 мес. (3м актив / 3м все).", "float")
+add("DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_6m", "Сумма «Работает» за 3 мес. / общая сумма за 6 мес.", "float")
+add("DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_6m", "Доля суммы платежей «Работает» в общей сумме за 6 мес. (6м актив / 6м все).", "float")
+add("DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_12m", "Сумма «Работает» за 6 мес. / общая сумма за 12 мес.", "float")
+add("DIRECT_DEBIT_AUTOBANK_ratio_active_12m_to_all_12m", "Доля суммы платежей «Работает» в общей сумме за 12 мес. (12м актив / 12м все).", "float")
+
+# Status/product card + dates
+add("DIRECT_DEBIT_AUTOBANK_count_contracts_total", "Количество контрактов клиента на срезе report_date.", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_contracts_active", "Количество контрактов со статусом «Работает».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_contracts_closed", "Количество контрактов со статусом «Закрыт».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_contracts_arrest", "Количество контрактов со статусом «Арестован».", "int")
+add("DIRECT_DEBIT_AUTOBANK_has_any_arrested", "Флаг (0/1): есть ли хотя бы один контракт со статусом «Арестован».", "int")
+
+add("DIRECT_DEBIT_AUTOBANK_count_products_card_deposit", "Количество контрактов по продукту «(001) Карточный вклад (RUB)».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_products_card_pension_deposit", "Количество контрактов по продукту «(001) Карточный пенсионный вклад (RUB)».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_products_current_account_partners", "Количество контрактов по продукту «(001) Текущий счет Банки-партнеры (RUB)».", "int")
+
+add("DIRECT_DEBIT_AUTOBANK_count_card_deposit_active", "Перекрёст: «Карточный вклад (RUB)» × «Работает».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_card_deposit_closed", "Перекрёст: «Карточный вклад (RUB)» × «Закрыт».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_card_deposit_arrested", "Перекрёст: «Карточный вклад (RUB)» × «Арестован».", "int")
+
+add("DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_active", "Перекрёст: «Карточный пенсионный вклад (RUB)» × «Работает».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_closed", "Перекрёст: «Карточный пенсионный вклад (RUB)» × «Закрыт».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_arrested", "Перекрёст: «Карточный пенсионный вклад (RUB)» × «Арестован».", "int")
+
+add("DIRECT_DEBIT_AUTOBANK_count_current_account_partners_active", "Перекрёст: «Текущий счет Банки-партнеры (RUB)» × «Работает».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_current_account_partners_closed", "Перекрёст: «Текущий счет Банки-партнеры (RUB)» × «Закрыт».", "int")
+add("DIRECT_DEBIT_AUTOBANK_count_current_account_partners_arrested", "Перекрёст: «Текущий счет Банки-партнеры (RUB)» × «Арестован».", "int")
+
+add("DIRECT_DEBIT_AUTOBANK_days_since_last_payment", "Число дней от последней даты платежа до report_date (если известна).", "int")
+add("DIRECT_DEBIT_AUTOBANK_tenure_months", "Стаж в месяцах от минимальной даты начала контракта до report_date (если известна).", "int")
+
+# Create DataFrame
+df = pd.DataFrame(rows)
+
+# To make it easy for Excel consumption, keep the given order
+# Save to Excel
+path = "/mnt/data/DIRECT_DEBIT_AUTOBANK_data_dictionary.xlsx"
+df.to_excel(path, index=False)
+
+
