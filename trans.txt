@@ -1,105 +1,81 @@
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from typing import Optional, Tuple
+import plotly.graph_objects as go
 
-def plot_ml_splits_over_time(
+def plot_ml_splits_over_time_plotly(
     train: pd.DataFrame,
     test: pd.DataFrame,
-    oot: Optional[pd.DataFrame] = None,
+    oot: pd.DataFrame = None,
     *,
     date_col: str = "month",
     target_col: str = "target",
-    id_col: Optional[str] = None,   # если None — считаем строки; иначе — уникальные id
-    freq: str = "MS",               # шаг агрегации: 'MS' = месяц сначала
-    title: str = "Размеры выборок и уровень таргета по месяцам",
-) -> Tuple[pd.DataFrame, plt.Axes, plt.Axes]:
-    """
-    Возвращает: (aggregated_df, ax_left, ax_right)
-      aggregated_df: колонки
-        month, train_cnt, test_cnt, oot_cnt, rr_train, rr_test, rr_oot
-    Предполагается, что target_col — бинарный (0/1). Для OOT можно передать None.
-    """
-    def _prep(df: pd.DataFrame) -> pd.DataFrame:
+    id_col: str = None,
+    title: str = "Размеры выборок и уровень таргета по месяцам"
+):
+    def _prep(df: pd.DataFrame):
         if df is None or len(df) == 0:
             return pd.DataFrame(columns=["month", "cnt", "rr"])
         tmp = df.copy()
         tmp[date_col] = pd.to_datetime(tmp[date_col])
-        # нормализуем к началу периода (месяца)
-        tmp["month"] = tmp[date_col].dt.to_period("M").dt.to_timestamp(how="start")
+        tmp["month"] = tmp[date_col].dt.to_period("M").dt.to_timestamp()
         if id_col:
-            g = tmp.groupby("month", as_index=False).agg(
-                cnt=(id_col, pd.Series.nunique),
-                rr=(target_col, "mean"),
-            )
+            g = tmp.groupby("month").agg(
+                cnt=(id_col, "nunique"),
+                rr=(target_col, "mean")
+            ).reset_index()
         else:
-            g = tmp.groupby("month", as_index=False).agg(
+            g = tmp.groupby("month").agg(
                 cnt=(target_col, "size"),
-                rr=(target_col, "mean"),
-            )
+                rr=(target_col, "mean")
+            ).reset_index()
         return g
 
     g_train = _prep(train).rename(columns={"cnt": "train_cnt", "rr": "rr_train"})
     g_test  = _prep(test).rename(columns={"cnt": "test_cnt",  "rr": "rr_test"})
     g_oot   = _prep(oot).rename(columns={"cnt": "oot_cnt",   "rr": "rr_oot"})
 
-    # Объединяем все месяцы (полное множество)
-    months = pd.Index(sorted(set(g_train["month"]).union(g_test["month"]).union(g_oot.get("month", pd.Index([])))), name="month")
-    out = pd.DataFrame(index=months).reset_index()
+    df = pd.DataFrame({"month": sorted(
+        set(g_train["month"]) | set(g_test["month"]) | set(g_oot["month"])
+    )})
+    df = df.merge(g_train, on="month", how="left")
+    df = df.merge(g_test, on="month", how="left")
+    df = df.merge(g_oot, on="month", how="left")
 
-    out = (out
-           .merge(g_train, on="month", how="left")
-           .merge(g_test,  on="month", how="left")
-           .merge(g_oot,   on="month", how="left"))
+    df = df.fillna(0)
 
-    # заменим NaN для счётчиков на 0, для RR оставим NaN (не будет рисоваться)
-    for c in ["train_cnt", "test_cnt", "oot_cnt"]:
-        if c in out.columns:
-            out[c] = out[c].fillna(0).astype(int)
-    # убедимся, что RR в долях
-    for c in ["rr_train", "rr_test", "rr_oot"]:
-        if c in out.columns and c not in out.select_dtypes(include=[np.number]).columns:
-            out[c] = pd.to_numeric(out[c], errors="coerce")
+    fig = go.Figure()
 
-    # ---- Plot ----
-    fig, ax_left = plt.subplots(figsize=(11, 4.8))
-    x = np.arange(len(out))
-    bw = 0.6
+    # stacked bars: train + test
+    fig.add_bar(x=df["month"], y=df["train_cnt"], name="train_cnt")
+    fig.add_bar(x=df["month"], y=df["test_cnt"], name="test_cnt")
 
-    # stacked: train + test
-    ax_left.bar(x, out["train_cnt"], width=bw, label="train_cnt")
-    ax_left.bar(x, out["test_cnt"],  width=bw, bottom=out["train_cnt"], label="test_cnt")
+    # OOT bars
+    if "oot_cnt" in df:
+        fig.add_bar(x=df["month"], y=df["oot_cnt"], name="OOT_cnt")
 
-    # узкие столбики поверх — OOT (там, где есть)
-    if "oot_cnt" in out:
-        mask_oot = out["oot_cnt"] > 0
-        ax_left.bar(x[mask_oot], out.loc[mask_oot, "oot_cnt"], width=bw*0.5, label="OOT_cnt")
+    # RR lines (secondary axis)
+    fig.add_trace(go.Scatter(
+        x=df["month"], y=df["rr_train"]*100,
+        mode="lines+markers", name="RR Train", yaxis="y2"
+    ))
+    fig.add_trace(go.Scatter(
+        x=df["month"], y=df["rr_test"]*100,
+        mode="lines+markers", name="RR Test", yaxis="y2"
+    ))
+    if "rr_oot" in df:
+        fig.add_trace(go.Scatter(
+            x=df["month"], y=df["rr_oot"]*100,
+            mode="lines+markers", name="RR OOT", yaxis="y2", line=dict(dash="dot")
+        ))
 
-    ax_left.set_ylabel("Количество клиентов")
-    ax_left.set_xticks(x)
-    ax_left.set_xticklabels(out["month"].dt.strftime("%d.%m.%Y"), rotation=40, ha="right")
-    ax_left.grid(True, axis="y", linestyle=":", linewidth=0.7, alpha=0.6)
+    fig.update_layout(
+        barmode="stack",
+        title=title,
+        xaxis=dict(title="Месяц"),
+        yaxis=dict(title="Количество клиентов"),
+        yaxis2=dict(title="RR, %", overlaying="y", side="right"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_white"
+    )
 
-    ax_right = ax_left.twinx()
-    if "rr_train" in out:
-        ax_right.plot(x, out["rr_train"]*100, marker="o", label="RR Train")
-    if "rr_test" in out:
-        ax_right.plot(x, out["rr_test"]*100, marker="x", label="RR Test")
-    if "rr_oot" in out and "oot_cnt" in out:
-        ax_right.plot(x[mask_oot], (out.loc[mask_oot, "rr_oot"]*100), marker="o", linestyle="--", label="RR OOT")
-    ax_right.set_ylabel("RR, %")
-
-    # общая легенда
-    h1, l1 = ax_left.get_legend_handles_labels()
-    h2, l2 = ax_right.get_legend_handles_labels()
-    ax_left.legend(h1 + h2, l1 + l2, loc="upper right", frameon=True)
-
-    ax_left.set_title(title)
-    plt.tight_layout()
-
-    # готовим отдачу
-    result = out[["month",
-                  "train_cnt", "test_cnt"] + (["oot_cnt"] if "oot_cnt" in out else []) +
-                 ["rr_train", "rr_test"] + (["rr_oot"] if "rr_oot" in out else [])]
-
-    return result, ax_left, ax_right
+    fig.show()
+    return df, fig
