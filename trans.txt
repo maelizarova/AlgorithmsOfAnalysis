@@ -1,617 +1,591 @@
-CREATE OR REPLACE PROCEDURE build_ml_deposit_features_tab (
-  in_table  IN VARCHAR2,   -- входная таблица: (client_did, report_date)
-  out_table IN VARCHAR2    -- имя выходной таблицы (будет создана заново)
-) IS
-  v_tag VARCHAR2(30) := TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS');
-BEGIN
-  ---------------------------------------------------------------------------
-  -- 0) Нормализуем вход и формируем месяц-срез
-  ---------------------------------------------------------------------------
-  EXECUTE IMMEDIATE '
-    CREATE TABLE TMP_IN_'||v_tag||' AS
-    SELECT DISTINCT
-           client_did,
-           TRUNC(report_date, ''MM'') AS report_month
-    FROM '||in_table;
+"""
+HTML Report Generator
 
-  ---------------------------------------------------------------------------
-  -- 1) Источник до report_month (исключая сам месяц среза)
-  ---------------------------------------------------------------------------
-  EXECUTE IMMEDIATE '
-    CREATE TABLE TMP_SRC_'||v_tag||' NOLOGGING AS
-    SELECT
-      i.client_did,
-      i.report_month,
-      s.contract_uid,
-      s.payment_month,
-      s.payment_sum,
-      s.last_payment_dt,
-      s.contract_status_nm,
-      s.contract_beg_dt,
-      s.product_nm
-    FROM DM_MRK.DM_MRK_DIRECT_DEBIT_AUTOBANK s
-    JOIN TMP_IN_'||v_tag||' i
-      ON i.client_did = s.client_did
-    WHERE s.product_nm IN (
-      ''(001) Карточный вклад (RUB)'',
-      ''(001) Карточный пенсионный вклад (RUB)'',
-      ''(001) Текущий счет Банки-партнеры (RUB)''
-    )
-      AND s.payment_month < i.report_month';
+Модуль для генерации единого HTML-файла отчёта с интерактивными графиками.
+Использует Jinja2 для шаблонов и Plotly для графиков.
+"""
 
-  ---------------------------------------------------------------------------
-  -- 2) Последняя карточка контракта до среза
-  ---------------------------------------------------------------------------
-  EXECUTE IMMEDIATE '
-    CREATE TABLE TMP_LAST_CARD_'||v_tag||' NOLOGGING AS
-    SELECT *
-    FROM (
-      SELECT t.*,
-             ROW_NUMBER() OVER (
-               PARTITION BY t.client_did, t.report_month, t.contract_uid
-               ORDER BY t.payment_month DESC
-             ) AS rn
-      FROM TMP_SRC_'||v_tag||' t
-    )
-    WHERE rn = 1';
-
-  ---------------------------------------------------------------------------
-  -- 3) Статусы/продукты на срез + перекрёстные показатели продукт × статус
-  ---------------------------------------------------------------------------
-  EXECUTE IMMEDIATE '
-    CREATE TABLE TMP_STATUS_'||v_tag||' NOLOGGING AS
-    SELECT
-      client_did,
-      report_month,
-
-      /* агрегаты по контрактам */
-      COUNT(*) AS DIRECT_DEBIT_AUTOBANK_count_contracts_total,
-      SUM(CASE WHEN contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_contracts_active,
-      SUM(CASE WHEN contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_contracts_closed,
-      SUM(CASE WHEN contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_contracts_arrest,
-      CASE WHEN MAX(CASE WHEN contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END AS DIRECT_DEBIT_AUTOBANK_has_any_arrested,
-
-      /* распределение по продуктам */
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)''             THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_products_card_deposit,
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_products_card_pension_deposit,
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_products_current_account_partners,
-
-      /* перекрестные: продукт × статус */
-      -- (001) Карточный вклад (RUB)
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_deposit_active,
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_deposit_closed,
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_deposit_arrested,
-
-      -- (001) Карточный пенсионный вклад (RUB)
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_active,
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_closed,
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_arrested,
-
-      -- (001) Текущий счет Банки-партнеры (RUB)
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND contract_status_nm = ''Работает''  THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_current_account_partners_active,
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND contract_status_nm = ''Закрыт''    THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_current_account_partners_closed,
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND contract_status_nm = ''Арестован'' THEN 1 ELSE 0 END) AS DIRECT_DEBIT_AUTOBANK_count_current_account_partners_arrested,
-
-      /* даты для давности/стажа */
-      MIN(contract_beg_dt) AS DIRECT_DEBIT_AUTOBANK_min_contract_begin_dt,
-      MAX(last_payment_dt) AS DIRECT_DEBIT_AUTOBANK_max_last_payment_dt
-    FROM TMP_LAST_CARD_'||v_tag||'
-    GROUP BY client_did, report_month';
-
-  ---------------------------------------------------------------------------
-  -- 4) Оконные агрегаты 1/3/6/12 мес + разрезы + отношения
-  ---------------------------------------------------------------------------
-  EXECUTE IMMEDIATE '
-    CREATE TABLE TMP_PAY_WIN_'||v_tag||' NOLOGGING AS
-    SELECT
-      client_did,
-      report_month,
-
-      /* ===== ОБЩИЕ АГРЕГАТЫ ===== */
-      -- 1m
-      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_1m,
-      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_1m,
-      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_1m,
-      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_1m,
-      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_pay_cnt_1m,
-      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_1m,
-
-      -- 3m
-      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_3m,
-      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_3m,
-      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_3m,
-      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_3m,
-      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_pay_cnt_3m,
-      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_3m,
-
-      -- 6m
-      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_6m,
-      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_6m,
-      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_6m,
-      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_6m,
-      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_pay_cnt_6m,
-      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_6m,
-
-      -- 12m
-      SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_pay_sum_12m,
-      AVG(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_avg_12m,
-      MAX(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_max_12m,
-      MIN(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_pay_min_12m,
-      COUNT(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_pay_cnt_12m,
-      COUNT(DISTINCT CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_month END) AS DIRECT_DEBIT_AUTOBANK_pay_cnt_months_12m,
-
-      /* ===== РАЗРЕЗЫ ПО ПРОДУКТАМ ===== */
-      /* (001) Карточный вклад (RUB) */
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_deposit,
-
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_deposit,
-
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_deposit,
-
-      SUM(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_deposit,
-
-      /* (001) Карточный пенсионный вклад (RUB) */
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_pension_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_pension_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_pension_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_pension_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_pension_deposit,
-
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_pension_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_pension_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_pension_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_pension_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_pension_deposit,
-
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_pension_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_pension_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_pension_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_pension_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_pension_deposit,
-
-      SUM(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_pension_deposit,
-      AVG(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_pension_deposit,
-      MAX(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_pension_deposit,
-      MIN(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_pension_deposit,
-      COUNT(CASE WHEN product_nm = ''(001) Карточный пенсионный вклад (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_pension_deposit,
-
-      /* (001) Текущий счет Банки-партнеры (RUB) */
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_current_account_partners,
-      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_current_account_partners,
-      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_product_current_account_partners,
-      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_product_current_account_partners,
-      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_current_account_partners,
-
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_current_account_partners,
-      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_current_account_partners,
-      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_product_current_account_partners,
-      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_product_current_account_partners,
-      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_current_account_partners,
-
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_current_account_partners,
-      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_current_account_partners,
-      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_product_current_account_partners,
-      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_product_current_account_partners,
-      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_current_account_partners,
-
-      SUM(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_current_account_partners,
-      AVG(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_current_account_partners,
-      MAX(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_product_current_account_partners,
-      MIN(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_product_current_account_partners,
-      COUNT(CASE WHEN product_nm = ''(001) Текущий счет Банки-партнеры (RUB)'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_current_account_partners,
-
-      /* ===== ПО СТАТУСУ "Работает" (для отношений) ===== */
-      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_1m_by_status_active,
-      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_1m_by_status_active,
-      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_1m_by_status_active,
-      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_1m_by_status_active,
-      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_1m_by_status_active,
-
-      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_3m_by_status_active,
-      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_3m_by_status_active,
-      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_3m_by_status_active,
-      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_3m_by_status_active,
-      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_3m_by_status_active,
-
-      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_6m_by_status_active,
-      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_6m_by_status_active,
-      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_6m_by_status_active,
-      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_6m_by_status_active,
-      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6) AND payment_month < report_month THEN 1 END)                  AS DIRECT_DEBIT_AUTOBANK_cnt_6m_by_status_active,
-
-      SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) AS DIRECT_DEBIT_AUTOBANK_sum_12m_by_status_active,
-      AVG(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_avg_12m_by_status_active,
-      MAX(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_max_12m_by_status_active,
-      MIN(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN payment_sum END)         AS DIRECT_DEBIT_AUTOBANK_min_12m_by_status_active,
-      COUNT(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN 1 END)                 AS DIRECT_DEBIT_AUTOBANK_cnt_12m_by_status_active,
-
-      /* ===== ОТНОШЕНИЯ (RATIOS) ===== */
-      -- общие суммы: 1→3, 3→6, 6→12
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL
-           ELSE SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-                NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_sum_1m_to_3m,
-
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL
-           ELSE SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-                NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_sum_3m_to_6m,
-
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL
-           ELSE SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-                NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_sum_6m_to_12m,
-
-      -- "Работает" к "всем": 1м/1м, 3м/3м, 3м/6м, 6м/6м, 6м/12м, 12м/12м
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL ELSE
-           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-1)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_1m_to_all_1m,
-
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL ELSE
-           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_3m,
-
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL ELSE
-           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-3)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_6m,
-
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL ELSE
-           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_6m,
-
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL ELSE
-           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-6)  AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_12m,
-
-      CASE WHEN SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) = 0
-           THEN NULL ELSE
-           SUM(CASE WHEN contract_status_nm = ''Работает'' AND payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END) /
-           NULLIF(SUM(CASE WHEN payment_month >= ADD_MONTHS(report_month,-12) AND payment_month < report_month THEN NVL(payment_sum,0) END),0)
-      END AS DIRECT_DEBIT_AUTOBANK_ratio_active_12m_to_all_12m
-
-    FROM TMP_SRC_'||v_tag||'
-    GROUP BY client_did, report_month';
-
-  ---------------------------------------------------------------------------
-  -- 5) Выход: создаём итоговую таблицу (NULL сохраняем как есть)
-  ---------------------------------------------------------------------------
-  BEGIN
-    EXECUTE IMMEDIATE 'DROP TABLE '||out_table||' PURGE';
-  EXCEPTION WHEN OTHERS THEN NULL;
-  END;
-
-  EXECUTE IMMEDIATE '
-    CREATE TABLE '||out_table||' NOLOGGING AS
-    SELECT
-      i.report_month AS DIRECT_DEBIT_AUTOBANK_report_date,
-      i.client_did   AS DIRECT_DEBIT_AUTOBANK_client_did,
-
-      /* ===== ОБЩИЕ АГРЕГАТЫ ===== */
-      p.DIRECT_DEBIT_AUTOBANK_pay_sum_1m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_avg_1m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_max_1m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_min_1m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_1m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_1m,
-
-      p.DIRECT_DEBIT_AUTOBANK_pay_sum_3m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_avg_3m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_max_3m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_min_3m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_3m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_3m,
-
-      p.DIRECT_DEBIT_AUTOBANK_pay_sum_6m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_avg_6m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_max_6m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_min_6m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_6m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_6m,
-
-      p.DIRECT_DEBIT_AUTOBANK_pay_sum_12m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_avg_12m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_max_12m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_min_12m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_12m,
-      p.DIRECT_DEBIT_AUTOBANK_pay_cnt_months_12m,
-
-      /* ===== ПО ПРОДУКТАМ ===== */
-      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_card_pension_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_card_pension_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_card_pension_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_product_card_pension_deposit,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_card_pension_deposit,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_product_current_account_partners,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_product_current_account_partners,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_product_current_account_partners,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_product_current_account_partners,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_product_current_account_partners,
-
-      /* ===== ПО СТАТУСУ "Работает" ===== */
-      p.DIRECT_DEBIT_AUTOBANK_sum_1m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_avg_1m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_max_1m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_min_1m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_1m_by_status_active,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_3m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_avg_3m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_max_3m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_min_3m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_3m_by_status_active,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_6m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_avg_6m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_max_6m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_min_6m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_6m_by_status_active,
-
-      p.DIRECT_DEBIT_AUTOBANK_sum_12m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_avg_12m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_max_12m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_min_12m_by_status_active,
-      p.DIRECT_DEBIT_AUTOBANK_cnt_12m_by_status_active,
-
-      /* ===== ОТНОШЕНИЯ ===== */
-      p.DIRECT_DEBIT_AUTOBANK_ratio_sum_1m_to_3m,
-      p.DIRECT_DEBIT_AUTOBANK_ratio_sum_3m_to_6m,
-      p.DIRECT_DEBIT_AUTOBANK_ratio_sum_6m_to_12m,
-
-      p.DIRECT_DEBIT_AUTOBANK_ratio_active_1m_to_all_1m,
-      p.DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_3m,
-      p.DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_6m,
-      p.DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_6m,
-      p.DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_12m,
-      p.DIRECT_DEBIT_AUTOBANK_ratio_active_12m_to_all_12m,
-
-      /* ===== КАРТОЧКА СТАТУСОВ/ДАТ ===== */
-      st.DIRECT_DEBIT_AUTOBANK_count_contracts_total,
-      st.DIRECT_DEBIT_AUTOBANK_count_contracts_active,
-      st.DIRECT_DEBIT_AUTOBANK_count_contracts_closed,
-      st.DIRECT_DEBIT_AUTOBANK_count_contracts_arrest,
-      st.DIRECT_DEBIT_AUTOBANK_has_any_arrested,
-
-      st.DIRECT_DEBIT_AUTOBANK_count_products_card_deposit,
-      st.DIRECT_DEBIT_AUTOBANK_count_products_card_pension_deposit,
-      st.DIRECT_DEBIT_AUTOBANK_count_products_current_account_partners,
-
-      st.DIRECT_DEBIT_AUTOBANK_count_card_deposit_active,
-      st.DIRECT_DEBIT_AUTOBANK_count_card_deposit_closed,
-      st.DIRECT_DEBIT_AUTOBANK_count_card_deposit_arrested,
-
-      st.DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_active,
-      st.DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_closed,
-      st.DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_arrested,
-
-      st.DIRECT_DEBIT_AUTOBANK_count_current_account_partners_active,
-      st.DIRECT_DEBIT_AUTOBANK_count_current_account_partners_closed,
-      st.DIRECT_DEBIT_AUTOBANK_count_current_account_partners_arrested,
-
-      CASE WHEN st.DIRECT_DEBIT_AUTOBANK_max_last_payment_dt IS NOT NULL
-           THEN TRUNC(i.report_month - st.DIRECT_DEBIT_AUTOBANK_max_last_payment_dt)
-      END AS DIRECT_DEBIT_AUTOBANK_days_since_last_payment,
-
-      CASE WHEN st.DIRECT_DEBIT_AUTOBANK_min_contract_begin_dt IS NOT NULL
-           THEN TRUNC(MONTHS_BETWEEN(i.report_month, st.DIRECT_DEBIT_AUTOBANK_min_contract_begin_dt))
-      END AS DIRECT_DEBIT_AUTOBANK_tenure_months
-    FROM TMP_IN_'||v_tag||' i
-    LEFT JOIN TMP_PAY_WIN_'||v_tag||' p
-      ON p.client_did = i.client_did AND p.report_month = i.report_month
-    LEFT JOIN TMP_STATUS_'||v_tag||' st
-      ON st.client_did = i.client_did AND st.report_month = i.report_month';
-
-  ---------------------------------------------------------------------------
-  -- 6) Уборка
-  ---------------------------------------------------------------------------
-  EXECUTE IMMEDIATE 'DROP TABLE TMP_STATUS_'||v_tag||' PURGE';
-  EXECUTE IMMEDIATE 'DROP TABLE TMP_PAY_WIN_'||v_tag||' PURGE';
-  EXECUTE IMMEDIATE 'DROP TABLE TMP_LAST_CARD_'||v_tag||' PURGE';
-  EXECUTE IMMEDIATE 'DROP TABLE TMP_SRC_'||v_tag||' PURGE';
-  EXECUTE IMMEDIATE 'DROP TABLE TMP_IN_'||v_tag||' PURGE';
-
-  COMMIT;
-END;
-/
-
-
-
-# We'll build the Excel data dictionary for the final CTAS columns.
-
+from typing import List, Literal, Optional, Dict, Any, Union
 import pandas as pd
-
-rows = []
-
-def add(name, desc, typ):
-    rows.append({
-        "Название переменной": name,
-        "Описание переменной": desc,
-        "Тип переменной": typ
-    })
-
-# IDs / keys
-add("DIRECT_DEBIT_AUTOBANK_report_date",
-    "Дата отчётного месяца (начало месяца), по которому строятся окна; текущий месяц не включается.",
-    "date")
-add("DIRECT_DEBIT_AUTOBANK_client_did",
-    "Идентификатор клиента.",
-    "id")
-
-# Helper functions for repeated fields
-def add_win_agg(prefix, window, scope_desc, base_name="DIRECT_DEBIT_AUTOBANK"):
-    # prefix describes the semantic scope, e.g., "pay" or "sum_1m_by_product_card_deposit" etc.
-    # For general pay_* aggregates
-    if prefix == "pay":
-        add(f"{base_name}_{prefix}_sum_{window}", f"Сумма платежей {scope_desc} за последние {window.replace('m',' мес.')} до report_date.", "float")
-        add(f"{base_name}_{prefix}_avg_{window}", f"Средний размер платежа {scope_desc} за {window.replace('m',' мес.')}.", "float")
-        add(f"{base_name}_{prefix}_max_{window}", f"Максимальный платеж {scope_desc} за {window.replace('m',' мес.')}.", "float")
-        add(f"{base_name}_{prefix}_min_{window}", f"Минимальный платеж {scope_desc} за {window.replace('m',' мес.')}.", "float")
-        add(f"{base_name}_{prefix}_cnt_{window}", f"Количество платежей {scope_desc} за {window.replace('m',' мес.')}.", "int")
-        add(f"{base_name}_{prefix}_cnt_months_{window}", f"Количество месяцев с платежами {scope_desc} в окне {window.replace('m',' мес.')}.", "int")
-    else:
-        # For product/status splits where names are already embedded in prefix
-        add(f"{base_name}_{prefix.replace('sum_', 'sum_')}", f"Сумма платежей {scope_desc}.", "float")
-        add(f"{base_name}_{prefix.replace('sum_', 'avg_')}", f"Средний размер платежа {scope_desc}.", "float")
-        add(f"{base_name}_{prefix.replace('sum_', 'max_')}", f"Максимальный платеж {scope_desc}.", "float")
-        add(f"{base_name}_{prefix.replace('sum_', 'min_')}", f"Минимальный платеж {scope_desc}.", "float")
-        add(f"{base_name}_{prefix.replace('sum_', 'cnt_')}", f"Количество платежей {scope_desc}.", "int")
-
-# General aggregates
-for w in ["1m","3m","6m","12m"]:
-    add_win_agg("pay", w, "по всем контрактам")
-
-# Product splits
-products = [
-    ("by_product_card_deposit", "по продукту «(001) Карточный вклад (RUB)»"),
-    ("by_product_card_pension_deposit", "по продукту «(001) Карточный пенсионный вклад (RUB)»"),
-    ("by_product_current_account_partners", "по продукту «(001) Текущий счет Банки-партнеры (RUB)»")
-]
-
-for suffix, scope in products:
-    for w in ["1m","3m","6m","12m"]:
-        # Compose the 'sum' name used to generate others via replace in add_win_agg
-        prefix = f"sum_{w}_{suffix}"
-        add_win_agg(prefix, w, scope)
-
-# Status = Работает aggregates
-status_scope = "по платежам со статусом договора «Работает»"
-for w in ["1m","3m","6m","12m"]:
-    prefix = f"sum_{w}_by_status_active"
-    add_win_agg(prefix, w, status_scope)
-
-# Ratios
-add("DIRECT_DEBIT_AUTOBANK_ratio_sum_1m_to_3m", "Отношение суммы всех платежей за 1 мес. к сумме за 3 мес. (1м/3м).", "float")
-add("DIRECT_DEBIT_AUTOBANK_ratio_sum_3m_to_6m", "Отношение суммы всех платежей за 3 мес. к сумме за 6 мес. (3м/6м).", "float")
-add("DIRECT_DEBIT_AUTOBANK_ratio_sum_6m_to_12m", "Отношение суммы всех платежей за 6 мес. к сумме за 12 мес. (6м/12м).", "float")
-
-add("DIRECT_DEBIT_AUTOBANK_ratio_active_1m_to_all_1m", "Доля суммы платежей «Работает» в общей сумме за 1 мес. (1м актив / 1м все).", "float")
-add("DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_3m", "Доля суммы платежей «Работает» в общей сумме за 3 мес. (3м актив / 3м все).", "float")
-add("DIRECT_DEBIT_AUTOBANK_ratio_active_3m_to_all_6m", "Сумма «Работает» за 3 мес. / общая сумма за 6 мес.", "float")
-add("DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_6m", "Доля суммы платежей «Работает» в общей сумме за 6 мес. (6м актив / 6м все).", "float")
-add("DIRECT_DEBIT_AUTOBANK_ratio_active_6m_to_all_12m", "Сумма «Работает» за 6 мес. / общая сумма за 12 мес.", "float")
-add("DIRECT_DEBIT_AUTOBANK_ratio_active_12m_to_all_12m", "Доля суммы платежей «Работает» в общей сумме за 12 мес. (12м актив / 12м все).", "float")
-
-# Status/product card + dates
-add("DIRECT_DEBIT_AUTOBANK_count_contracts_total", "Количество контрактов клиента на срезе report_date.", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_contracts_active", "Количество контрактов со статусом «Работает».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_contracts_closed", "Количество контрактов со статусом «Закрыт».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_contracts_arrest", "Количество контрактов со статусом «Арестован».", "int")
-add("DIRECT_DEBIT_AUTOBANK_has_any_arrested", "Флаг (0/1): есть ли хотя бы один контракт со статусом «Арестован».", "int")
-
-add("DIRECT_DEBIT_AUTOBANK_count_products_card_deposit", "Количество контрактов по продукту «(001) Карточный вклад (RUB)».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_products_card_pension_deposit", "Количество контрактов по продукту «(001) Карточный пенсионный вклад (RUB)».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_products_current_account_partners", "Количество контрактов по продукту «(001) Текущий счет Банки-партнеры (RUB)».", "int")
-
-add("DIRECT_DEBIT_AUTOBANK_count_card_deposit_active", "Перекрёст: «Карточный вклад (RUB)» × «Работает».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_card_deposit_closed", "Перекрёст: «Карточный вклад (RUB)» × «Закрыт».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_card_deposit_arrested", "Перекрёст: «Карточный вклад (RUB)» × «Арестован».", "int")
-
-add("DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_active", "Перекрёст: «Карточный пенсионный вклад (RUB)» × «Работает».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_closed", "Перекрёст: «Карточный пенсионный вклад (RUB)» × «Закрыт».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_card_pension_deposit_arrested", "Перекрёст: «Карточный пенсионный вклад (RUB)» × «Арестован».", "int")
-
-add("DIRECT_DEBIT_AUTOBANK_count_current_account_partners_active", "Перекрёст: «Текущий счет Банки-партнеры (RUB)» × «Работает».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_current_account_partners_closed", "Перекрёст: «Текущий счет Банки-партнеры (RUB)» × «Закрыт».", "int")
-add("DIRECT_DEBIT_AUTOBANK_count_current_account_partners_arrested", "Перекрёст: «Текущий счет Банки-партнеры (RUB)» × «Арестован».", "int")
-
-add("DIRECT_DEBIT_AUTOBANK_days_since_last_payment", "Число дней от последней даты платежа до report_date (если известна).", "int")
-add("DIRECT_DEBIT_AUTOBANK_tenure_months", "Стаж в месяцах от минимальной даты начала контракта до report_date (если известна).", "int")
-
-# Create DataFrame
-df = pd.DataFrame(rows)
-
-# To make it easy for Excel consumption, keep the given order
-# Save to Excel
-path = "/mnt/data/DIRECT_DEBIT_AUTOBANK_data_dictionary.xlsx"
-df.to_excel(path, index=False)
+import plotly.graph_objects as go
+from jinja2 import Template
+import markdown
+import json
 
 
+class Section:
+    """Секция контента внутри ячейки."""
+    
+    def __init__(self, content_type: str, content: str, title: Optional[str] = None, 
+                 caption: Optional[str] = None):
+        self.content_type = content_type
+        self.content = content
+        self.title = title
+        self.caption = caption
+
+
+class Cell:
+    """Ячейка в строке сетки."""
+    
+    def __init__(self):
+        self.sections: List[Section] = []
+    
+    def add_markdown(self, text: str, title: Optional[str] = None, 
+                    caption: Optional[str] = None) -> 'Cell':
+        """Добавить Markdown контент."""
+        html_content = markdown.markdown(text)
+        section = Section('html', html_content, title, caption)
+        self.sections.append(section)
+        return self
+    
+    def add_plotly_figure(self, fig: go.Figure, title: Optional[str] = None, 
+                         caption: Optional[str] = None) -> 'Cell':
+        """Добавить Plotly график."""
+        # Улучшаем настройки графика для корректного отображения
+        fig.update_layout(
+            autosize=True,
+            margin=dict(l=60, r=20, t=80, b=90),  # Увеличили нижний отступ для легенды
+            legend=dict(
+                orientation="h",  # Горизонтальная легенда
+                yanchor="top",
+                y=-0.25,  # Дальше от графика, больше места от подписи оси
+                xanchor="center",
+                x=0.5,
+                bgcolor='rgba(255,255,255,0.9)',
+                bordercolor='rgba(0,0,0,0.3)',
+                borderwidth=1
+            )
+        )
+        
+        html_content = fig.to_html(
+            full_html=False, 
+            include_plotlyjs='inline', 
+            div_id=None,
+            config={
+                'displayModeBar': True,
+                'displaylogo': False,  # Убираем логотип Plotly
+                'modeBarButtonsToRemove': ['pan2d', 'lasso2d', 'select2d'],  # Убираем лишние кнопки
+                'responsive': True,
+                'toImageButtonOptions': {
+                    'format': 'png',
+                    'filename': 'chart',
+                    'height': 500,
+                    'width': 700,
+                    'scale': 1
+                }
+            }
+        )
+        section = Section('plotly', html_content, title, caption)
+        self.sections.append(section)
+        return self
+    
+    def add_html(self, html: str, title: Optional[str] = None, 
+                caption: Optional[str] = None) -> 'Cell':
+        """Добавить HTML контент."""
+        section = Section('html', html, title, caption)
+        self.sections.append(section)
+        return self
+    
+    def add_dataframe(self, df: pd.DataFrame, title: Optional[str] = None, 
+                     caption: Optional[str] = None, index: bool = False) -> 'Cell':
+        """Добавить DataFrame как таблицу."""
+        html_content = df.to_html(index=index, classes='dataframe-table', 
+                                 table_id=None, escape=False)
+        section = Section('dataframe', html_content, title, caption)
+        self.sections.append(section)
+        return self
+    
+    def add_kv(self, data: Dict[str, Any], title: Optional[str] = None, 
+              caption: Optional[str] = None) -> 'Cell':
+        """Добавить key-value данные."""
+        html_content = self._render_kv(data)
+        section = Section('kv', html_content, title, caption)
+        self.sections.append(section)
+        return self
+    
+    def _render_kv(self, data: Dict[str, Any]) -> str:
+        """Рендер key-value данных в HTML."""
+        items = []
+        for key, value in data.items():
+            # Форматируем значение
+            if isinstance(value, (int, float)):
+                formatted_value = f"{value:,}" if isinstance(value, int) else f"{value:.2f}"
+            else:
+                formatted_value = str(value)
+            
+            items.append(f'<div class="kv-item"><span class="kv-key">{key}</span><span class="kv-value">{formatted_value}</span></div>')
+        
+        return f'<div class="kv-container">{"".join(items)}</div>'
+
+
+class Row:
+    """Строка в сетке вкладки."""
+    
+    def __init__(self, layout: Literal['1x1', '1x2', '1x3']):
+        if layout not in ['1x1', '1x2', '1x3']:
+            raise ValueError(f"Неподдерживаемый layout: {layout}. Используйте '1x1', '1x2' или '1x3'")
+        
+        self.layout = layout
+        self.cells: List[Cell] = []
+        
+        # Создаём ячейки в зависимости от layout
+        cell_count = int(layout.split('x')[1])
+        for _ in range(cell_count):
+            self.cells.append(Cell())
+
+
+class Tab:
+    """Вкладка отчёта."""
+    
+    def __init__(self, title: str):
+        self.title = title
+        self.rows: List[Row] = []
+    
+    def add_row(self, layout: Literal['1x1', '1x2', '1x3']) -> Row:
+        """Добавить строку с указанным layout."""
+        row = Row(layout)
+        self.rows.append(row)
+        return row
+
+
+class Report:
+    """Основной класс отчёта."""
+    
+    def __init__(self, title: str, description: Optional[str] = None, 
+                 footer: Optional[str] = None):
+        self.title = title
+        self.description = description
+        self.footer = footer
+        self.tabs: List[Tab] = []
+    
+    def add_tab(self, title: str) -> Tab:
+        """Добавить вкладку."""
+        tab = Tab(title)
+        self.tabs.append(tab)
+        return tab
+    
+    def render(self) -> str:
+        """Сгенерировать HTML."""
+        template = Template(self._get_template())
+        return template.render(
+            report=self,
+            css=self._get_css(),
+            js=self._get_js()
+        )
+    
+    def save(self, path: str) -> None:
+        """Сохранить отчёт в файл."""
+        html_content = self.render()
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+    
+    def _get_template(self) -> str:
+        """HTML шаблон."""
+        return '''<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report.title }}</title>
+    <style>{{ css }}</style>
+</head>
+<body>
+    <div class="report-container">
+        <!-- Шапка -->
+        <header class="report-header">
+            <h1>{{ report.title }}</h1>
+            {% if report.description %}
+            <p class="report-description">{{ report.description }}</p>
+            {% endif %}
+        </header>
+        
+        <!-- Навигация по вкладкам -->
+        {% if report.tabs|length > 1 %}
+        <nav class="tab-nav">
+            {% for tab in report.tabs %}
+            <button class="tab-button {% if loop.first %}active{% endif %}" 
+                    onclick="switchTab('{{ loop.index0 }}')">
+                {{ tab.title }}
+            </button>
+            {% endfor %}
+        </nav>
+        {% endif %}
+        
+        <!-- Контент вкладок -->
+        <main class="tab-content">
+            {% for tab in report.tabs %}
+            <div class="tab-panel {% if loop.first %}active{% endif %}" id="tab-{{ loop.index0 }}">
+                {% for row in tab.rows %}
+                <div class="grid-row grid-{{ row.layout }}">
+                    {% for cell in row.cells %}
+                    <div class="grid-cell">
+                        {% for section in cell.sections %}
+                        <div class="content-section">
+                            {% if section.title %}
+                            <h3 class="section-title">{{ section.title }}</h3>
+                            {% endif %}
+                            <div class="section-content section-{{ section.content_type }}">
+                                {{ section.content|safe }}
+                            </div>
+                            {% if section.caption %}
+                            <p class="section-caption">{{ section.caption }}</p>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </main>
+        
+        <!-- Подвал -->
+        {% if report.footer %}
+        <footer class="report-footer">
+            <p>{{ report.footer }}</p>
+        </footer>
+        {% endif %}
+    </div>
+    
+    <script>{{ js }}</script>
+</body>
+</html>'''
+    
+    def _get_css(self) -> str:
+        """CSS стили."""
+        return '''
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        
+        .report-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .report-header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .report-header h1 {
+            color: #2c3e50;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .report-description {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+        }
+        
+        .tab-nav {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .tab-button {
+            padding: 12px 24px;
+            border: none;
+            background: #ecf0f1;
+            color: #34495e;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .tab-button:hover {
+            background: #d5dbdb;
+        }
+        
+        .tab-button.active {
+            background: #3498db;
+            color: white;
+        }
+        
+        .tab-panel {
+            display: none;
+        }
+        
+        .tab-panel.active {
+            display: block;
+        }
+        
+        .grid-row {
+            display: grid;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .grid-1x1 {
+            grid-template-columns: 1fr;
+        }
+        
+        .grid-1x2 {
+            grid-template-columns: 1fr 1fr;
+        }
+        
+        .grid-1x3 {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+        
+        @media (max-width: 768px) {
+            .grid-1x2,
+            .grid-1x3 {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .grid-cell {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .content-section {
+            padding: 20px;
+        }
+        
+        .content-section:not(:last-child) {
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .section-title {
+            color: #2c3e50;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .section-caption {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        
+        /* Стили для Markdown контента */
+        .section-content h2,
+        .section-content h3 {
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            line-height: 1.3;
+        }
+        
+        .section-content h2 {
+            font-size: 1.4rem;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 0.5rem;
+        }
+        
+        .section-content h3 {
+            font-size: 1.2rem;
+        }
+        
+        .section-content ul,
+        .section-content ol {
+            margin: 1rem 0;
+            padding-left: 1.5rem;
+            line-height: 1.6;
+        }
+        
+        .section-content li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .section-content p {
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+        
+        .section-content strong {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        /* Обеспечиваем правильное переносы в длинном тексте */
+        .section-content {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+        }
+        
+        /* Key-Value стили */
+        .kv-container {
+            display: grid;
+            gap: 8px;
+        }
+        
+        .kv-item {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 20px;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        
+        .kv-item:last-child {
+            border-bottom: none;
+        }
+        
+        .kv-key {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            font-weight: 600;
+            color: #2c3e50;
+            text-align: right;
+            white-space: nowrap;
+        }
+        
+        .kv-value {
+            color: #34495e;
+            word-wrap: break-word;
+        }
+        
+        /* DataFrame стили */
+        .dataframe-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        
+        .dataframe-table th,
+        .dataframe-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border: 1px solid #dee2e6;
+        }
+        
+        .dataframe-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .dataframe-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .dataframe-table tr:hover {
+            background-color: #e3f2fd;
+        }
+        
+        /* Plotly контейнер */
+        .section-plotly .plotly-graph-div {
+            width: 100% !important;
+            height: 450px !important;  /* Компактная высота */
+        }
+        
+        /* Исправление для легенды Plotly */
+        .section-plotly .legend {
+            max-width: none !important;
+        }
+        
+        /* Обеспечиваем корректное отображение графиков */
+        .section-plotly {
+            overflow: visible;
+            min-height: auto;  /* Автоматическая высота */
+            padding-bottom: 60px;  /* Место для легенды снизу */
+        }
+        
+        /* Стили для toolbar Plotly */
+        .section-plotly .modebar {
+            position: absolute !important;
+            top: 25px !important;  /* Больше отступ от заголовка */
+            right: 15px !important;
+            z-index: 1000;
+        }
+        
+        /* Дополнительные отступы для заголовков секций с графиками */
+        .section-plotly .section-title {
+            margin-bottom: 25px;  /* Больше отступ под заголовком */
+            padding-top: 5px;     /* Небольшой отступ сверху */
+        }
+        
+        .report-footer {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+            text-align: center;
+            color: #7f8c8d;
+        }
+        '''
+    
+    def _get_js(self) -> str:
+        """JavaScript для переключения вкладок."""
+        return '''
+        function switchTab(tabIndex) {
+            // Скрыть все панели
+            const panels = document.querySelectorAll('.tab-panel');
+            panels.forEach(panel => panel.classList.remove('active'));
+            
+            // Убрать активный класс с кнопок
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(button => button.classList.remove('active'));
+            
+            // Показать выбранную панель
+            const targetPanel = document.getElementById('tab-' + tabIndex);
+            if (targetPanel) {
+                targetPanel.classList.add('active');
+            }
+            
+            // Активировать выбранную кнопку
+            if (buttons[tabIndex]) {
+                buttons[tabIndex].classList.add('active');
+            }
+            
+            // Принудительно обновляем размеры Plotly графиков после переключения
+            setTimeout(function() {
+                const activePanel = document.getElementById('tab-' + tabIndex);
+                if (activePanel) {
+                    const plotlyDivs = activePanel.querySelectorAll('.plotly-graph-div');
+                    plotlyDivs.forEach(function(div) {
+                        if (window.Plotly && div.layout) {
+                            window.Plotly.Plots.resize(div);
+                        }
+                    });
+                }
+            }, 100);
+        }
+        
+        // Инициализация после загрузки страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            // Обеспечиваем корректное отображение графиков на активной вкладке
+            setTimeout(function() {
+                const activePanel = document.querySelector('.tab-panel.active');
+                if (activePanel) {
+                    const plotlyDivs = activePanel.querySelectorAll('.plotly-graph-div');
+                    plotlyDivs.forEach(function(div) {
+                        if (window.Plotly && div.layout) {
+                            window.Plotly.Plots.resize(div);
+                        }
+                    });
+                }
+            }, 500);
+        });
+        '''
