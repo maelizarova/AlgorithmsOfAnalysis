@@ -1,591 +1,105 @@
-"""
-HTML Report Generator
-
-Модуль для генерации единого HTML-файла отчёта с интерактивными графиками.
-Использует Jinja2 для шаблонов и Plotly для графиков.
-"""
-
-from typing import List, Literal, Optional, Dict, Any, Union
 import pandas as pd
-import plotly.graph_objects as go
-from jinja2 import Template
-import markdown
-import json
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import Optional, Tuple
 
-
-class Section:
-    """Секция контента внутри ячейки."""
-    
-    def __init__(self, content_type: str, content: str, title: Optional[str] = None, 
-                 caption: Optional[str] = None):
-        self.content_type = content_type
-        self.content = content
-        self.title = title
-        self.caption = caption
-
-
-class Cell:
-    """Ячейка в строке сетки."""
-    
-    def __init__(self):
-        self.sections: List[Section] = []
-    
-    def add_markdown(self, text: str, title: Optional[str] = None, 
-                    caption: Optional[str] = None) -> 'Cell':
-        """Добавить Markdown контент."""
-        html_content = markdown.markdown(text)
-        section = Section('html', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_plotly_figure(self, fig: go.Figure, title: Optional[str] = None, 
-                         caption: Optional[str] = None) -> 'Cell':
-        """Добавить Plotly график."""
-        # Улучшаем настройки графика для корректного отображения
-        fig.update_layout(
-            autosize=True,
-            margin=dict(l=60, r=20, t=80, b=90),  # Увеличили нижний отступ для легенды
-            legend=dict(
-                orientation="h",  # Горизонтальная легенда
-                yanchor="top",
-                y=-0.25,  # Дальше от графика, больше места от подписи оси
-                xanchor="center",
-                x=0.5,
-                bgcolor='rgba(255,255,255,0.9)',
-                bordercolor='rgba(0,0,0,0.3)',
-                borderwidth=1
+def plot_ml_splits_over_time(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    oot: Optional[pd.DataFrame] = None,
+    *,
+    date_col: str = "month",
+    target_col: str = "target",
+    id_col: Optional[str] = None,   # если None — считаем строки; иначе — уникальные id
+    freq: str = "MS",               # шаг агрегации: 'MS' = месяц сначала
+    title: str = "Размеры выборок и уровень таргета по месяцам",
+) -> Tuple[pd.DataFrame, plt.Axes, plt.Axes]:
+    """
+    Возвращает: (aggregated_df, ax_left, ax_right)
+      aggregated_df: колонки
+        month, train_cnt, test_cnt, oot_cnt, rr_train, rr_test, rr_oot
+    Предполагается, что target_col — бинарный (0/1). Для OOT можно передать None.
+    """
+    def _prep(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or len(df) == 0:
+            return pd.DataFrame(columns=["month", "cnt", "rr"])
+        tmp = df.copy()
+        tmp[date_col] = pd.to_datetime(tmp[date_col])
+        # нормализуем к началу периода (месяца)
+        tmp["month"] = tmp[date_col].dt.to_period("M").dt.to_timestamp(how="start")
+        if id_col:
+            g = tmp.groupby("month", as_index=False).agg(
+                cnt=(id_col, pd.Series.nunique),
+                rr=(target_col, "mean"),
             )
-        )
-        
-        html_content = fig.to_html(
-            full_html=False, 
-            include_plotlyjs='inline', 
-            div_id=None,
-            config={
-                'displayModeBar': True,
-                'displaylogo': False,  # Убираем логотип Plotly
-                'modeBarButtonsToRemove': ['pan2d', 'lasso2d', 'select2d'],  # Убираем лишние кнопки
-                'responsive': True,
-                'toImageButtonOptions': {
-                    'format': 'png',
-                    'filename': 'chart',
-                    'height': 500,
-                    'width': 700,
-                    'scale': 1
-                }
-            }
-        )
-        section = Section('plotly', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_html(self, html: str, title: Optional[str] = None, 
-                caption: Optional[str] = None) -> 'Cell':
-        """Добавить HTML контент."""
-        section = Section('html', html, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_dataframe(self, df: pd.DataFrame, title: Optional[str] = None, 
-                     caption: Optional[str] = None, index: bool = False) -> 'Cell':
-        """Добавить DataFrame как таблицу."""
-        html_content = df.to_html(index=index, classes='dataframe-table', 
-                                 table_id=None, escape=False)
-        section = Section('dataframe', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_kv(self, data: Dict[str, Any], title: Optional[str] = None, 
-              caption: Optional[str] = None) -> 'Cell':
-        """Добавить key-value данные."""
-        html_content = self._render_kv(data)
-        section = Section('kv', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def _render_kv(self, data: Dict[str, Any]) -> str:
-        """Рендер key-value данных в HTML."""
-        items = []
-        for key, value in data.items():
-            # Форматируем значение
-            if isinstance(value, (int, float)):
-                formatted_value = f"{value:,}" if isinstance(value, int) else f"{value:.2f}"
-            else:
-                formatted_value = str(value)
-            
-            items.append(f'<div class="kv-item"><span class="kv-key">{key}</span><span class="kv-value">{formatted_value}</span></div>')
-        
-        return f'<div class="kv-container">{"".join(items)}</div>'
+        else:
+            g = tmp.groupby("month", as_index=False).agg(
+                cnt=(target_col, "size"),
+                rr=(target_col, "mean"),
+            )
+        return g
 
+    g_train = _prep(train).rename(columns={"cnt": "train_cnt", "rr": "rr_train"})
+    g_test  = _prep(test).rename(columns={"cnt": "test_cnt",  "rr": "rr_test"})
+    g_oot   = _prep(oot).rename(columns={"cnt": "oot_cnt",   "rr": "rr_oot"})
 
-class Row:
-    """Строка в сетке вкладки."""
-    
-    def __init__(self, layout: Literal['1x1', '1x2', '1x3']):
-        if layout not in ['1x1', '1x2', '1x3']:
-            raise ValueError(f"Неподдерживаемый layout: {layout}. Используйте '1x1', '1x2' или '1x3'")
-        
-        self.layout = layout
-        self.cells: List[Cell] = []
-        
-        # Создаём ячейки в зависимости от layout
-        cell_count = int(layout.split('x')[1])
-        for _ in range(cell_count):
-            self.cells.append(Cell())
+    # Объединяем все месяцы (полное множество)
+    months = pd.Index(sorted(set(g_train["month"]).union(g_test["month"]).union(g_oot.get("month", pd.Index([])))), name="month")
+    out = pd.DataFrame(index=months).reset_index()
 
+    out = (out
+           .merge(g_train, on="month", how="left")
+           .merge(g_test,  on="month", how="left")
+           .merge(g_oot,   on="month", how="left"))
 
-class Tab:
-    """Вкладка отчёта."""
-    
-    def __init__(self, title: str):
-        self.title = title
-        self.rows: List[Row] = []
-    
-    def add_row(self, layout: Literal['1x1', '1x2', '1x3']) -> Row:
-        """Добавить строку с указанным layout."""
-        row = Row(layout)
-        self.rows.append(row)
-        return row
+    # заменим NaN для счётчиков на 0, для RR оставим NaN (не будет рисоваться)
+    for c in ["train_cnt", "test_cnt", "oot_cnt"]:
+        if c in out.columns:
+            out[c] = out[c].fillna(0).astype(int)
+    # убедимся, что RR в долях
+    for c in ["rr_train", "rr_test", "rr_oot"]:
+        if c in out.columns and c not in out.select_dtypes(include=[np.number]).columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce")
 
+    # ---- Plot ----
+    fig, ax_left = plt.subplots(figsize=(11, 4.8))
+    x = np.arange(len(out))
+    bw = 0.6
 
-class Report:
-    """Основной класс отчёта."""
-    
-    def __init__(self, title: str, description: Optional[str] = None, 
-                 footer: Optional[str] = None):
-        self.title = title
-        self.description = description
-        self.footer = footer
-        self.tabs: List[Tab] = []
-    
-    def add_tab(self, title: str) -> Tab:
-        """Добавить вкладку."""
-        tab = Tab(title)
-        self.tabs.append(tab)
-        return tab
-    
-    def render(self) -> str:
-        """Сгенерировать HTML."""
-        template = Template(self._get_template())
-        return template.render(
-            report=self,
-            css=self._get_css(),
-            js=self._get_js()
-        )
-    
-    def save(self, path: str) -> None:
-        """Сохранить отчёт в файл."""
-        html_content = self.render()
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-    
-    def _get_template(self) -> str:
-        """HTML шаблон."""
-        return '''<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ report.title }}</title>
-    <style>{{ css }}</style>
-</head>
-<body>
-    <div class="report-container">
-        <!-- Шапка -->
-        <header class="report-header">
-            <h1>{{ report.title }}</h1>
-            {% if report.description %}
-            <p class="report-description">{{ report.description }}</p>
-            {% endif %}
-        </header>
-        
-        <!-- Навигация по вкладкам -->
-        {% if report.tabs|length > 1 %}
-        <nav class="tab-nav">
-            {% for tab in report.tabs %}
-            <button class="tab-button {% if loop.first %}active{% endif %}" 
-                    onclick="switchTab('{{ loop.index0 }}')">
-                {{ tab.title }}
-            </button>
-            {% endfor %}
-        </nav>
-        {% endif %}
-        
-        <!-- Контент вкладок -->
-        <main class="tab-content">
-            {% for tab in report.tabs %}
-            <div class="tab-panel {% if loop.first %}active{% endif %}" id="tab-{{ loop.index0 }}">
-                {% for row in tab.rows %}
-                <div class="grid-row grid-{{ row.layout }}">
-                    {% for cell in row.cells %}
-                    <div class="grid-cell">
-                        {% for section in cell.sections %}
-                        <div class="content-section">
-                            {% if section.title %}
-                            <h3 class="section-title">{{ section.title }}</h3>
-                            {% endif %}
-                            <div class="section-content section-{{ section.content_type }}">
-                                {{ section.content|safe }}
-                            </div>
-                            {% if section.caption %}
-                            <p class="section-caption">{{ section.caption }}</p>
-                            {% endif %}
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </div>
-            {% endfor %}
-        </main>
-        
-        <!-- Подвал -->
-        {% if report.footer %}
-        <footer class="report-footer">
-            <p>{{ report.footer }}</p>
-        </footer>
-        {% endif %}
-    </div>
-    
-    <script>{{ js }}</script>
-</body>
-</html>'''
-    
-    def _get_css(self) -> str:
-        """CSS стили."""
-        return '''
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background-color: #f8f9fa;
-        }
-        
-        .report-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .report-header {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        .report-header h1 {
-            color: #2c3e50;
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-        
-        .report-description {
-            color: #7f8c8d;
-            font-size: 1.1rem;
-        }
-        
-        .tab-nav {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 20px;
-            background: white;
-            padding: 10px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .tab-button {
-            padding: 12px 24px;
-            border: none;
-            background: #ecf0f1;
-            color: #34495e;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .tab-button:hover {
-            background: #d5dbdb;
-        }
-        
-        .tab-button.active {
-            background: #3498db;
-            color: white;
-        }
-        
-        .tab-panel {
-            display: none;
-        }
-        
-        .tab-panel.active {
-            display: block;
-        }
-        
-        .grid-row {
-            display: grid;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .grid-1x1 {
-            grid-template-columns: 1fr;
-        }
-        
-        .grid-1x2 {
-            grid-template-columns: 1fr 1fr;
-        }
-        
-        .grid-1x3 {
-            grid-template-columns: 1fr 1fr 1fr;
-        }
-        
-        @media (max-width: 768px) {
-            .grid-1x2,
-            .grid-1x3 {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        .grid-cell {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .content-section {
-            padding: 20px;
-        }
-        
-        .content-section:not(:last-child) {
-            border-bottom: 1px solid #ecf0f1;
-        }
-        
-        .section-title {
-            color: #2c3e50;
-            font-size: 1.2rem;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-        
-        .section-caption {
-            margin-top: 10px;
-            font-size: 0.9rem;
-            color: #7f8c8d;
-            font-style: italic;
-        }
-        
-        /* Стили для Markdown контента */
-        .section-content h2,
-        .section-content h3 {
-            margin-top: 1.5rem;
-            margin-bottom: 1rem;
-            color: #2c3e50;
-            line-height: 1.3;
-        }
-        
-        .section-content h2 {
-            font-size: 1.4rem;
-            border-bottom: 2px solid #ecf0f1;
-            padding-bottom: 0.5rem;
-        }
-        
-        .section-content h3 {
-            font-size: 1.2rem;
-        }
-        
-        .section-content ul,
-        .section-content ol {
-            margin: 1rem 0;
-            padding-left: 1.5rem;
-            line-height: 1.6;
-        }
-        
-        .section-content li {
-            margin-bottom: 0.5rem;
-        }
-        
-        .section-content p {
-            margin-bottom: 1rem;
-            line-height: 1.6;
-        }
-        
-        .section-content strong {
-            color: #2c3e50;
-            font-weight: 600;
-        }
-        
-        /* Обеспечиваем правильное переносы в длинном тексте */
-        .section-content {
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            hyphens: auto;
-        }
-        
-        /* Key-Value стили */
-        .kv-container {
-            display: grid;
-            gap: 8px;
-        }
-        
-        .kv-item {
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 20px;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #f8f9fa;
-        }
-        
-        .kv-item:last-child {
-            border-bottom: none;
-        }
-        
-        .kv-key {
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-            font-weight: 600;
-            color: #2c3e50;
-            text-align: right;
-            white-space: nowrap;
-        }
-        
-        .kv-value {
-            color: #34495e;
-            word-wrap: break-word;
-        }
-        
-        /* DataFrame стили */
-        .dataframe-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-        
-        .dataframe-table th,
-        .dataframe-table td {
-            padding: 8px 12px;
-            text-align: left;
-            border: 1px solid #dee2e6;
-        }
-        
-        .dataframe-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #495057;
-        }
-        
-        .dataframe-table tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-        
-        .dataframe-table tr:hover {
-            background-color: #e3f2fd;
-        }
-        
-        /* Plotly контейнер */
-        .section-plotly .plotly-graph-div {
-            width: 100% !important;
-            height: 450px !important;  /* Компактная высота */
-        }
-        
-        /* Исправление для легенды Plotly */
-        .section-plotly .legend {
-            max-width: none !important;
-        }
-        
-        /* Обеспечиваем корректное отображение графиков */
-        .section-plotly {
-            overflow: visible;
-            min-height: auto;  /* Автоматическая высота */
-            padding-bottom: 60px;  /* Место для легенды снизу */
-        }
-        
-        /* Стили для toolbar Plotly */
-        .section-plotly .modebar {
-            position: absolute !important;
-            top: 25px !important;  /* Больше отступ от заголовка */
-            right: 15px !important;
-            z-index: 1000;
-        }
-        
-        /* Дополнительные отступы для заголовков секций с графиками */
-        .section-plotly .section-title {
-            margin-bottom: 25px;  /* Больше отступ под заголовком */
-            padding-top: 5px;     /* Небольшой отступ сверху */
-        }
-        
-        .report-footer {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-top: 20px;
-            text-align: center;
-            color: #7f8c8d;
-        }
-        '''
-    
-    def _get_js(self) -> str:
-        """JavaScript для переключения вкладок."""
-        return '''
-        function switchTab(tabIndex) {
-            // Скрыть все панели
-            const panels = document.querySelectorAll('.tab-panel');
-            panels.forEach(panel => panel.classList.remove('active'));
-            
-            // Убрать активный класс с кнопок
-            const buttons = document.querySelectorAll('.tab-button');
-            buttons.forEach(button => button.classList.remove('active'));
-            
-            // Показать выбранную панель
-            const targetPanel = document.getElementById('tab-' + tabIndex);
-            if (targetPanel) {
-                targetPanel.classList.add('active');
-            }
-            
-            // Активировать выбранную кнопку
-            if (buttons[tabIndex]) {
-                buttons[tabIndex].classList.add('active');
-            }
-            
-            // Принудительно обновляем размеры Plotly графиков после переключения
-            setTimeout(function() {
-                const activePanel = document.getElementById('tab-' + tabIndex);
-                if (activePanel) {
-                    const plotlyDivs = activePanel.querySelectorAll('.plotly-graph-div');
-                    plotlyDivs.forEach(function(div) {
-                        if (window.Plotly && div.layout) {
-                            window.Plotly.Plots.resize(div);
-                        }
-                    });
-                }
-            }, 100);
-        }
-        
-        // Инициализация после загрузки страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            // Обеспечиваем корректное отображение графиков на активной вкладке
-            setTimeout(function() {
-                const activePanel = document.querySelector('.tab-panel.active');
-                if (activePanel) {
-                    const plotlyDivs = activePanel.querySelectorAll('.plotly-graph-div');
-                    plotlyDivs.forEach(function(div) {
-                        if (window.Plotly && div.layout) {
-                            window.Plotly.Plots.resize(div);
-                        }
-                    });
-                }
-            }, 500);
-        });
-        '''
+    # stacked: train + test
+    ax_left.bar(x, out["train_cnt"], width=bw, label="train_cnt")
+    ax_left.bar(x, out["test_cnt"],  width=bw, bottom=out["train_cnt"], label="test_cnt")
+
+    # узкие столбики поверх — OOT (там, где есть)
+    if "oot_cnt" in out:
+        mask_oot = out["oot_cnt"] > 0
+        ax_left.bar(x[mask_oot], out.loc[mask_oot, "oot_cnt"], width=bw*0.5, label="OOT_cnt")
+
+    ax_left.set_ylabel("Количество клиентов")
+    ax_left.set_xticks(x)
+    ax_left.set_xticklabels(out["month"].dt.strftime("%d.%m.%Y"), rotation=40, ha="right")
+    ax_left.grid(True, axis="y", linestyle=":", linewidth=0.7, alpha=0.6)
+
+    ax_right = ax_left.twinx()
+    if "rr_train" in out:
+        ax_right.plot(x, out["rr_train"]*100, marker="o", label="RR Train")
+    if "rr_test" in out:
+        ax_right.plot(x, out["rr_test"]*100, marker="x", label="RR Test")
+    if "rr_oot" in out and "oot_cnt" in out:
+        ax_right.plot(x[mask_oot], (out.loc[mask_oot, "rr_oot"]*100), marker="o", linestyle="--", label="RR OOT")
+    ax_right.set_ylabel("RR, %")
+
+    # общая легенда
+    h1, l1 = ax_left.get_legend_handles_labels()
+    h2, l2 = ax_right.get_legend_handles_labels()
+    ax_left.legend(h1 + h2, l1 + l2, loc="upper right", frameon=True)
+
+    ax_left.set_title(title)
+    plt.tight_layout()
+
+    # готовим отдачу
+    result = out[["month",
+                  "train_cnt", "test_cnt"] + (["oot_cnt"] if "oot_cnt" in out else []) +
+                 ["rr_train", "rr_test"] + (["rr_oot"] if "rr_oot" in out else [])]
+
+    return result, ax_left, ax_right
