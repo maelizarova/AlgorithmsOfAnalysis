@@ -1,72 +1,56 @@
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
-from typing import Optional, Tuple
+from typing import Tuple
 
 def plot_counts_and_rate_over_time_plotly(
     data: pd.DataFrame,
-    date_col: str,                 # колонка с датой исходных событий
+    date_col: str,                 # колонка с датой
     target_col: str,               # колонка с таргетом (0/1 или доля)
-    count_col: Optional[str] = None, # если None — считаем строки; иначе суммируем эту колонку
-    id_col: Optional[str] = None,    # если задано — считаем уникальные id вместо строк
     title: str = "Размеры и Target rate по месяцам",
-    count_series_name: str = "Всего открытых автокредитов",
+    count_series_name: str = "Target count",
     rate_series_name: str = "Target rate",
     show: bool = True
 ) -> Tuple[pd.DataFrame, "go.Figure"]:
-    """
-    Возвращает:
-      df_agg: month, count, rate
-      fig: plotly Figure
+    """Бар по количеству + линия таргета на правой оси. Возвращает (df_agg, fig)."""
 
-    Правила агрегации:
-      - month = начало месяца
-      - count: id_col → nunique; elif count_col → sum; else → количество строк
-      - rate: mean(target_col)  (если 0/1 — это доля)
-    """
     df = data.copy()
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=[date_col])
 
-    # Нормализуем к началу месяца
+    # месяц = начало месяца
     df["month"] = df[date_col].dt.to_period("M").dt.to_timestamp()
 
-    agg_dict = {}
-    if id_col:
-        agg_dict["count"] = (id_col, pd.Series.nunique)
-    elif count_col:
-        agg_dict["count"] = (count_col, "sum")
-    else:
-        agg_dict["count"] = (target_col, "size")
+    # count = число строк; rate = среднее target (доля)
+    df_agg = (
+        df.groupby("month", as_index=False)
+          .agg(count=(target_col, "size"), rate=(target_col, "mean"))
+          .sort_values("month")
+    )
 
-    # доля таргета
-    agg_dict["rate"] = (target_col, "mean")
-
-    df_agg = (df.groupby("month", as_index=False)
-                .agg(**agg_dict)
-                .sort_values("month"))
-
-    # форматированные подписи
+    # подписи: форматируем тысячи пробелами (как в Excel-примере)
     def fmt_thousands(n: float) -> str:
-        # 1 906 — как в Excel-примере
         s = f"{int(round(n)):,}"
         return s.replace(",", " ")
 
-    bar_text = [fmt_thousands(v) for v in df_agg["count"]]
+    bar_text  = [fmt_thousands(v) for v in df_agg["count"]]
     line_text = [f"{int(round(r*100))}%" if pd.notna(r) else "" for r in df_agg["rate"]]
+
+    ymax = float(df_agg["count"].max() or 0)
+    pad  = ymax * 0.15  # запас сверху, чтобы надписи «outside» не резались
 
     fig = go.Figure()
 
-    # Столбики (левая ось)
+    # БАРЫ с подписями сверху
     fig.add_bar(
         x=df_agg["month"], y=df_agg["count"],
         name=count_series_name,
         text=bar_text,
-        textposition="outside",
-        marker=dict(line=dict(width=0))
+        textposition="outside",      # подписи над столбцами
+        textfont=dict(size=12),
+        marker=dict(line=dict(width=0)),
     )
 
-    # Линия (правая ось, в долях; ось отрисует проценты)
+    # ЛИНИЯ таргета (правая ось, проценты)
     fig.add_trace(go.Scatter(
         x=df_agg["month"], y=df_agg["rate"],
         mode="lines+markers+text",
@@ -74,19 +58,22 @@ def plot_counts_and_rate_over_time_plotly(
         yaxis="y2",
         text=line_text,
         textposition="top center",
-        line=dict(width=3, color="#D62728"),  # красная линия, как на скрине
-        marker=dict(size=8, line=dict(width=1, color="white"))
+        line=dict(width=3, color="#D62728"),
+        marker=dict(size=8, line=dict(width=1, color="white")),
     ))
 
     fig.update_layout(
         title=title,
         xaxis=dict(title=None, tickangle=45),
-        yaxis=dict(title="Количество клиентов", tickformat=",.0f"),
+        # верхний запас по оси Y, чтобы видно было подписи «outside»
+        yaxis=dict(title="Количество клиентов",
+                   tickformat=",.0f",
+                   range=[0, ymax + pad]),
         yaxis2=dict(title="RR, %", overlaying="y", side="right", tickformat=".0%"),
         bargap=0.25,
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=70, r=40, b=60, l=60)
+        margin=dict(t=70, r=60, b=70, l=70)
     )
 
     if show:
