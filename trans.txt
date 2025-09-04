@@ -1,66 +1,113 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_curve, roc_auc_score
 import plotly.graph_objects as go
 from typing import Tuple
 
-def plot_roc_curve_plotly_simple(
-    y_true,
-    y_score,
-    title: str = "ROC curve"
+def plot_lift_plotly(
+    df: pd.DataFrame,
+    pred_col: str,
+    target_col: str,
+    *,
+    q: int = 10,
+    name: str = "Лифт",
+    show: bool = True
 ) -> Tuple[pd.DataFrame, go.Figure]:
     """
-    Простой ROC-график для одной модели (бинарная классификация).
-    Вход:
-      - y_true: 1D массив истинных меток (0/1)
-      - y_score: 1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
-    Выход:
-      - df_points: DataFrame с FPR/TPR/threshold/AUC
-      - fig: plotly Figure
+    Лифт по децилям предсказанного скора.
+    Возвращает (df_lift, fig).
+
+    df_lift колонки:
+      bucket (1..q), count, true_count, share_true_pct,
+      mean_target, mean_score, mean_overall, lift
     """
-    y_true  = np.asarray(y_true)
-    y_score = np.asarray(y_score)
 
-    if y_score.ndim != 1:
-        raise ValueError("Ожидается 1D массив y_score (например, y_proba[:, 1]).")
+    data = df[[pred_col, target_col]].dropna().copy()
 
-    fpr, tpr, thr = roc_curve(y_true, y_score, pos_label=1)
-    auc = roc_auc_score(y_true, y_score)
+    # Децильные "бакеты" по предсказанию
+    # метки делаем 1..q (1 = низкие скора, q = высокие)
+    data["bucket"] = pd.qcut(data[pred_col], q=q, labels=range(1, q + 1), duplicates="drop")
 
-    df_points = pd.DataFrame({
-        "fpr": fpr,
-        "tpr": tpr,
-        "threshold": thr
-    })
-    df_points["auc"] = auc
-
-    # Линия 'chance'
-    chance = go.Scatter(
-        x=[0, 1], y=[0, 1],
-        mode="lines",
-        name="Chance",
-        line=dict(width=2, dash="dash", color="#999"),
-        hoverinfo="skip"
+    # Агрегация по бакетам
+    g = (
+        data.groupby("bucket", observed=False)
+            .agg(
+                mean_target=(target_col, "mean"),
+                mean_score=(pred_col, "mean"),
+                count=(target_col, "size"),
+                true_count=(target_col, "sum"),
+            )
+            .reset_index()
+            .astype({"bucket": int})
+            .sort_values("bucket")
     )
 
-    roc_trace = go.Scatter(
-        x=fpr, y=tpr,
-        mode="lines",
-        name=f"ROC (AUC={auc:.3f})",
-        hovertemplate="FPR: %{x:.3f}<br>TPR: %{y:.3f}<br>Threshold: %{customdata:.3f}",
-        customdata=thr,
-        line=dict(width=3)
+    mean_overall = data[target_col].mean()
+    g["mean_overall"] = mean_overall
+    g["lift"] = g["mean_target"] / mean_overall if mean_overall > 0 else 0.0
+
+    total_true = data[target_col].sum()
+    g["share_true_pct"] = np.where(total_true > 0, g["true_count"] / total_true * 100.0, 0.0)
+
+    # ------- Рисуем -------
+    fig = go.Figure()
+
+    # Бар: Lift (левая ось)
+    fig.add_bar(
+        x=g["bucket"], y=g["lift"],
+        name="Lift",
+        marker_color="silver",
+        text=[f"{c/1000:.1f}k" for c in g["count"]],   # подписи количества над столбцами
+        textposition="outside",
+        cliponaxis=False
     )
 
-    fig = go.Figure([chance, roc_trace])
+    # Линии: средний таргет в бакете, средний скор, средний по выборке (константа), правая ось
+    fig.add_trace(go.Scatter(
+        x=g["bucket"], y=g["mean_target"],
+        mode="lines", name="Средний таргет в бакете",
+        yaxis="y2", line=dict(width=3)
+    ))
+    fig.add_trace(go.Scatter(
+        x=g["bucket"], y=g["mean_score"],
+        mode="lines", name="Средний скор в бакете",
+        yaxis="y2", line=dict(width=3, color="#FF7F0E")
+    ))
+    fig.add_trace(go.Scatter(
+        x=g["bucket"], y=g["mean_overall"],
+        mode="lines", name="Средний таргет в выборке",
+        yaxis="y2", line=dict(width=2, dash="dash", color="#2ca02c")
+    ))
+
+    # Подписи «Доля true единиц» под осью X
+    fig.add_annotation(
+        xref="paper", yref="paper", x=0, y=-0.16,
+        text="Доля true единиц", showarrow=False, align="left"
+    )
+    for x_i, pct in zip(g["bucket"], g["share_true_pct"]):
+        fig.add_annotation(
+            x=x_i, yref="paper", y=-0.22,
+            text=f"{pct:.1f}%", showarrow=False
+        )
+
+    # Оси и оформление
+    ymax = float(max(1.0, g["lift"].max()))
     fig.update_layout(
-        title=title,
-        xaxis=dict(title="False Positive Rate (FPR)", range=[0, 1]),
-        yaxis=dict(title="True Positive Rate (TPR)",  range=[0, 1]),
+        title=f"{name}",
+        xaxis=dict(title="Бакеты", tickmode="array", tickvals=g["bucket"]),
+        yaxis=dict(title="Лифт", range=[0, ymax * 1.15]),          # запас сверху для подписей
+        yaxis2=dict(title="Средний таргет", overlaying="y", side="right"),
         template="plotly_white",
-        legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom"),
-        margin=dict(t=70, r=40, b=50, l=60),
-        hovermode="x unified"
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=70, r=70, b=120, l=70),
     )
 
-    return df_points, fig
+    if show:
+        fig.show()
+
+    # Итоговый датафрейм с метриками по бакетам
+    df_lift = g[[
+        "bucket", "count", "true_count", "share_true_pct",
+        "mean_target", "mean_score", "mean_overall", "lift"
+    ]].reset_index(drop=True)
+
+    return df_lift, fig
