@@ -1,113 +1,508 @@
-import numpy as np
+"""
+Пример отчёта о построении модели машинного обучения
+"""
+
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
-from typing import Tuple
+import plotly.express as px
+from plotly.subplots import make_subplots
+from sklearn.metrics import roc_curve, auc, precision_recall_curve
+from report_generator import Report
+import random
+from datetime import datetime, timedelta
 
-def plot_lift_plotly(
-    df: pd.DataFrame,
-    pred_col: str,
-    target_col: str,
-    *,
-    q: int = 10,
-    name: str = "Лифт",
-    show: bool = True
-) -> Tuple[pd.DataFrame, go.Figure]:
-    """
-    Лифт по децилям предсказанного скора.
-    Возвращает (df_lift, fig).
+def generate_sample_data():
+    """Генерация синтетических данных для демонстрации."""
+    
+    # Устанавливаем seed для воспроизводимости
+    np.random.seed(42)
+    random.seed(42)
+    
+    # Генерируем данные по месяцам
+    months = ['2023-01', '2023-02', '2023-03', '2023-04', '2023-05', '2023-06',
+              '2023-07', '2023-08', '2023-09', '2023-10', '2023-11', '2023-12']
+    
+    # Данные о количестве записей и целевой переменной по месяцам
+    monthly_data = []
+    for month in months:
+        # Имитируем сезонность
+        base_count = 10000 + np.random.normal(0, 1000)
+        if month in ['2023-11', '2023-12', '2023-01']:  # Зимние месяцы
+            count = int(base_count * 1.3)
+            target_rate = 0.15 + np.random.normal(0, 0.02)
+        elif month in ['2023-06', '2023-07', '2023-08']:  # Летние месяцы
+            count = int(base_count * 0.8)
+            target_rate = 0.08 + np.random.normal(0, 0.015)
+        else:
+            count = int(base_count)
+            target_rate = 0.12 + np.random.normal(0, 0.02)
+        
+        target_rate = max(0.05, min(0.25, target_rate))  # Ограничиваем диапазон
+        
+        monthly_data.append({
+            'month': month,
+            'total_records': count,
+            'positive_target': int(count * target_rate),
+            'target_rate': target_rate
+        })
+    
+    monthly_df = pd.DataFrame(monthly_data)
+    
+    # Генерируем данные для ROC и PR кривых
+    n_samples = 1000
+    
+    # Создаём синтетические предсказания модели
+    # Имитируем хорошую модель с AUC ~0.85
+    true_labels = np.random.binomial(1, 0.2, n_samples)
+    
+    # Генерируем предсказания с корреляцией к истинным меткам
+    noise = np.random.normal(0, 0.3, n_samples)
+    raw_scores = true_labels * 2 + noise
+    predictions = 1 / (1 + np.exp(-raw_scores))  # sigmoid
+    
+    return monthly_df, true_labels, predictions
 
-    df_lift колонки:
-      bucket (1..q), count, true_count, share_true_pct,
-      mean_target, mean_score, mean_overall, lift
-    """
-
-    data = df[[pred_col, target_col]].dropna().copy()
-
-    # Децильные "бакеты" по предсказанию
-    # метки делаем 1..q (1 = низкие скора, q = высокие)
-    data["bucket"] = pd.qcut(data[pred_col], q=q, labels=range(1, q + 1), duplicates="drop")
-
-    # Агрегация по бакетам
-    g = (
-        data.groupby("bucket", observed=False)
-            .agg(
-                mean_target=(target_col, "mean"),
-                mean_score=(pred_col, "mean"),
-                count=(target_col, "size"),
-                true_count=(target_col, "sum"),
-            )
-            .reset_index()
-            .astype({"bucket": int})
-            .sort_values("bucket")
-    )
-
-    mean_overall = data[target_col].mean()
-    g["mean_overall"] = mean_overall
-    g["lift"] = g["mean_target"] / mean_overall if mean_overall > 0 else 0.0
-
-    total_true = data[target_col].sum()
-    g["share_true_pct"] = np.where(total_true > 0, g["true_count"] / total_true * 100.0, 0.0)
-
-    # ------- Рисуем -------
+def create_roc_curve(y_true, y_scores):
+    """Создание ROC кривой."""
+    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    roc_auc = auc(fpr, tpr)
+    
     fig = go.Figure()
-
-    # Бар: Lift (левая ось)
-    fig.add_bar(
-        x=g["bucket"], y=g["lift"],
-        name="Lift",
-        marker_color="silver",
-        text=[f"{c/1000:.1f}k" for c in g["count"]],   # подписи количества над столбцами
-        textposition="outside",
-        cliponaxis=False
-    )
-
-    # Линии: средний таргет в бакете, средний скор, средний по выборке (константа), правая ось
+    
+    # ROC кривая
     fig.add_trace(go.Scatter(
-        x=g["bucket"], y=g["mean_target"],
-        mode="lines", name="Средний таргет в бакете",
-        yaxis="y2", line=dict(width=3)
+        x=fpr, y=tpr,
+        mode='lines',
+        name=f'ROC кривая (AUC = {roc_auc:.3f})',
+        line=dict(color='#e74c3c', width=3)
     ))
+    
+    # Диагональная линия (случайный классификатор)
     fig.add_trace(go.Scatter(
-        x=g["bucket"], y=g["mean_score"],
-        mode="lines", name="Средний скор в бакете",
-        yaxis="y2", line=dict(width=3, color="#FF7F0E")
+        x=[0, 1], y=[0, 1],
+        mode='lines',
+        name='Случайный классификатор',
+        line=dict(color='#95a5a6', width=2, dash='dash')
     ))
-    fig.add_trace(go.Scatter(
-        x=g["bucket"], y=g["mean_overall"],
-        mode="lines", name="Средний таргет в выборке",
-        yaxis="y2", line=dict(width=2, dash="dash", color="#2ca02c")
-    ))
-
-    # Подписи «Доля true единиц» под осью X
-    fig.add_annotation(
-        xref="paper", yref="paper", x=0, y=-0.16,
-        text="Доля true единиц", showarrow=False, align="left"
-    )
-    for x_i, pct in zip(g["bucket"], g["share_true_pct"]):
-        fig.add_annotation(
-            x=x_i, yref="paper", y=-0.22,
-            text=f"{pct:.1f}%", showarrow=False
-        )
-
-    # Оси и оформление
-    ymax = float(max(1.0, g["lift"].max()))
+    
     fig.update_layout(
-        title=f"{name}",
-        xaxis=dict(title="Бакеты", tickmode="array", tickvals=g["bucket"]),
-        yaxis=dict(title="Лифт", range=[0, ymax * 1.15]),          # запас сверху для подписей
-        yaxis2=dict(title="Средний таргет", overlaying="y", side="right"),
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=70, r=70, b=120, l=70),
+        title='ROC Кривая',
+        xaxis_title='False Positive Rate',
+        yaxis_title='True Positive Rate',
+        template='plotly_white',
+        height=450,  # Компактная высота
+        margin=dict(l=60, r=20, t=80, b=90),  # Увеличили нижний отступ для легенды
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.25,  # Дальше от подписи оси
+            xanchor="center",
+            x=0.5,
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor='rgba(0,0,0,0.3)',
+            borderwidth=1
+        )
     )
+    
+    return fig
 
-    if show:
-        fig.show()
+def create_pr_curve(y_true, y_scores):
+    """Создание Precision-Recall кривой."""
+    precision, recall, _ = precision_recall_curve(y_true, y_scores)
+    pr_auc = auc(recall, precision)
+    
+    fig = go.Figure()
+    
+    # PR кривая
+    fig.add_trace(go.Scatter(
+        x=recall, y=precision,
+        mode='lines',
+        name=f'PR кривая (AUC = {pr_auc:.3f})',
+        line=dict(color='#3498db', width=3)
+    ))
+    
+    # Базовая линия (доля положительных примеров)
+    baseline = np.sum(y_true) / len(y_true)
+    fig.add_trace(go.Scatter(
+        x=[0, 1], y=[baseline, baseline],
+        mode='lines',
+        name=f'Базовая линия (Precision = {baseline:.3f})',
+        line=dict(color='#95a5a6', width=2, dash='dash')
+    ))
+    
+    fig.update_layout(
+        title='Precision-Recall Кривая',
+        xaxis_title='Recall',
+        yaxis_title='Precision',
+        template='plotly_white',
+        height=450,  # Компактная высота
+        margin=dict(l=60, r=20, t=80, b=90),  # Увеличили нижний отступ для легенды
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.25,  # Дальше от подписи оси
+            xanchor="center",
+            x=0.5,
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor='rgba(0,0,0,0.3)',
+            borderwidth=1
+        )
+    )
+    
+    return fig
 
-    # Итоговый датафрейм с метриками по бакетам
-    df_lift = g[[
-        "bucket", "count", "true_count", "share_true_pct",
-        "mean_target", "mean_score", "mean_overall", "lift"
-    ]].reset_index(drop=True)
+def create_monthly_data_chart(monthly_df):
+    """График количества данных по месяцам."""
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Столбцы общего количества записей
+    fig.add_trace(
+        go.Bar(
+            x=monthly_df['month'],
+            y=monthly_df['total_records'],
+            name='Общее количество',
+            marker_color='#3498db',
+            opacity=0.7
+        ),
+        secondary_y=False,
+    )
+    
+    # Столбцы положительных примеров
+    fig.add_trace(
+        go.Bar(
+            x=monthly_df['month'],
+            y=monthly_df['positive_target'],
+            name='Положительные примеры',
+            marker_color='#e74c3c',
+            opacity=0.8
+        ),
+        secondary_y=False,
+    )
+    
+    # Настройки осей
+    fig.update_xaxes(title_text="Месяц")
+    fig.update_yaxes(title_text="Количество записей", secondary_y=False)
+    
+    fig.update_layout(
+        title='Количество данных по месяцам',
+        template='plotly_white',
+        height=500,
+        barmode='group',
+        legend=dict(
+            orientation="h",
+            yanchor="top", 
+            y=-0.25,  # Дальше от подписи оси
+            xanchor="center",
+            x=0.5,
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor='rgba(0,0,0,0.3)',
+            borderwidth=1
+        )
+    )
+    
+    return fig
 
-    return df_lift, fig
+def create_target_rate_chart(monthly_df):
+    """График уровня таргета по месяцам."""
+    fig = go.Figure()
+    
+    # Линия уровня таргета
+    fig.add_trace(go.Scatter(
+        x=monthly_df['month'],
+        y=monthly_df['target_rate'] * 100,  # Переводим в проценты
+        mode='lines+markers',
+        name='Уровень таргета',
+        line=dict(color='#27ae60', width=3),
+        marker=dict(size=8)
+    ))
+    
+    # Средняя линия
+    avg_target = monthly_df['target_rate'].mean() * 100
+    fig.add_trace(go.Scatter(
+        x=monthly_df['month'],
+        y=[avg_target] * len(monthly_df),
+        mode='lines',
+        name=f'Средний уровень ({avg_target:.1f}%)',
+        line=dict(color='#f39c12', width=2, dash='dash')
+    ))
+    
+    fig.update_layout(
+        title='Уровень целевой переменной по месяцам',
+        xaxis_title='Месяц',
+        yaxis_title='Уровень таргета (%)',
+        template='plotly_white',
+        height=500,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top", 
+            y=-0.25,  # Дальше от подписи оси
+            xanchor="center",
+            x=0.5,
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor='rgba(0,0,0,0.3)',
+            borderwidth=1
+        )
+    )
+    
+    return fig
+
+def create_feature_importance_chart():
+    """График важности признаков."""
+    features = [
+        'age', 'income', 'credit_score', 'account_balance', 
+        'transaction_count', 'days_since_last_transaction',
+        'product_usage_score', 'customer_segment', 'region', 'device_type'
+    ]
+    
+    # Генерируем случайные важности (сумма = 1)
+    importances = np.random.dirichlet(np.ones(len(features))) * 100
+    
+    # Сортируем по убыванию
+    feature_imp_df = pd.DataFrame({
+        'feature': features,
+        'importance': importances
+    }).sort_values('importance', ascending=True)
+    
+    fig = go.Figure(go.Bar(
+        x=feature_imp_df['importance'],
+        y=feature_imp_df['feature'],
+        orientation='h',
+        marker_color='#9b59b6'
+    ))
+    
+    fig.update_layout(
+        title='Важность признаков модели',
+        xaxis_title='Важность (%)',
+        yaxis_title='Признак',
+        template='plotly_white',
+        height=500,
+        margin=dict(l=150, r=50, t=80, b=50)
+    )
+    
+    return fig
+
+def main():
+    """Создание отчёта о модели машинного обучения."""
+    print("🤖 Генерирую отчёт о построении модели...")
+    
+    # Генерируем данные
+    monthly_df, y_true, y_scores = generate_sample_data()
+    
+    # Создаём отчёт
+    report = Report(
+        title="Отчёт о построении модели машинного обучения",
+        description="Анализ качества модели предсказания целевой переменной. "
+                   "Модель обучена на данных за 2023 год с использованием алгоритма градиентного бустинга.",
+        footer="Модель развёрнута в продакшн • Дата создания отчёта: " + 
+               datetime.now().strftime("%d.%m.%Y %H:%M")
+    )
+    
+    # === ВКЛАДКА 1: КАЧЕСТВО МОДЕЛИ ===
+    quality_tab = report.add_tab("Качество модели")
+    
+    # Строка 1x2: ROC и PR кривые
+    row1 = quality_tab.add_row("1x2")
+    
+    roc_fig = create_roc_curve(y_true, y_scores)
+    row1.cells[0].add_plotly_figure(
+        roc_fig,
+        title="ROC Кривая",
+        caption="Кривая ROC показывает соотношение TPR к FPR при разных порогах"
+    )
+    
+    pr_fig = create_pr_curve(y_true, y_scores)
+    row1.cells[1].add_plotly_figure(
+        pr_fig,
+        title="Precision-Recall Кривая", 
+        caption="PR кривая особенно важна для несбалансированных данных"
+    )
+    
+    # Строка 1x3: Основные метрики
+    row2 = quality_tab.add_row("1x3")
+    
+    # Метрики качества
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+    
+    y_pred = (y_scores > 0.5).astype(int)
+    
+    quality_metrics = {
+        "AUC-ROC": f"{auc(*roc_curve(y_true, y_scores)[:2]):.3f}",
+        "AUC-PR": f"{auc(*precision_recall_curve(y_true, y_scores)[:2]):.3f}",
+        "Accuracy": f"{accuracy_score(y_true, y_pred):.3f}",
+        "Precision": f"{precision_score(y_true, y_pred):.3f}",
+        "Recall": f"{recall_score(y_true, y_pred):.3f}",
+        "F1-Score": f"{f1_score(y_true, y_pred):.3f}"
+    }
+    
+    row2.cells[0].add_kv(
+        quality_metrics,
+        title="Метрики качества",
+        caption="Основные показатели производительности модели"
+    )
+    
+    # Параметры модели
+    model_params = {
+        "Алгоритм": "XGBoost",
+        "Количество деревьев": "500",
+        "Глубина": "6", 
+        "Learning rate": "0.1",
+        "Регуляризация": "L2 (0.01)",
+        "Время обучения": "12 мин"
+    }
+    
+    row2.cells[1].add_kv(
+        model_params,
+        title="Параметры модели",
+        caption="Конфигурация обученной модели"
+    )
+    
+    # Статистика данных
+    data_stats = {
+        "Размер обучающей выборки": "850,000",
+        "Размер тестовой выборки": "150,000", 
+        "Количество признаков": "47",
+        "Доля целевого класса": "12.3%",
+        "Пропущенные значения": "2.1%"
+    }
+    
+    row2.cells[2].add_kv(
+        data_stats,
+        title="Статистика данных",
+        caption="Основные характеристики датасета"
+    )
+    
+    # === ВКЛАДКА 2: АНАЛИЗ ДАННЫХ ===
+    data_tab = report.add_tab("Анализ данных")
+    
+    # Строка 1x2: Графики по данным
+    row3 = data_tab.add_row("1x2")
+    
+    monthly_chart = create_monthly_data_chart(monthly_df)
+    row3.cells[0].add_plotly_figure(
+        monthly_chart,
+        title="Объём данных по месяцам",
+        caption="Распределение общего количества записей и положительных примеров"
+    )
+    
+    target_chart = create_target_rate_chart(monthly_df)
+    row3.cells[1].add_plotly_figure(
+        target_chart,
+        title="Динамика целевой переменной",
+        caption="Изменение доли положительных примеров во времени"
+    )
+    
+    # Строка 1x1: Таблица с данными по месяцам
+    row4 = data_tab.add_row("1x1")
+    
+    # Форматируем таблицу для лучшего отображения
+    display_df = monthly_df.copy()
+    display_df['month'] = pd.to_datetime(display_df['month']).dt.strftime('%Y-%m')
+    display_df['target_rate'] = (display_df['target_rate'] * 100).round(2)
+    display_df.columns = ['Месяц', 'Всего записей', 'Положительные примеры', 'Уровень таргета (%)']
+    
+    # Добавляем итоговую строку
+    total_row = pd.DataFrame({
+        'Месяц': ['ИТОГО'],
+        'Всего записей': [display_df['Всего записей'].sum()],
+        'Положительные примеры': [display_df['Положительные примеры'].sum()],
+        'Уровень таргета (%)': [
+            (display_df['Положительные примеры'].sum() / 
+             display_df['Всего записей'].sum() * 100).round(2)
+        ]
+    })
+    
+    display_df = pd.concat([display_df, total_row], ignore_index=True)
+    
+    row4.cells[0].add_dataframe(
+        display_df,
+        title="Детальная статистика по месяцам",
+        caption="Помесячная разбивка данных с итоговыми показателями",
+        index=False
+    )
+    
+    # === ВКЛАДКА 3: ИНТЕРПРЕТАЦИЯ МОДЕЛИ ===
+    interpretation_tab = report.add_tab("Интерпретация")
+    
+    # Строка 1x2: Важность признаков и выводы
+    row5 = interpretation_tab.add_row("1x2")
+    
+    feature_imp_fig = create_feature_importance_chart()
+    row5.cells[0].add_plotly_figure(
+        feature_imp_fig,
+        title="Важность признаков",
+        caption="Топ-10 наиболее важных признаков для предсказания"
+    )
+    
+    row5.cells[1].add_markdown("""
+## 🎯 Ключевые выводы
+
+### Качество модели
+- **AUC-ROC: 0.85** - отличное качество разделения классов
+- **AUC-PR: 0.72** - хорошая точность для несбалансированных данных
+- **F1-Score: 0.68** - сбалансированная метрика precision/recall
+
+### Важные признаки
+1. **Credit Score** - кредитный рейтинг клиента
+2. **Income** - уровень дохода
+3. **Account Balance** - баланс счёта
+4. **Age** - возраст клиента
+
+### Сезонные паттерны
+- **Зимние месяцы**: повышенная активность (+30%)
+- **Летний период**: снижение активности (-20%)
+- **Стабильный таргет**: 12.3% в среднем
+
+### Рекомендации
+- Использовать модель для скоринга новых клиентов
+- Мониторить drift признаков ежемесячно
+- Переобучать модель каждые 3 месяца
+    """, title="Анализ результатов")
+    
+    # Строка 1x1: Матрица ошибок
+    row6 = interpretation_tab.add_row("1x1")
+    
+    from sklearn.metrics import confusion_matrix
+    cm = confusion_matrix(y_true, y_pred)
+    
+    confusion_fig = go.Figure(data=go.Heatmap(
+        z=cm,
+        x=['Predicted 0', 'Predicted 1'],
+        y=['Actual 0', 'Actual 1'],
+        colorscale='Blues',
+        text=cm,
+        texttemplate="%{text}",
+        textfont={"size": 20},
+        showscale=True
+    ))
+    
+    confusion_fig.update_layout(
+        title='Матрица ошибок',
+        xaxis_title='Предсказанный класс',
+        yaxis_title='Истинный класс',
+        template='plotly_white',
+        height=400,
+        margin=dict(l=80, r=50, t=80, b=80)
+    )
+    
+    row6.cells[0].add_plotly_figure(
+        confusion_fig,
+        title="Матрица ошибок",
+        caption="Распределение правильных и неправильных предсказаний модели"
+    )
+    
+    # Сохраняем отчёт
+    report.save("ml_model_report.html")
+    print("✅ Отчёт о модели сохранён в файл: ml_model_report.html")
+    print("📊 Отчёт содержит:")
+    print("   • ROC и Precision-Recall кривые")
+    print("   • Таблицы с данными по месяцам") 
+    print("   • График уровня таргета по времени")
+    print("   • Анализ важности признаков")
+    print("   • Матрицу ошибок и выводы")
+
+if __name__ == "__main__":
+    main()
