@@ -1,82 +1,106 @@
+import numpy as np
 import pandas as pd
+from typing import Dict, Union, Tuple, Optional
+from sklearn.metrics import roc_curve, roc_auc_score
 import plotly.graph_objects as go
-from typing import Tuple
 
-def plot_counts_and_rate_over_time_plotly(
-    data: pd.DataFrame,
-    date_col: str,                 # колонка с датой
-    target_col: str,               # колонка с таргетом (0/1 или доля)
-    title: str = "Размеры и Target rate по месяцам",
-    count_series_name: str = "Target count",
-    rate_series_name: str = "Target rate",
-    show: bool = True
-) -> Tuple[pd.DataFrame, "go.Figure"]:
-    """Бар по количеству + линия таргета на правой оси. Возвращает (df_agg, fig)."""
+ArrayLike = Union[np.ndarray, list, pd.Series]
 
-    df = data.copy()
-    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-    df = df.dropna(subset=[date_col])
+def plot_roc_curve_plotly(
+    y_true: ArrayLike,
+    scores: Union[ArrayLike, Dict[str, ArrayLike]],
+    *,
+    pos_label=1,
+    sample_weight: Optional[ArrayLike] = None,
+    title: str = "ROC curve (Plotly)"
+) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    Plotly-версия RocCurveDisplay.
+    
+    y_true:     истинные метки (0/1)
+    scores:     либо 1 массив предсказанных вероятностей/скорингов,
+                либо dict {'Model A': scores_a, 'Model B': scores_b, ...}
+                Для бинарной модели допускается форма (n_samples, 2) -> возьмётся колонка позитивного класса.
+    pos_label:  какое значение считать позитивным
+    sample_weight: веса наблюдений (опционально)
+    
+    Возвращает:
+      df_points: DataFrame с колонками [model, fpr, tpr, threshold, auc]
+      fig:       plotly.graph_objects.Figure
+    """
+    y_true = np.asarray(y_true)
 
-    # месяц = начало месяца
-    df["month"] = df[date_col].dt.to_period("M").dt.to_timestamp()
+    # унифицируем в словарь "имя -> скор"
+    if not isinstance(scores, dict):
+        scores = {"Model": scores}
 
-    # count = число строк; rate = среднее target (доля)
-    df_agg = (
-        df.groupby("month", as_index=False)
-          .agg(count=(target_col, "size"), rate=(target_col, "mean"))
-          .sort_values("month")
+    traces = []
+    rows = []
+
+    for name, s in scores.items():
+        s = np.asarray(s)
+        # если подали (n,2) вероятности — берём для pos_label
+        if s.ndim == 2 and s.shape[1] >= 2:
+            # предполагаем, что колонка pos_label=1 — это колонка 1
+            # при другом значении pos_label можно поменять индекс
+            col = 1 if pos_label == 1 else 0
+            s = s[:, col]
+
+        # ROC точки
+        fpr, tpr, thr = roc_curve(y_true, s, pos_label=pos_label, sample_weight=sample_weight)
+        auc = roc_auc_score(y_true, s, average="macro", sample_weight=sample_weight)
+
+        # копим строки таблицы
+        rows.append(pd.DataFrame({
+            "model": name,
+            "fpr": fpr,
+            "tpr": tpr,
+            "threshold": thr,
+            "auc": auc
+        }))
+
+        # интерактивный трейс
+        hover = (
+            "<b>%s</b><br>"
+            "FPR: %{x:.3f}<br>"
+            "TPR: %{y:.3f}<br>"
+            "Threshold: %{customdata:.3f}<br>"
+            "Specificity: %{customdata2:.3f}"  # 1 - FPR
+        ) % name
+
+        traces.append(go.Scatter(
+            x=fpr,
+            y=tpr,
+            mode="lines",
+            name=f"{name} (AUC={auc:.3f})",
+            customdata=thr,
+            customdata2=1 - fpr,
+            hovertemplate=hover,
+            line=dict(width=3)
+        ))
+
+    df_points = pd.concat(rows, ignore_index=True)
+
+    # диагональ "chance"
+    chance = go.Scatter(
+        x=[0, 1], y=[0, 1],
+        mode="lines",
+        name="Chance",
+        line=dict(width=2, dash="dash", color="#888"),
+        hoverinfo="skip",
+        showlegend=True
     )
 
-    # подписи: форматируем тысячи пробелами (как в Excel-примере)
-    def fmt_thousands(n: float) -> str:
-        s = f"{int(round(n)):,}"
-        return s.replace(",", " ")
-
-    bar_text  = [fmt_thousands(v) for v in df_agg["count"]]
-    line_text = [f"{int(round(r*100))}%" if pd.notna(r) else "" for r in df_agg["rate"]]
-
-    ymax = float(df_agg["count"].max() or 0)
-    pad  = ymax * 0.15  # запас сверху, чтобы надписи «outside» не резались
-
-    fig = go.Figure()
-
-    # БАРЫ с подписями сверху
-    fig.add_bar(
-        x=df_agg["month"], y=df_agg["count"],
-        name=count_series_name,
-        text=bar_text,
-        textposition="outside",      # подписи над столбцами
-        textfont=dict(size=12),
-        marker=dict(line=dict(width=0)),
-    )
-
-    # ЛИНИЯ таргета (правая ось, проценты)
-    fig.add_trace(go.Scatter(
-        x=df_agg["month"], y=df_agg["rate"],
-        mode="lines+markers+text",
-        name=rate_series_name,
-        yaxis="y2",
-        text=line_text,
-        textposition="top center",
-        line=dict(width=3, color="#D62728"),
-        marker=dict(size=8, line=dict(width=1, color="white")),
-    ))
-
+    # рисуем
+    fig = go.Figure([chance] + traces)
     fig.update_layout(
         title=title,
-        xaxis=dict(title=None, tickangle=45),
-        # верхний запас по оси Y, чтобы видно было подписи «outside»
-        yaxis=dict(title="Количество клиентов",
-                   tickformat=",.0f",
-                   range=[0, ymax + pad]),
-        yaxis2=dict(title="RR, %", overlaying="y", side="right", tickformat=".0%"),
-        bargap=0.25,
+        xaxis=dict(title="False Positive Rate (FPR)", range=[0, 1], constrain="domain"),
+        yaxis=dict(title="True Positive Rate (TPR)",  range=[0, 1]),
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=70, r=60, b=70, l=70)
+        margin=dict(t=70, r=30, b=50, l=60),
+        hovermode="x unified"
     )
-
-    if show:
-        fig.show()
-
-    return df_agg, fig
+    fig.show()
+    return df_points, fig
