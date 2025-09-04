@@ -1,81 +1,95 @@
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from typing import Optional, Tuple
 
-def plot_ml_splits_over_time_plotly(
-    train: pd.DataFrame,
-    test: pd.DataFrame,
-    oot: pd.DataFrame = None,
-    date_col: str = "month",
-    target_col: str = "target",
-    id_col: str = None,
-    title: str = "Размеры выборок и уровень таргета по месяцам"
-):
-    def _prep(df: pd.DataFrame):
-        if df is None or len(df) == 0:
-            return pd.DataFrame(columns=["month", "cnt", "rr"])
-        tmp = df.copy()
-        tmp[date_col] = pd.to_datetime(tmp[date_col])
-        tmp["month"] = tmp[date_col].dt.to_period("M").dt.to_timestamp()
-        if id_col:
-            g = tmp.groupby("month", as_index=False).agg(
-                cnt=(id_col, pd.Series.nunique),
-                rr=(target_col, "mean")
-            )
-        else:
-            g = tmp.groupby("month", as_index=False).agg(
-                cnt=(target_col, "size"),
-                rr=(target_col, "mean")
-            )
-        return g
+def plot_counts_and_rate_over_time_plotly(
+    data: pd.DataFrame,
+    date_col: str,                 # колонка с датой исходных событий
+    target_col: str,               # колонка с таргетом (0/1 или доля)
+    count_col: Optional[str] = None, # если None — считаем строки; иначе суммируем эту колонку
+    id_col: Optional[str] = None,    # если задано — считаем уникальные id вместо строк
+    title: str = "Размеры и Target rate по месяцам",
+    count_series_name: str = "Всего открытых автокредитов",
+    rate_series_name: str = "Target rate",
+    show: bool = True
+) -> Tuple[pd.DataFrame, "go.Figure"]:
+    """
+    Возвращает:
+      df_agg: month, count, rate
+      fig: plotly Figure
 
-    g_train = _prep(train).rename(columns={"cnt":"train_cnt","rr":"rr_train"})
-    g_test  = _prep(test ).rename(columns={"cnt":"test_cnt","rr":"rr_test"})
-    g_oot   = _prep(oot  ).rename(columns={"cnt":"oot_cnt" ,"rr":"rr_oot"})
+    Правила агрегации:
+      - month = начало месяца
+      - count: id_col → nunique; elif count_col → sum; else → количество строк
+      - rate: mean(target_col)  (если 0/1 — это доля)
+    """
+    df = data.copy()
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col])
 
-    # полная сетка месяцев
-    months = pd.DataFrame({"month": sorted(set(g_train["month"])|set(g_test["month"])|set(g_oot["month"]))})
-    df = (months.merge(g_train, on="month", how="left")
-                 .merge(g_test,  on="month", how="left")
-                 .merge(g_oot,   on="month", how="left"))
+    # Нормализуем к началу месяца
+    df["month"] = df[date_col].dt.to_period("M").dt.to_timestamp()
 
-    # NaN → 0 только для счетчиков
-    for c in ["train_cnt","test_cnt","oot_cnt"]:
-        if c in df: df[c] = df[c].fillna(0).astype(int)
+    agg_dict = {}
+    if id_col:
+        agg_dict["count"] = (id_col, pd.Series.nunique)
+    elif count_col:
+        agg_dict["count"] = (count_col, "sum")
+    else:
+        agg_dict["count"] = (target_col, "size")
 
-    # --- маски для линий (None, где счетчик = 0) ---
-    rr_train_y = [v*100 if (pd.notna(v) and cnt>0) else None
-                  for v, cnt in zip(df.get("rr_train"), df.get("train_cnt", 0))]
-    rr_test_y  = [v*100 if (pd.notna(v) and cnt>0) else None
-                  for v, cnt in zip(df.get("rr_test"),  df.get("test_cnt",  0))]
-    rr_oot_y   = [v*100 if (pd.notna(v) and cnt>0) else None
-                  for v, cnt in zip(df.get("rr_oot"),   df.get("oot_cnt",   0))]
+    # доля таргета
+    agg_dict["rate"] = (target_col, "mean")
+
+    df_agg = (df.groupby("month", as_index=False)
+                .agg(**agg_dict)
+                .sort_values("month"))
+
+    # форматированные подписи
+    def fmt_thousands(n: float) -> str:
+        # 1 906 — как в Excel-примере
+        s = f"{int(round(n)):,}"
+        return s.replace(",", " ")
+
+    bar_text = [fmt_thousands(v) for v in df_agg["count"]]
+    line_text = [f"{int(round(r*100))}%" if pd.notna(r) else "" for r in df_agg["rate"]]
 
     fig = go.Figure()
 
-    # stacked bars: train + test (+ oot где есть)
-    fig.add_bar(x=df["month"], y=df["train_cnt"], name="train_cnt")
-    fig.add_bar(x=df["month"], y=df["test_cnt"],  name="test_cnt")
-    fig.add_bar(x=df["month"], y=df["oot_cnt"],   name="OOT_cnt")
-
-    # lines on secondary axis, masked by nonzero counts
-    fig.add_trace(go.Scatter(x=df["month"], y=rr_train_y, mode="lines+markers",
-                             name="RR Train", yaxis="y2"))
-    fig.add_trace(go.Scatter(x=df["month"], y=rr_test_y,  mode="lines+markers",
-                             name="RR Test",  yaxis="y2"))
-    fig.add_trace(go.Scatter(x=df["month"], y=rr_oot_y,   mode="lines+markers",
-                             name="RR OOT",   yaxis="y2", line=dict(dash="dot")))
-
-    fig.update_layout(
-        barmode="stack",
-        title=title,
-        xaxis=dict(title="Месяц"),
-        yaxis=dict(title="Количество клиентов"),
-        yaxis2=dict(title="RR, %", overlaying="y", side="right"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        template="plotly_white"
+    # Столбики (левая ось)
+    fig.add_bar(
+        x=df_agg["month"], y=df_agg["count"],
+        name=count_series_name,
+        text=bar_text,
+        textposition="outside",
+        marker=dict(line=dict(width=0))
     )
 
-    # показать и вернуть
-    fig.show()
-    return df, fig
+    # Линия (правая ось, в долях; ось отрисует проценты)
+    fig.add_trace(go.Scatter(
+        x=df_agg["month"], y=df_agg["rate"],
+        mode="lines+markers+text",
+        name=rate_series_name,
+        yaxis="y2",
+        text=line_text,
+        textposition="top center",
+        line=dict(width=3, color="#D62728"),  # красная линия, как на скрине
+        marker=dict(size=8, line=dict(width=1, color="white"))
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title=None, tickangle=45),
+        yaxis=dict(title="Количество клиентов", tickformat=",.0f"),
+        yaxis2=dict(title="RR, %", overlaying="y", side="right", tickformat=".0%"),
+        bargap=0.25,
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=70, r=40, b=60, l=60)
+    )
+
+    if show:
+        fig.show()
+
+    return df_agg, fig
