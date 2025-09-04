@@ -1,11 +1,11 @@
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 
 def plot_ml_splits_over_time_plotly(
     train: pd.DataFrame,
     test: pd.DataFrame,
     oot: pd.DataFrame = None,
-    *,
     date_col: str = "month",
     target_col: str = "target",
     id_col: str = None,
@@ -18,54 +18,53 @@ def plot_ml_splits_over_time_plotly(
         tmp[date_col] = pd.to_datetime(tmp[date_col])
         tmp["month"] = tmp[date_col].dt.to_period("M").dt.to_timestamp()
         if id_col:
-            g = tmp.groupby("month").agg(
-                cnt=(id_col, "nunique"),
+            g = tmp.groupby("month", as_index=False).agg(
+                cnt=(id_col, pd.Series.nunique),
                 rr=(target_col, "mean")
-            ).reset_index()
+            )
         else:
-            g = tmp.groupby("month").agg(
+            g = tmp.groupby("month", as_index=False).agg(
                 cnt=(target_col, "size"),
                 rr=(target_col, "mean")
-            ).reset_index()
+            )
         return g
 
-    g_train = _prep(train).rename(columns={"cnt": "train_cnt", "rr": "rr_train"})
-    g_test  = _prep(test).rename(columns={"cnt": "test_cnt",  "rr": "rr_test"})
-    g_oot   = _prep(oot).rename(columns={"cnt": "oot_cnt",   "rr": "rr_oot"})
+    g_train = _prep(train).rename(columns={"cnt":"train_cnt","rr":"rr_train"})
+    g_test  = _prep(test ).rename(columns={"cnt":"test_cnt","rr":"rr_test"})
+    g_oot   = _prep(oot  ).rename(columns={"cnt":"oot_cnt" ,"rr":"rr_oot"})
 
-    df = pd.DataFrame({"month": sorted(
-        set(g_train["month"]) | set(g_test["month"]) | set(g_oot["month"])
-    )})
-    df = df.merge(g_train, on="month", how="left")
-    df = df.merge(g_test, on="month", how="left")
-    df = df.merge(g_oot, on="month", how="left")
+    # полная сетка месяцев
+    months = pd.DataFrame({"month": sorted(set(g_train["month"])|set(g_test["month"])|set(g_oot["month"]))})
+    df = (months.merge(g_train, on="month", how="left")
+                 .merge(g_test,  on="month", how="left")
+                 .merge(g_oot,   on="month", how="left"))
 
-    df = df.fillna(0)
+    # NaN → 0 только для счетчиков
+    for c in ["train_cnt","test_cnt","oot_cnt"]:
+        if c in df: df[c] = df[c].fillna(0).astype(int)
+
+    # --- маски для линий (None, где счетчик = 0) ---
+    rr_train_y = [v*100 if (pd.notna(v) and cnt>0) else None
+                  for v, cnt in zip(df.get("rr_train"), df.get("train_cnt", 0))]
+    rr_test_y  = [v*100 if (pd.notna(v) and cnt>0) else None
+                  for v, cnt in zip(df.get("rr_test"),  df.get("test_cnt",  0))]
+    rr_oot_y   = [v*100 if (pd.notna(v) and cnt>0) else None
+                  for v, cnt in zip(df.get("rr_oot"),   df.get("oot_cnt",   0))]
 
     fig = go.Figure()
 
-    # stacked bars: train + test
+    # stacked bars: train + test (+ oot где есть)
     fig.add_bar(x=df["month"], y=df["train_cnt"], name="train_cnt")
-    fig.add_bar(x=df["month"], y=df["test_cnt"], name="test_cnt")
+    fig.add_bar(x=df["month"], y=df["test_cnt"],  name="test_cnt")
+    fig.add_bar(x=df["month"], y=df["oot_cnt"],   name="OOT_cnt")
 
-    # OOT bars
-    if "oot_cnt" in df:
-        fig.add_bar(x=df["month"], y=df["oot_cnt"], name="OOT_cnt")
-
-    # RR lines (secondary axis)
-    fig.add_trace(go.Scatter(
-        x=df["month"], y=df["rr_train"]*100,
-        mode="lines+markers", name="RR Train", yaxis="y2"
-    ))
-    fig.add_trace(go.Scatter(
-        x=df["month"], y=df["rr_test"]*100,
-        mode="lines+markers", name="RR Test", yaxis="y2"
-    ))
-    if "rr_oot" in df:
-        fig.add_trace(go.Scatter(
-            x=df["month"], y=df["rr_oot"]*100,
-            mode="lines+markers", name="RR OOT", yaxis="y2", line=dict(dash="dot")
-        ))
+    # lines on secondary axis, masked by nonzero counts
+    fig.add_trace(go.Scatter(x=df["month"], y=rr_train_y, mode="lines+markers",
+                             name="RR Train", yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df["month"], y=rr_test_y,  mode="lines+markers",
+                             name="RR Test",  yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df["month"], y=rr_oot_y,   mode="lines+markers",
+                             name="RR OOT",   yaxis="y2", line=dict(dash="dot")))
 
     fig.update_layout(
         barmode="stack",
@@ -77,5 +76,6 @@ def plot_ml_splits_over_time_plotly(
         template="plotly_white"
     )
 
+    # показать и вернуть
     fig.show()
     return df, fig
