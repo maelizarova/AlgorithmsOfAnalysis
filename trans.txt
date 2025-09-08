@@ -1,60 +1,43 @@
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from typing import Tuple
-
-def plot_psi_over_time_plotly_all(
-    psi_pivot: pd.DataFrame,
-    title: str = "PSI по месяцам",
-    thresholds: tuple[float, float] = (0.10, 0.25),  # референс-линии
-) -> Tuple[pd.DataFrame, "go.Figure"]:
-    """
-    psi_pivot: DataFrame
-        index  -> имена фичей
-        columns-> даты (datetime или строки)
-        values -> PSI (float)
-    Возвращает:
-        df_long: ['feature','date','psi']
-        fig: Plotly Figure
-    """
-    if psi_pivot.empty:
-        raise ValueError("psi_pivot пуст.")
-
-    # long-формат для ВСЕХ фичей из индекса
-    df_long = (
-        psi_pivot.assign(feature=lambda d: d.index)
-                 .reset_index(drop=True)
-                 .melt(id_vars="feature", var_name="date", value_name="psi")
-    )
-    # даты -> datetime (если распарсятся)
-    df_long["date"] = pd.to_datetime(df_long["date"], errors="coerce")
-    df_long = df_long.sort_values(["feature", "date"]).reset_index(drop=True)
-
-    # фигура
-    fig = go.Figure()
-    for f, part in df_long.groupby("feature", sort=False):
-        fig.add_trace(go.Scatter(
-            x=part["date"], y=part["psi"],
-            mode="lines+markers",
-            name=str(f),
-            hovertemplate=f"<b>{f}</b><br>Дата: %{x|%Y-%m-%d}<br>PSI: %{y:.4f}<extra></extra>",
-            line=dict(width=3),
-            marker=dict(size=6, line=dict(width=1, color="white"))
-        ))
-
-    # референс-линии PSI
-    for thr in thresholds:
-        fig.add_hline(y=thr, line_dash="dash", line_color="#888",
-                      annotation_text=f"{thr:.2f}", annotation_position="top left")
-
-    ymax = np.nanmax(df_long["psi"].values)
-    fig.update_layout(
-        title=title,
-        xaxis=dict(title="Дата"),
-        yaxis=dict(title="PSI", range=[0, max(0.3, float(ymax)*1.15)]),
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=70, r=40, b=60, l=60)
-    )
-
-    return df_long, fig
+def add_plotly_figure(self, fig: go.Figure, title: Optional[str] = None, 
+                         caption: Optional[str] = None, height: Optional[int] = None) -> 'Cell':
+        """Добавить Plotly график."""
+        # Улучшаем настройки графика для корректного отображения
+        fig.update_layout(
+            autosize=True,
+            margin=dict(l=60, r=20, t=80, b=90),  # Увеличили нижний отступ для легенды
+            legend=dict(
+                orientation="h",  # Горизонтальная легенда
+                yanchor="top",
+                y=-0.25,  # Дальше от графика, больше места от подписи оси
+                xanchor="center",
+                x=0.5,
+                bgcolor='rgba(255,255,255,0.9)',
+                bordercolor='rgba(0,0,0,0.3)',
+                borderwidth=1
+            )
+        )
+        
+        # Высота по умолчанию или заданная пользователем
+        default_height = f"{height}px" if height else '450px'
+        html_content = fig.to_html(
+            full_html=False, 
+            include_plotlyjs='inline', 
+            div_id=None,
+            default_height=default_height,
+            config={
+                'displayModeBar': True,
+                'displaylogo': False,  # Убираем логотип Plotly
+                'modeBarButtonsToRemove': ['pan2d', 'lasso2d', 'select2d'],  # Убираем лишние кнопки
+                'responsive': True,
+                'toImageButtonOptions': {
+                    'format': 'png',
+                    'filename': 'chart',
+                    'height': 500,
+                    'width': 700,
+                    'scale': 1
+                }
+            }
+        )
+        section = Section('plotly', html_content, title, caption)
+        self.sections.append(section)
+        return self
