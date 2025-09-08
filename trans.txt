@@ -1,9 +1,42 @@
-# Полностью удаляем width/height из layout, если они были заданы ранее
-        try:
-            layout_dict = fig.layout.to_plotly_json() if hasattr(fig, 'layout') else {}
-            if 'width' in layout_dict or 'height' in layout_dict:
-                layout_dict.pop('width', None)
-                layout_dict.pop('height', None)
-                fig.layout = go.Layout(**layout_dict)
-        except Exception:
-            pass
+import pandas as pd
+
+def decile_target_breakdown(
+    df: pd.DataFrame,
+    score_col: str,          # скор/вероятность
+    target_col: str,         # 0/1
+    id_col: str,
+    q: int = 10,
+    as_percent: bool = True  # вернуть ratio в процентах
+) -> pd.DataFrame:
+    d = df[[score_col, target_col] + ([id_col] if id_col else [])].dropna().copy()
+
+    # Дециль: 1 = максимум score
+    d["decile"] = pd.qcut(-d[score_col], q=q, labels=False, duplicates="drop") + 1
+
+    # target_0 / target_1 по децилям
+    pivot = (
+        d.groupby(["decile", target_col])[unit]
+         .nunique()
+         .unstack(fill_value=0)
+         .rename(columns={0: "target_0", 1: "target_1"})
+         .reset_index()
+         .sort_values("decile")
+    )
+
+    # всего клиентов в дециле
+    pivot["client_all"] = pivot["target_0"] + pivot["target_1"]
+
+    # доля target=1 в дециле от общего числа target=1 по всей выборке
+    total_pos = pivot["target_1"].sum()
+    pivot["ratio"] = pivot["target_1"] / total_pos if total_pos > 0 else 0.0
+
+    # формат процентов по желанию
+    if as_percent:
+        pivot["ratio"] = (pivot["ratio"] * 100).round(2).astype(str) + "%"
+
+    # привести тип decile к int (а не category)
+    pivot["decile"] = pivot["decile"].astype(int)
+
+    # финальные колонки в нужном порядке
+    pivot = pivot[["decile", "target_0", "target_1", "client_all", "ratio"]]
+    return pivot
