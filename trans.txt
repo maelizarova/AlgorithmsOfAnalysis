@@ -1,53 +1,60 @@
-import numpy as np
 import pandas as pd
-from sklearn.metrics import confusion_matrix
+import numpy as np
 import plotly.graph_objects as go
-from typing import Tuple, Sequence, Optional
+from typing import Tuple
 
-def plot_confusion_matrix_plotly_simple(
-    y_true: Sequence,
-    y_pred: Optional[Sequence] = None,
-    y_score: Optional[Sequence] = None,
-    threshold: float = 0.5,
-    title: str = "Confusion matrix"
-) -> Tuple[pd.DataFrame, go.Figure]:
-    y_true = np.asarray(y_true)
+def plot_psi_over_time_plotly_all(
+    psi_pivot: pd.DataFrame,
+    title: str = "PSI по месяцам",
+    thresholds: tuple[float, float] = (0.10, 0.25),  # референс-линии
+) -> Tuple[pd.DataFrame, "go.Figure"]:
+    """
+    psi_pivot: DataFrame
+        index  -> имена фичей
+        columns-> даты (datetime или строки)
+        values -> PSI (float)
+    Возвращает:
+        df_long: ['feature','date','psi']
+        fig: Plotly Figure
+    """
+    if psi_pivot.empty:
+        raise ValueError("psi_pivot пуст.")
 
-    if y_pred is None:
-        if y_score is None:
-            raise ValueError("Передай либо y_pred, либо y_score + threshold.")
-        y_score = np.asarray(y_score)
-        if y_score.ndim != 1:
-            raise ValueError("y_score должен быть 1D (например, y_proba[:, 1]).")
-        y_pred = (y_score >= threshold).astype(int)
-    else:
-        y_pred = np.asarray(y_pred)
-
-    # фиксируем порядок меток по объединению y_true и y_pred
-    labels = np.unique(np.concatenate([y_true, y_pred]))
-
-    cm = confusion_matrix(y_true, y_pred, labels=labels)  # абсолюты
-    df_cm = pd.DataFrame(cm, index=labels, columns=labels)
-
-    fig = go.Figure(
-        data=go.Heatmap(
-            z=df_cm.values,
-            x=[str(x) for x in df_cm.columns],
-            y=[str(y) for y in df_cm.index],
-            colorscale="Blues",
-            colorbar=dict(title="Count"),
-            text=df_cm.values.astype(int),
-            texttemplate="%{text}",
-            textfont=dict(size=12),
-            hovertemplate="True: %{y}<br>Pred: %{x}<br>Count: %{z}<extra></extra>"
-        )
+    # long-формат для ВСЕХ фичей из индекса
+    df_long = (
+        psi_pivot.assign(feature=lambda d: d.index)
+                 .reset_index(drop=True)
+                 .melt(id_vars="feature", var_name="date", value_name="psi")
     )
+    # даты -> datetime (если распарсятся)
+    df_long["date"] = pd.to_datetime(df_long["date"], errors="coerce")
+    df_long = df_long.sort_values(["feature", "date"]).reset_index(drop=True)
+
+    # фигура
+    fig = go.Figure()
+    for f, part in df_long.groupby("feature", sort=False):
+        fig.add_trace(go.Scatter(
+            x=part["date"], y=part["psi"],
+            mode="lines+markers",
+            name=str(f),
+            hovertemplate=f"<b>{f}</b><br>Дата: %{x|%Y-%m-%d}<br>PSI: %{y:.4f}<extra></extra>",
+            line=dict(width=3),
+            marker=dict(size=6, line=dict(width=1, color="white"))
+        ))
+
+    # референс-линии PSI
+    for thr in thresholds:
+        fig.add_hline(y=thr, line_dash="dash", line_color="#888",
+                      annotation_text=f"{thr:.2f}", annotation_position="top left")
+
+    ymax = np.nanmax(df_long["psi"].values)
     fig.update_layout(
         title=title,
-        xaxis=dict(title="Predicted"),
-        yaxis=dict(title="True", autorange="reversed"),
+        xaxis=dict(title="Дата"),
+        yaxis=dict(title="PSI", range=[0, max(0.3, float(ymax)*1.15)]),
         template="plotly_white",
-        margin=dict(t=70, r=40, b=60, l=70)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=70, r=40, b=60, l=60)
     )
 
-    return df_cm, fig
+    return df_long, fig
