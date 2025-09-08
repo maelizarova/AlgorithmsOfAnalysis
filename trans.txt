@@ -1,42 +1,68 @@
+import numpy as np
 import pandas as pd
+from sklearn.metrics import precision_recall_curve, average_precision_score
+import plotly.graph_objects as go
+from typing import Tuple
 
-def decile_target_breakdown(
-    df: pd.DataFrame,
-    score_col: str,          # скор/вероятность
-    target_col: str,         # 0/1
-    id_col: str,
-    q: int = 10,
-    as_percent: bool = True  # вернуть ratio в процентах
-) -> pd.DataFrame:
-    d = df[[score_col, target_col] + ([id_col] if id_col else [])].dropna().copy()
+def plot_pr_curve_plotly_simple(
+    y_true,
+    y_score,
+    title: str = "Precision–Recall curve"
+) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    y_true : 1D массив меток (0/1)
+    y_score: 1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
+    """
+    y_true  = np.asarray(y_true)
+    y_score = np.asarray(y_score)
+    if y_score.ndim != 1:
+        raise ValueError("Ожидается 1D массив y_score (например, y_proba[:, 1]).")
 
-    # Дециль: 1 = максимум score
-    d["decile"] = pd.qcut(-d[score_col], q=q, labels=False, duplicates="drop") + 1
+    precision, recall, thresholds = precision_recall_curve(y_true, y_score, pos_label=1)
+    ap = average_precision_score(y_true, y_score)
+    prevalence = y_true.mean()  # базовый уровень precision у случайного классификатора
 
-    # target_0 / target_1 по децилям
-    pivot = (
-        d.groupby(["decile", target_col])[unit]
-         .nunique()
-         .unstack(fill_value=0)
-         .rename(columns={0: "target_0", 1: "target_1"})
-         .reset_index()
-         .sort_values("decile")
+    # precision_recall_curve возвращает thresholds на 1 короче
+    thr_padded = np.r_[np.nan, thresholds]
+
+    df_points = pd.DataFrame({
+        "recall": recall,
+        "precision": precision,
+        "threshold": thr_padded
+    })
+    df_points["average_precision"] = ap
+    df_points["prevalence"] = prevalence
+
+    # График
+    fig = go.Figure()
+
+    # Базовая линия (доля позитивов)
+    fig.add_trace(go.Scatter(
+        x=[0, 1], y=[prevalence, prevalence],
+        mode="lines",
+        name=f"Baseline (prevalence={prevalence:.3f})",
+        line=dict(dash="dash", color="#888"),
+        hoverinfo="skip"
+    ))
+
+    # PR-кривая
+    fig.add_trace(go.Scatter(
+        x=recall, y=precision,
+        mode="lines",
+        name=f"PR (AP={ap:.3f})",
+        customdata=thr_padded,
+        hovertemplate="Recall: %{x:.3f}<br>Precision: %{y:.3f}<br>Threshold: %{customdata:.3f}",
+        line=dict(width=3)
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="Recall", range=[0, 1], tickformat=".2f"),
+        yaxis=dict(title="Precision", range=[0, 1], tickformat=".2f"),
+        template="plotly_white",
+        legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom"),
+        margin=dict(t=70, r=40, b=50, l=60),
+        hovermode="x unified"
     )
 
-    # всего клиентов в дециле
-    pivot["client_all"] = pivot["target_0"] + pivot["target_1"]
-
-    # доля target=1 в дециле от общего числа target=1 по всей выборке
-    total_pos = pivot["target_1"].sum()
-    pivot["ratio"] = pivot["target_1"] / total_pos if total_pos > 0 else 0.0
-
-    # формат процентов по желанию
-    if as_percent:
-        pivot["ratio"] = (pivot["ratio"] * 100).round(2).astype(str) + "%"
-
-    # привести тип decile к int (а не category)
-    pivot["decile"] = pivot["decile"].astype(int)
-
-    # финальные колонки в нужном порядке
-    pivot = pivot[["decile", "target_0", "target_1", "client_all", "ratio"]]
-    return pivot
+    return df_points, fig
