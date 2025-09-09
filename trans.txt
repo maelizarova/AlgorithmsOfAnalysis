@@ -1,64 +1,64 @@
+"""
+Библиотека для анализа результатов построения и обучения модели
+и визуализации графиков с использованием Plotly.
+
+Содержит функции для:
+- Анализа размеров выборок и уровня таргета по месяцам
+- ROC-кривых и Precision-Recall кривых
+- Confusion matrix
+- Lift-анализа
+- PSI-анализа
+- Gini-анализа по месяцам
+"""
+
 import pandas as pd
 import numpy as np
-import os
-from typing import Tuple, Union, Optional, Dict, List, Any, Sequence
+import plotly.graph_objects as go
+from typing import Tuple, Optional, Sequence, Dict, List, Any
 
-import lightgbm as lgbm  
-from lightgbm import LGBMClassifier, LGBMRegressor, early_stopping, log_evaluation
-from catboost import (
-    CatBoostRegressor, 
-    CatBoostClassifier, 
-    Pool, 
-    EShapCalcType, 
-    EFeaturesSelectionAlgorithm
-)
-
-from sklearn.base import BaseEstimator
-from sklearn.model_selection import train_test_split, GridSearchCV 
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder, OrdinalEncoder
 from sklearn.metrics import (
-    accuracy_score, 
-    precision_score, 
-    recall_score,
-    f1_score, 
-    roc_auc_score, 
-    log_loss, 
-    mean_squared_error, 
-    mean_absolute_error, 
-    mean_absolute_percentage_error, 
-    r2_score,
-    get_scorer,
-    classification_report, 
-    confusion_matrix, 
-    fbeta_score, 
-    roc_curve, 
+    roc_auc_score,
+    roc_curve,
     precision_recall_curve,
     average_precision_score,
-    RocCurveDisplay, 
-    ConfusionMatrixDisplay
+    confusion_matrix
 )
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly.graph_objects as go
-import plotly.figure_factory as ff
-
-
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from typing import Optional, Tuple
 
 def counts_target_ratio_sample(
     data: pd.DataFrame,
-    date_col: str,                 # колонка с датой
-    target_col: str,               # колонка с таргетом (0/1 или доля)
+    date_col: str,
+    target_col: str,
     title: str = "Размеры и Target rate по месяцам",
     count_series_name: str = "Target count",
     rate_series_name: str = "Target rate",
     show: bool = True
-) -> Tuple[pd.DataFrame, "go.Figure"]:
-
+) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    Строит график с размерами выборки и долей таргета по месяцам.
+    
+    Параметры:
+    ----------
+    data : pd.DataFrame
+        Исходные данные
+    date_col : str
+        Название колонки с датой
+    target_col : str
+        Название колонки с таргетом (0/1 или доля)
+    title : str, optional
+        Заголовок графика (по умолчанию "Размеры и Target rate по месяцам")
+    count_series_name : str, optional
+        Название для серии с количеством (по умолчанию "Target count")
+    rate_series_name : str, optional
+        Название для серии с долей (по умолчанию "Target rate")
+    show : bool, optional
+        Показывать ли график (по умолчанию True)
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        Агрегированные данные и Plotly фигура
+    """
     df = data.copy()
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=[date_col])
@@ -73,13 +73,13 @@ def counts_target_ratio_sample(
           .sort_values("month")
     )
 
-    bar_text  = df_agg["count"]
+    bar_text = df_agg["count"]
     line_text = [f"{int(round(r*100))}%" if pd.notna(r) else "" for r in df_agg["rate"]]
 
     ymax = float(df_agg["count"].max() or 0)
-    pad  = ymax * 0.1  # запас сверху
+    pad = ymax * 0.1  # запас сверху
     y2max = float(df_agg["rate"].max() or 0)
-    pad2  = y2max * 0.25  # запас сверху
+    pad2 = y2max * 0.25  # запас сверху
 
     fig = go.Figure()
 
@@ -135,7 +135,32 @@ def counts_target_ratio(
     target_col: str = "target",
     id_col: str = None,
     title: str = "Размеры выборок и уровень таргета по месяцам"
-):
+) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    Строит график с размерами выборок train/test/oot и уровнем таргета по месяцам.
+    
+    Параметры:
+    ----------
+    train : pd.DataFrame
+        Обучающая выборка
+    test : pd.DataFrame
+        Тестовая выборка
+    oot : pd.DataFrame, optional
+        OOT выборка (по умолчанию None)
+    date_col : str, optional
+        Название колонки с датой (по умолчанию "month")
+    target_col : str, optional
+        Название колонки с таргетом (по умолчанию "target")
+    id_col : str, optional
+        Название колонки с ID для подсчета уникальных значений (по умолчанию None)
+    title : str, optional
+        Заголовок графика (по умолчанию "Размеры выборок и уровень таргета по месяцам")
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        Агрегированные данные и Plotly фигура
+    """
     def _prep(df: pd.DataFrame):
         if df is None or len(df) == 0:
             return pd.DataFrame(columns=["month", "cnt", "rr"])
@@ -214,19 +239,28 @@ def counts_target_ratio(
     df = df.replace(0, '---')
     return df, fig
 
+
 def roc_curve_plotly(
-    y_true,
-    y_score,
+    y_true: Sequence,
+    y_score: Sequence,
     title: str = "ROC curve"
 ) -> Tuple[pd.DataFrame, go.Figure]:
     """
-    Простой ROC-график для одной модели (бинарная классификация).
-    Вход:
-      - y_true: 1D массив истинных меток (0/1)
-      - y_score: 1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
-    Выход:
-      - df_points: DataFrame с FPR/TPR/threshold/AUC
-      - fig: plotly Figure
+    Строит ROC-кривую для бинарной классификации.
+    
+    Параметры:
+    ----------
+    y_true : Sequence
+        1D массив истинных меток (0/1)
+    y_score : Sequence
+        1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
+    title : str, optional
+        Заголовок графика (по умолчанию "ROC curve")
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        DataFrame с FPR/TPR/threshold/AUC и Plotly фигура
     """
     y_true  = np.asarray(y_true)
     y_score = np.asarray(y_score)
@@ -261,21 +295,33 @@ def roc_curve_plotly(
         template="plotly_white",
         legend=dict(orientation="h", y=-0.35, x=1, xanchor="right", yanchor="top"),
         margin=dict(t=70, r=40, b=50, l=60),
-        hovermode="x unified",
-        # height=420,
-        # width=420
+        hovermode="x unified"
     )
-    # fig.show()
+    
     return df_points, fig
 
+
 def precision_recall_curve_plotly(
-    y_true,
-    y_score,
+    y_true: Sequence,
+    y_score: Sequence,
     title: str = "Precision–Recall curve"
 ) -> Tuple[pd.DataFrame, go.Figure]:
     """
-    y_true : 1D массив меток (0/1)
-    y_score: 1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
+    Строит Precision-Recall кривую для бинарной классификации.
+    
+    Параметры:
+    ----------
+    y_true : Sequence
+        1D массив истинных меток (0/1)
+    y_score : Sequence
+        1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
+    title : str, optional
+        Заголовок графика (по умолчанию "Precision–Recall curve")
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        DataFrame с recall/precision/threshold/average_precision и Plotly фигура
     """
     y_true  = np.asarray(y_true)
     y_score = np.asarray(y_score)
@@ -322,6 +368,7 @@ def precision_recall_curve_plotly(
 
     return df_points, fig
 
+
 def confusion_matrix_plotly(
     y_true: Sequence,
     y_pred: Optional[Sequence] = None,
@@ -329,6 +376,27 @@ def confusion_matrix_plotly(
     threshold: float = 0.5,
     title: str = "Confusion matrix"
 ) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    Строит матрицу ошибок (confusion matrix) в виде тепловой карты.
+    
+    Параметры:
+    ----------
+    y_true : Sequence
+        1D массив истинных меток
+    y_pred : Optional[Sequence], optional
+        1D массив предсказанных меток (по умолчанию None)
+    y_score : Optional[Sequence], optional
+        1D массив скорингов для преобразования в метки через threshold (по умолчанию None)
+    threshold : float, optional
+        Порог для преобразования y_score в метки (по умолчанию 0.5)
+    title : str, optional
+        Заголовок графика (по умолчанию "Confusion matrix")
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        DataFrame с матрицей ошибок и Plotly фигура
+    """
     y_true = np.asarray(y_true)
 
     if y_pred is None:
@@ -370,16 +438,48 @@ def confusion_matrix_plotly(
     fig.show()
     return df_cm, fig
 
-def model_results_plotly(df_train, df_test, df_oot, target_name, features, Model):
 
-    #Инициализация модели
-    model = Model
-
+def model_results_plotly(
+    df_train: pd.DataFrame,
+    df_test: pd.DataFrame,
+    df_oot: pd.DataFrame,
+    target_name: str,
+    features: List[str],
+    model: Any
+) -> Tuple[pd.DataFrame, go.Figure, go.Figure, List[go.Figure], List[go.Figure]]:
+    """
+    Комплексный анализ результатов модели: ROC, PR, Confusion Matrix, Lift.
+    
+    Параметры:
+    ----------
+    df_train : pd.DataFrame
+        Обучающая выборка
+    df_test : pd.DataFrame
+        Тестовая выборка
+    df_oot : pd.DataFrame
+        OOT выборка
+    target_name : str
+        Название колонки с таргетом
+    features : List[str]
+        Список признаков для модели
+    model : Any
+        Обученная модель с методами predict и predict_proba
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure, go.Figure, List[go.Figure], List[go.Figure]]
+        Таблица метрик, ROC график, PR график, Lift графики, Confusion Matrix графики
+    """
+    from sklearn.metrics import (
+        accuracy_score, precision_score, recall_score, f1_score,
+        roc_auc_score, fbeta_score
+    )
+    
     X_train, y_train = df_train[features], df_train[target_name]
     X_test, y_test = df_test[features], df_test[target_name]
     X_oot, y_oot = df_oot[features], df_oot[target_name]
     
-    #Предикты
+    # Предикты
     y_train_pred_proba = model.predict_proba(X_train)[:,1]
     y_test_pred_proba = model.predict_proba(X_test)[:,1]
     y_oot_pred_proba = model.predict_proba(X_oot)[:,1]
@@ -390,43 +490,44 @@ def model_results_plotly(df_train, df_test, df_oot, target_name, features, Model
     
     N_feat = len(features)
     
-    #Метрики
-    train_N=X_train.shape[0]
-    test_N=X_test.shape[0]
-    oot_N=X_oot.shape[0]
+    # Метрики
+    train_N = X_train.shape[0]
+    test_N = X_test.shape[0]
+    oot_N = X_oot.shape[0]
     
-    train_share=y_train.mean()
-    test_share=y_test.mean()
-    oot_share=y_oot.mean()
+    train_share = y_train.mean()
+    test_share = y_test.mean()
+    oot_share = y_oot.mean()
     
-    train_roc = round(roc_auc_score(y_train, y_train_pred_proba),3)
-    test_roc = round(roc_auc_score(y_test, y_test_pred_proba),3)
-    oot_roc = round(roc_auc_score(y_oot, y_oot_pred_proba),3)
+    train_roc = round(roc_auc_score(y_train, y_train_pred_proba), 3)
+    test_roc = round(roc_auc_score(y_test, y_test_pred_proba), 3)
+    oot_roc = round(roc_auc_score(y_oot, y_oot_pred_proba), 3)
     
     train_gini = 2 * train_roc - 1
     test_gini = 2 * test_roc - 1
     oot_gini = 2 * oot_roc - 1
     
-    train_rec = round(recall_score(y_train, y_train_pred),3)
-    test_rec = round(recall_score(y_test, y_test_pred),3)
-    oot_rec = round(recall_score(y_oot, y_oot_pred),3)
+    train_rec = round(recall_score(y_train, y_train_pred), 3)
+    test_rec = round(recall_score(y_test, y_test_pred), 3)
+    oot_rec = round(recall_score(y_oot, y_oot_pred), 3)
     
-    train_prec = round(precision_score(y_train, y_train_pred),3)
-    test_prec = round(precision_score(y_test, y_test_pred),3)
-    oot_prec =round( precision_score(y_oot, y_oot_pred),3)
+    train_prec = round(precision_score(y_train, y_train_pred), 3)
+    test_prec = round(precision_score(y_test, y_test_pred), 3)
+    oot_prec = round(precision_score(y_oot, y_oot_pred), 3)
     
-    train_f1 = round(f1_score(y_train, y_train_pred),3)
-    test_f1 = round(f1_score(y_test, y_test_pred),3)
-    oot_f1 = round(f1_score(y_oot, y_oot_pred),3)
+    train_f1 = round(f1_score(y_train, y_train_pred), 3)
+    test_f1 = round(f1_score(y_test, y_test_pred), 3)
+    oot_f1 = round(f1_score(y_oot, y_oot_pred), 3)
     
-    train_fbeta2 = round(fbeta_score(y_train, y_train_pred, beta=2),3)
-    test_fbeta2 = round(fbeta_score(y_test, y_test_pred, beta=2),3)
-    oot_fbeta2 = round(fbeta_score(y_oot, y_oot_pred, beta=2),3) 
+    train_fbeta2 = round(fbeta_score(y_train, y_train_pred, beta=2), 3)
+    test_fbeta2 = round(fbeta_score(y_test, y_test_pred, beta=2), 3)
+    oot_fbeta2 = round(fbeta_score(y_oot, y_oot_pred, beta=2), 3)
     
-    train_fbeta05 = round(fbeta_score(y_train, y_train_pred, beta=0.5),3)
-    test_fbeta05 = round(fbeta_score(y_test, y_test_pred, beta=0.5),3)
-    oot_fbeta05 = round(fbeta_score(y_oot, y_oot_pred, beta=0.5),3)  
+    train_fbeta05 = round(fbeta_score(y_train, y_train_pred, beta=0.5), 3)
+    test_fbeta05 = round(fbeta_score(y_test, y_test_pred, beta=0.5), 3)
+    oot_fbeta05 = round(fbeta_score(y_oot, y_oot_pred, beta=0.5), 3)
 
+    # ROC кривые
     _, roc_fig_train = roc_curve_plotly(y_train, y_train_pred_proba, "Train")
     _, roc_fig_test = roc_curve_plotly(y_test, y_test_pred_proba, "Test")
     _, roc_fig_oot = roc_curve_plotly(y_oot, y_oot_pred_proba, "OOT")
@@ -450,10 +551,11 @@ def model_results_plotly(df_train, df_test, df_oot, target_name, features, Model
         template="plotly_white",
         legend=dict(orientation="h", y=-0.35, x=1, xanchor="right", yanchor="top"),
         margin=dict(t=70, r=40, b=50, l=60),
-        hovermode="x unified",)  
+        hovermode="x unified"
+    )
     fig_roc.show()
 
-    #precision_recall кривая 
+    # precision_recall кривая 
     _, pr_fig_train = precision_recall_curve_plotly(y_train, y_train_pred_proba, "Train")
     _, pr_fig_test = precision_recall_curve_plotly(y_test, y_test_pred_proba, "Test") 
     _, pr_fig_oot = precision_recall_curve_plotly(y_oot, y_oot_pred_proba, "OOT") 
@@ -464,29 +566,30 @@ def model_results_plotly(df_train, df_test, df_oot, target_name, features, Model
             fig_pr.add_trace(tr)
 
     fig_pr.update_layout(
-        title='ROC curve Train/Test/OOT',
-        xaxis=dict(title="False Positive Rate (FPR)", range=[0, 1]),
-        yaxis=dict(title="True Positive Rate (TPR)",  range=[0, 1]),
+        title='Precision-Recall curve Train/Test/OOT',
+        xaxis=dict(title="Recall", range=[0, 1]),
+        yaxis=dict(title="Precision",  range=[0, 1]),
         template="plotly_white",
         legend=dict(orientation="h", y=-0.35, x=1, xanchor="right", yanchor="top"),
         margin=dict(t=70, r=40, b=50, l=60),
-        hovermode="x unified",)  
+        hovermode="x unified"
+    )
     fig_pr.show()
 
+    # Confusion Matrix
     _, cm_fig_train = confusion_matrix_plotly(y_true=y_train, y_score=y_train_pred_proba, threshold=0.5, title="Train")
     _, cm_fig_test = confusion_matrix_plotly(y_true=y_test, y_score=y_test_pred_proba, threshold=0.5, title="Test")
     _, cm_fig_oot = confusion_matrix_plotly(y_true=y_oot, y_score=y_oot_pred_proba, threshold=0.5, title="OOT")
     
-    #Таблица с результатами
+    # Таблица с результатами
     res = {'train': [train_N, N_feat, train_share, train_roc, train_gini, train_rec, 
                      train_prec, train_fbeta05, train_f1, train_fbeta2],
            'test': [test_N, N_feat, test_share, test_roc, test_gini, test_rec, 
                     test_prec, test_fbeta05, test_f1, test_fbeta2],
-           'oot': [oot_N, N_feat,oot_share, oot_roc, oot_gini, oot_rec, 
+           'oot': [oot_N, N_feat, oot_share, oot_roc, oot_gini, oot_rec, 
                    oot_prec, oot_fbeta05, oot_f1, oot_fbeta2]}
     res_df = pd.DataFrame(data=res, index=['N_samples', 'N_feat', 'target_share', 'ROC', 'gini', 
                                            'Recall', 'Precision', 'f05_score','f1_score', 'f2_score'])
-    display(res_df.T)
     
     # Лифты
     df_train_tmp = pd.DataFrame()
@@ -506,6 +609,7 @@ def model_results_plotly(df_train, df_test, df_oot, target_name, features, Model
       
     return res_df, fig_roc, fig_pr, [lift_fig_train, lift_fig_test, lift_fig_oot], [cm_fig_train, cm_fig_test, cm_fig_oot]
 
+
 def lift_plotly(
     df: pd.DataFrame,
     pred_col: str,
@@ -515,14 +619,32 @@ def lift_plotly(
     show: bool = True
 ) -> Tuple[pd.DataFrame, go.Figure]:
     """
-    Лифт по децилям предсказанного скора.
-    Возвращает (df_lift, fig).
-
-    df_lift колонки:
-      bucket (1..q), count, true_count, share_true_pct,
-      mean_target, mean_score, mean_overall, lift
+    Строит лифт-график по децилям предсказанного скора.
+    
+    Параметры:
+    ----------
+    df : pd.DataFrame
+        Исходные данные
+    pred_col : str
+        Название колонки с предсказаниями/скором
+    target_col : str
+        Название колонки с таргетом
+    name : str, optional
+        Название для заголовка графика (по умолчанию "Лифт")
+    q : int, optional
+        Количество квантилей (по умолчанию 10)
+    show : bool, optional
+        Показывать ли график (по умолчанию True)
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        DataFrame с метриками по бакетам и Plotly фигура
+        
+    Колонки df_lift:
+        bucket (1..q), count, true_count, share_true_pct,
+        mean_target, mean_score, mean_overall, lift
     """
-
     data = df[[pred_col, target_col]].dropna().copy()
 
     # Децильные "бакеты" по предсказанию
@@ -558,7 +680,6 @@ def lift_plotly(
         x=g["bucket"], y=g["lift"],
         name="Lift",
         marker_color="silver",
-        # text=[f"{c/1000:.1f}k" for c in g["count"]],   # подписи количества над столбцами
         textposition="outside",
         cliponaxis=False
     )
@@ -600,9 +721,7 @@ def lift_plotly(
         yaxis2=dict(title="Средний таргет", overlaying="y", side="right"),
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=70, r=70, b=120, l=70),
-        # height=520,
-        # width=520
+        margin=dict(t=70, r=70, b=120, l=70)
     )
 
     if show:
@@ -616,19 +735,31 @@ def lift_plotly(
 
     return df_lift, fig
 
+
 def psi_plotly(
     psi_pivot: pd.DataFrame,
     title: str = "PSI по месяцам",
-    thresholds: tuple[float, float] = (0.10, 0.25),  # референс-линии
-) -> Tuple[pd.DataFrame, "go.Figure"]:
+    thresholds: Tuple[float, float] = (0.10, 0.25)
+) -> Tuple[pd.DataFrame, go.Figure]:
     """
-    psi_pivot: DataFrame
+    Строит график PSI (Population Stability Index) по месяцам.
+    
+    Параметры:
+    ----------
+    psi_pivot : pd.DataFrame
+        DataFrame с PSI значениями
         index  -> имена фичей
         columns-> даты (datetime или строки)
         values -> PSI (float)
+    title : str, optional
+        Заголовок графика (по умолчанию "PSI по месяцам")
+    thresholds : Tuple[float, float], optional
+        Пороговые значения для референс-линий (по умолчанию (0.10, 0.25))
+        
     Возвращает:
-        df_long: ['feature','date','psi']
-        fig: Plotly Figure
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        DataFrame в long-формате ['feature','date','psi'] и Plotly фигура
     """
     if psi_pivot.empty:
         raise ValueError("psi_pivot пуст.")
@@ -669,46 +800,44 @@ def psi_plotly(
         xaxis=dict(),
         yaxis=dict(title="PSI", range=[0, max(0.2, float(ymax)*1.3)]),
         template="plotly_white",
-        # hovermode='x',
-        # legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="left", x=0),
         margin=dict(t=70, r=40, b=60, l=60)
     )
 
     return df_long, fig
 
-def target_tts_plot(train_df, test_df, sample_df, date_col):
-    train = train_df.copy()
-    test = test_df.copy()
-    sample = sample_df.copy()
-    
-    train[date_col] = train[date_col].dt.strftime('%Y-%m-%d')
-    test[date_col] = test[date_col].dt.strftime('%Y-%m-%d')
-    sample[date_col] = sample[date_col].dt.strftime('%Y-%m-%d')
-    
-    train_by_waves = train.groupby(date_col)['target'].mean()
-    test_by_waves = test.groupby(date_col)['target'].mean()
-    target_by_waves = sample.groupby(date_col)['target'].mean()
-    
-    plt.figure(figsize=(16, 6))
-    plt.plot(target_by_waves.index[0:].to_numpy(), target_by_waves.values[0:], label='full')
-    plt.plot(train_by_waves.index[0:].to_numpy(), train_by_waves.values[0:], label='train')
-    plt.plot(test_by_waves.index[0:].to_numpy(), test_by_waves.values[0:], label='test')
-    
-    plt.legend(labels=['full', 'train', 'test'])
-    plt.xticks(target_by_waves.index[0:], rotation=55)
-    plt.grid(axis='y')
-    plt.title('Доля таргета в train_test_oot после преобразований')
-    plt.show()
 
 def decile_target(
     df: pd.DataFrame,
-    score_col: str,          # скор/вероятность
-    target_col: str,         # 0/1
+    score_col: str,
+    target_col: str,
     id_col: str,
     q: int = 10,
-    as_percent: bool = True  # вернуть ratio в процентах
+    as_percent: bool = True
 ) -> pd.DataFrame:
+    """
+    Анализ таргета по децилям скора.
+    
+    Параметры:
+    ----------
+    df : pd.DataFrame
+        Исходные данные
+    score_col : str
+        Название колонки со скором/вероятностью
+    target_col : str
+        Название колонки с таргетом (0/1)
+    id_col : str
+        Название колонки с ID клиента
+    q : int, optional
+        Количество квантилей (по умолчанию 10)
+    as_percent : bool, optional
+        Возвращать ratio в процентах (по умолчанию True)
+        
+    Возвращает:
+    -----------
+    pd.DataFrame
+        DataFrame с колонками: decile, client_all, target_0, target_1, ratio
+    """
     d = df[[score_col, target_col] + ([id_col] if id_col else [])].dropna().copy()
 
     # Дециль: 1 = максимум score
@@ -743,173 +872,38 @@ def decile_target(
     pivot.columns.name = None
     return pivot
 
-def lgbm_model_results(df_train, df_test, df_oot, target_name, features, Model):
-
-    #Инициализация модели
-    model = Model
-
-    X_train, y_train = df_train[features], df_train[target_name]
-    X_test, y_test = df_test[features], df_test[target_name]
-    X_oot, y_oot = df_oot[features], df_oot[target_name]
-    
-    #Предикты
-    y_train_pred_proba = model.predict_proba(X_train)[:,1]
-    y_test_pred_proba = model.predict_proba(X_test)[:,1]
-    y_oot_pred_proba = model.predict_proba(X_oot)[:,1]
-
-    y_train_pred = model.predict(X_train)
-    y_test_pred = model.predict(X_test)
-    y_oot_pred = model.predict(X_oot)
-    
-    N_feat = len(features)
-    
-    #Метрики
-    train_N=X_train.shape[0]
-    test_N=X_test.shape[0]
-    oot_N=X_oot.shape[0]
-    
-    train_share=y_train.mean()
-    test_share=y_test.mean()
-    oot_share=y_oot.mean()
-    
-    train_roc = round(roc_auc_score(y_train, y_train_pred_proba),3)
-    test_roc = round(roc_auc_score(y_test, y_test_pred_proba),3)
-    oot_roc = round(roc_auc_score(y_oot, y_oot_pred_proba),3)
-    
-    train_gini = 2 * train_roc - 1
-    test_gini = 2 * test_roc - 1
-    oot_gini = 2 * oot_roc - 1
-    
-    train_rec = round(recall_score(y_train, y_train_pred),3)
-    test_rec = round(recall_score(y_test, y_test_pred),3)
-    oot_rec = round(recall_score(y_oot, y_oot_pred),3)
-    
-    train_prec = round(precision_score(y_train, y_train_pred),3)
-    test_prec = round(precision_score(y_test, y_test_pred),3)
-    oot_prec =round( precision_score(y_oot, y_oot_pred),3)
-    
-    train_f1 = round(f1_score(y_train, y_train_pred),3)
-    test_f1 = round(f1_score(y_test, y_test_pred),3)
-    oot_f1 = round(f1_score(y_oot, y_oot_pred),3)
-    
-    train_fbeta2 = round(fbeta_score(y_train, y_train_pred, beta=2),3)
-    test_fbeta2 = round(fbeta_score(y_test, y_test_pred, beta=2),3)
-    oot_fbeta2 = round(fbeta_score(y_oot, y_oot_pred, beta=2),3) 
-    
-    train_fbeta05 = round(fbeta_score(y_train, y_train_pred, beta=0.5),3)
-    test_fbeta05 = round(fbeta_score(y_test, y_test_pred, beta=0.5),3)
-    oot_fbeta05 = round(fbeta_score(y_oot, y_oot_pred, beta=0.5),3)  
-
-    fig, ax = plt.subplots(2, 3, figsize=(15,9))
-
-    RocCurveDisplay.from_predictions(y_train, y_train_pred_proba, ax=ax[0,0], name=f'{type(model).__name__} Train')
-    RocCurveDisplay.from_predictions(y_test, y_test_pred_proba, ax=ax[0,0], name=f'{type(model).__name__} Test')
-    RocCurveDisplay.from_predictions(y_oot, y_oot_pred_proba, ax=ax[0,0], name=f'{type(model).__name__} OOT')
-    
-    #Precision-recall кривая
-    precision_train, recall_train, _ = precision_recall_curve(y_train, y_train_pred_proba)
-    precision_test, recall_test, _ = precision_recall_curve(y_test, y_test_pred_proba)
-    precision_oot, recall_oot, _ = precision_recall_curve(y_oot, y_oot_pred_proba)
-
-    ax[0,1].plot(recall_train, precision_train, label='Train')
-    ax[0,1].plot(recall_test, precision_test, label='Test')
-    ax[0,1].plot(recall_oot, precision_oot, label='OOT')
-
-    #Confusion_matrix    
-    ConfusionMatrixDisplay.from_predictions(y_train, y_train_pred, ax=ax[1,0], values_format='d')
-    ConfusionMatrixDisplay.from_predictions(y_test, y_test_pred,  ax=ax[1,1], values_format='d')
-    ConfusionMatrixDisplay.from_predictions(y_oot, y_oot_pred, ax=ax[1,2], values_format='d')
-    
-    ax[1,0].set_title('train')
-    ax[1,1].set_title('test')
-    ax[1,2].set_title('oot')
-
-    fig.tight_layout()
-    plt.show()
-    
-    #Таблица с результатами
-    res = {'train': [train_N, N_feat, train_share, train_roc, train_gini, train_rec, 
-                     train_prec, train_fbeta05, train_f1, train_fbeta2],
-           'test': [test_N, N_feat, test_share, test_roc, test_gini, test_rec, 
-                    test_prec, test_fbeta05, test_f1, test_fbeta2],
-           'oot': [oot_N, N_feat,oot_share, oot_roc, oot_gini, oot_rec, 
-                   oot_prec, oot_fbeta05, oot_f1, oot_fbeta2]}
-    res_df = pd.DataFrame(data=res, index=['N_samples', 'N_feat', 'target_share', 'ROC', 'gini', 
-                                           'Recall', 'Precision', 'f05_score','f1_score', 'f2_score'])
-    display(res_df.T)
-
-    #Gini по месяцам
-
-    # Лифты
-    df_train_tmp = pd.DataFrame()
-    df_train_tmp['target_c_30'] = y_train
-    df_train_tmp['pred'] = y_train_pred_proba
-    lift(df_train_tmp, 'target_c_30', 'Лифт train')
-    
-    df_test_tmp = pd.DataFrame()
-    df_test_tmp['target_c_30'] = y_test
-    df_test_tmp['pred'] = y_test_pred_proba
-    lift(df_test_tmp, 'target_c_30', 'Лифт test')
-    
-    df_oot_tmp = pd.DataFrame()
-    df_oot_tmp['target_c_30'] = y_oot
-    df_oot_tmp['pred'] = y_oot_pred_proba
-    lift(df_oot_tmp, 'target_c_30', 'Лифт oot')
-    
-    
-    return res_df  
-
-
-def lift(df, target, name = 'no_name'):
-
-    df['bucket'] = pd.qcut(df['pred'], q = 10, duplicates = 'drop')
-    
-    y_oot_lift = pd.DataFrame(df.groupby('bucket', observed=False).mean()[target])
-    y_oot_lift['mean_overall'] = df[target].mean()
-    y_oot_lift['lift'] = y_oot_lift[target] / y_oot_lift['mean_overall']
-    y_oot_lift['mean_score'] = df.groupby('bucket', observed=False).mean()['pred']
-
-    cnt_in_buckets_oot = df.groupby('bucket', observed=False).count()[target].values
-    
-    cnt_true_1_in_buckets = df.groupby('bucket', observed=False).sum()[target].values/df[target].sum()*100
-
-    fig, _ = plt.subplots(figsize=(8, 6))
-    fig.axes[1] = plt.twinx()
-    fig.axes[0].bar(range(1, len(y_oot_lift.index) + 1), y_oot_lift['lift'], color='silver', label='Lift')
-    fig.axes[0].set_xticks(range(1, len(y_oot_lift.index) + 1))
-    fig.axes[0].set_ylabel('Лифт')
-    fig.axes[0].set_xlabel('Бакеты')
-    fig.axes[0].legend(loc=2)
-    fig.axes[1].plot(range(1, len(y_oot_lift.index) + 1), y_oot_lift[target].values, label='Средний таргет в бакете')
-    fig.axes[1].plot(range(1, len(y_oot_lift.index) + 1), y_oot_lift['mean_score'].values, label='Средний скор в бакете')
-    fig.axes[1].plot(range(1, len(y_oot_lift.index) + 1), y_oot_lift['mean_overall'], '--', label='Средний таргет в выборке')
-    fig.axes[1].legend(loc=9)
-    fig.axes[1].grid()
-    fig.axes[1].set_ylabel('Средний таргет')
-    fig.suptitle(name)
-
-    for i, n in enumerate(cnt_in_buckets_oot):
-        fig.axes[0].text(i+0.62, 0.2, str(np.round(n/1000, 1)) + 'k')
-    
-    
-    for i, n in enumerate(cnt_true_1_in_buckets):
-        fig.axes[0].text(i+0.8, -1.2, str(round(n, 1)) + '%')
-    
-    fig.axes[0].text(0, -0.75, 'Доля\ntrue\nединиц')  
-        
-    plt.show()
 
 def gini_rate_plotly(
     data: pd.DataFrame,
-    date_col: str,      # колонка с датой
-    target_col: str,    # 0/1
-    score_col: str,     # вероятность/скор позитивного класса
-    title: str = "Gini by months",
-) -> Tuple[pd.DataFrame, "go.Figure"]:
+    date_col: str,
+    target_col: str,
+    score_col: str,
+    title: str = "Gini by months"
+) -> Tuple[pd.DataFrame, go.Figure]:
     """
-    Строит график: слева CNT (столбики), справа GINI (линия).
-    Gini для каждого месяца = 2 * AUC - 1.
-    Возвращает (df_agg, fig).
+    Строит график с количеством записей (столбики) и Gini (линия) по месяцам.
+    
+    Параметры:
+    ----------
+    data : pd.DataFrame
+        Исходные данные
+    date_col : str
+        Название колонки с датой
+    target_col : str
+        Название колонки с таргетом (0/1)
+    score_col : str
+        Название колонки с вероятностью/скором позитивного класса
+    title : str, optional
+        Заголовок графика (по умолчанию "Gini by months")
+        
+    Возвращает:
+    -----------
+    Tuple[pd.DataFrame, go.Figure]
+        DataFrame с агрегированными данными и Plotly фигура
+        
+    Примечание:
+    -----------
+    Gini для каждого месяца = 2 * AUC - 1
     """
     df = data[[date_col, target_col, score_col]].copy()
     df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
@@ -965,66 +959,9 @@ def gini_rate_plotly(
         template="plotly_white",
         legend=dict(orientation="h", yanchor="top", y=-0.35,
                     xanchor="center", x=0.5),
-        margin=dict(t=70, r=70, b=70, l=70),
+        margin=dict(t=70, r=70, b=70, l=70)
     )
 
     fig.show()
 
     return df_agg[["month", "cnt", "gini"]], fig
-    
-def plot_gini_by_months_vs_clients(df, date_col='year_month', target='target', pred='predictions'):
-    """
-    Строит график с динамикой Gini и количеством клиентов по месяцам + выводит таблицу с расчетами.
-    Предполагает, что date_col уже содержит готовые периоды (например, '2023-01-01' для января 2023).
-
-    Параметры:
-    -----------
-    df : pd.DataFrame
-        Исходный DataFrame с данными.
-    date_col : str, optional (default='year_month')
-        Название колонки с готовыми месячными периодами.
-    target_col : str, optional (default='target')
-        Название колонки с таргетом (0/1).
-    pred_col : str, optional (default='predictions')
-        Название колонки с предсказаниями модели (вероятности).
-    """
-
-    grouped = df.groupby(date_col)
-
-    summary = []
-
-    def compute_gini(y_true, y_scores):
-        auc = roc_auc_score(y_true, y_scores)
-        return 2 * auc - 1
-
-    for date, group in grouped:
-        gini = compute_gini(group[target], group[pred])
-        summary.append({
-            'date': date,
-            'gini': round(gini, 2),
-            'count': len(group)
-        })
-
-    summary_df = pd.DataFrame(summary)
-
-    # Построение графика
-    fig, ax1 = plt.subplots(figsize=(14, 6))
-    ax1.bar(summary_df['date'], summary_df['count'], width=20, color='cornflowerblue', label='CNT')
-    ax1.set_ylabel('CNT', color='blue')
-    ax1.set_ylim(0, summary_df['count'].max() * 1.2)
-    ax1.tick_params(axis='x', rotation=45)
-
-    ax2 = ax1.twinx()
-    ax2.plot(summary_df['date'], summary_df['gini'], color='green', label='GINI', linewidth=2)
-    ax2.set_ylabel('GINI', color='green')
-    ax2.set_ylim(0, 1)
-
-    ax1.legend(loc='upper left')
-    ax2.legend(loc='upper right')
-    plt.title('Gini by generations')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-    print("GINI Summary by Month:")
-    return summary_df
