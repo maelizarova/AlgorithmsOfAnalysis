@@ -1,638 +1,1030 @@
-"""
-HTML Report Generator
-
-Модуль для генерации единого HTML-файла отчёта с интерактивными графиками.
-Использует Jinja2 для шаблонов и Plotly для графиков.
-"""
-
-from typing import List, Literal, Optional, Dict, Any, Union
 import pandas as pd
+import numpy as np
+import os
+from typing import Tuple, Union, Optional, Dict, List, Any, Sequence
+
+import lightgbm as lgbm  
+from lightgbm import LGBMClassifier, LGBMRegressor, early_stopping, log_evaluation
+from catboost import (
+    CatBoostRegressor, 
+    CatBoostClassifier, 
+    Pool, 
+    EShapCalcType, 
+    EFeaturesSelectionAlgorithm
+)
+
+from sklearn.base import BaseEstimator
+from sklearn.model_selection import train_test_split, GridSearchCV 
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder, OrdinalEncoder
+from sklearn.metrics import (
+    accuracy_score, 
+    precision_score, 
+    recall_score,
+    f1_score, 
+    roc_auc_score, 
+    log_loss, 
+    mean_squared_error, 
+    mean_absolute_error, 
+    mean_absolute_percentage_error, 
+    r2_score,
+    get_scorer,
+    classification_report, 
+    confusion_matrix, 
+    fbeta_score, 
+    roc_curve, 
+    precision_recall_curve,
+    average_precision_score,
+    RocCurveDisplay, 
+    ConfusionMatrixDisplay
+)
+
+import matplotlib.pyplot as plt
+import seaborn as sns
 import plotly.graph_objects as go
-from jinja2 import Template
-import markdown
-import json
+import plotly.figure_factory as ff
 
 
-class Section:
-    """Секция контента внутри ячейки."""
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from typing import Optional, Tuple
+
+def counts_target_ratio_sample(
+    data: pd.DataFrame,
+    date_col: str,                 # колонка с датой
+    target_col: str,               # колонка с таргетом (0/1 или доля)
+    title: str = "Размеры и Target rate по месяцам",
+    count_series_name: str = "Target count",
+    rate_series_name: str = "Target rate",
+    show: bool = True
+) -> Tuple[pd.DataFrame, "go.Figure"]:
+
+    df = data.copy()
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col])
+
+    # месяц = начало месяца
+    df["month"] = df[date_col].dt.to_period("M").dt.to_timestamp()
+
+    # count = число строк; rate = среднее target (доля)
+    df_agg = (
+        df.groupby("month", as_index=False)
+          .agg(count=(target_col, "size"), sum=(target_col, "sum"), rate=(target_col, "mean"))
+          .sort_values("month")
+    )
+
+    bar_text  = df_agg["count"]
+    line_text = [f"{int(round(r*100))}%" if pd.notna(r) else "" for r in df_agg["rate"]]
+
+    ymax = float(df_agg["count"].max() or 0)
+    pad  = ymax * 0.1  # запас сверху
+    y2max = float(df_agg["rate"].max() or 0)
+    pad2  = y2max * 0.25  # запас сверху
+
+    fig = go.Figure()
+
+    # БАРЫ с подписями сверху
+    fig.add_bar(
+        x=df_agg["month"], y=df_agg["count"],
+        name=count_series_name,
+        text=bar_text,
+        textposition="outside",      # подписи над столбцами
+        textfont=dict(size=12),
+        marker=dict(line=dict(width=0)),
+    )
+
+    # ЛИНИЯ таргета (правая ось, проценты)
+    fig.add_trace(go.Scatter(
+        x=df_agg["month"], y=df_agg["rate"],
+        mode="lines+markers+text",
+        name=rate_series_name,
+        yaxis="y2",
+        text=line_text,
+        textposition="top center",
+        line=dict(width=3, color="#D62728"),
+        marker=dict(size=8, line=dict(width=1, color="white")),
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title=None, tickangle=45),
+        # верхний запас по оси Y, чтобы видно было подписи «outside»
+        yaxis=dict(title="Количество клиентов",
+                   tickformat=",.0f",
+                   range=[0, ymax + pad]),
+        yaxis2=dict(title="RR, %", overlaying="y", side="right", tickformat=".0%", range=[0, y2max + pad2]),
+        bargap=0.25,
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="right", x=0.5),
+        margin=dict(t=70, r=60, b=70, l=70)
+    )
+
+    if show:
+        fig.show()
+
+    df_agg['rate'] = (df_agg['rate']*100).round(2).astype(str)+'%' #переведем в проценты
     
-    def __init__(self, content_type: str, content: str, title: Optional[str] = None, 
-                 caption: Optional[str] = None):
-        self.content_type = content_type
-        self.content = content
-        self.title = title
-        self.caption = caption
+    return df_agg, fig
 
 
-class Cell:
-    """Ячейка в строке сетки."""
-    
-    def __init__(self):
-        self.sections: List[Section] = []
-    
-    def add_markdown(self, text: str, title: Optional[str] = None, 
-                    caption: Optional[str] = None) -> 'Cell':
-        """Добавить Markdown контент."""
-        html_content = markdown.markdown(text)
-        section = Section('html', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_plotly_figure(self, fig: go.Figure, title: Optional[str] = None, 
-                         caption: Optional[str] = None) -> 'Cell':
-        """Добавить Plotly график."""
-        # Улучшаем настройки графика для корректного отображения
-        fig.update_layout(
-            autosize=True,
-            margin=dict(l=60, r=20, t=80, b=90),  # Увеличили нижний отступ для легенды
-            legend=dict(
-                orientation="h",  # Горизонтальная легенда
-                yanchor="top",
-                y=-0.25,  # Дальше от графика, больше места от подписи оси
-                xanchor="center",
-                x=0.5,
-                bgcolor='rgba(255,255,255,0.9)',
-                bordercolor='rgba(0,0,0,0.3)',
-                borderwidth=1
+def counts_target_ratio(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    oot: pd.DataFrame = None,
+    date_col: str = "month",
+    target_col: str = "target",
+    id_col: str = None,
+    title: str = "Размеры выборок и уровень таргета по месяцам"
+):
+    def _prep(df: pd.DataFrame):
+        if df is None or len(df) == 0:
+            return pd.DataFrame(columns=["month", "cnt", "rr"])
+        tmp = df.copy()
+        tmp[date_col] = pd.to_datetime(tmp[date_col])
+        tmp["month"] = tmp[date_col].dt.to_period("M").dt.to_timestamp()
+        if id_col:
+            g = tmp.groupby("month", as_index=False).agg(
+                cnt=(id_col, pd.Series.nunique),
+                rr=(target_col, "mean")
             )
-        )
-        
-        html_content = fig.to_html(
-            full_html=False, 
-            include_plotlyjs='inline', 
-            div_id=None,
-            config={
-                'displayModeBar': True,
-                'displaylogo': False,  # Убираем логотип Plotly
-                'modeBarButtonsToRemove': ['pan2d', 'lasso2d', 'select2d'],  # Убираем лишние кнопки
-                'responsive': True,
-                'toImageButtonOptions': {
-                    'format': 'png',
-                    'filename': 'chart',
-                    'height': 500,
-                    'width': 700,
-                    'scale': 1
-                }
-            }
-        )
-        section = Section('plotly', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_html(self, html: str, title: Optional[str] = None, 
-                caption: Optional[str] = None) -> 'Cell':
-        """Добавить HTML контент."""
-        section = Section('html', html, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_dataframe(self, df: pd.DataFrame, title: Optional[str] = None, 
-                     caption: Optional[str] = None, index: bool = False) -> 'Cell':
-        """Добавить DataFrame как таблицу."""
-        html_content = df.to_html(index=index, classes='dataframe-table', 
-                                 table_id=None, escape=False)
-        section = Section('dataframe', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def add_kv(self, data: Dict[str, Any], title: Optional[str] = None, 
-              caption: Optional[str] = None, compact: bool = False) -> 'Cell':
-        """Добавить key-value данные."""
-        html_content = self._render_kv(data, compact)
-        section = Section('kv', html_content, title, caption)
-        self.sections.append(section)
-        return self
-    
-    def _render_kv(self, data: Dict[str, Any], compact: bool = False) -> str:
-        """Рендер key-value данных в HTML."""
-        items = []
-        for key, value in data.items():
-            # Форматируем значение
-            if isinstance(value, (int, float)):
-                formatted_value = f"{value:,}" if isinstance(value, int) else f"{value:.2f}"
-            else:
-                formatted_value = str(value)
-            
-            items.append(f'<div class="kv-item"><span class="kv-key">{key}</span><span class="kv-value">{formatted_value}</span></div>')
-        
-        container_class = "kv-container compact" if compact else "kv-container"
-        return f'<div class="{container_class}">{"".join(items)}</div>'
-
-
-class Row:
-    """Строка в сетке вкладки."""
-    
-    def __init__(self, layout: Union[Literal['1x1', '1x2', '1x3'], List[str]]):
-        if isinstance(layout, str):
-            if layout not in ['1x1', '1x2', '1x3']:
-                raise ValueError(f"Неподдерживаемый layout: {layout}. Используйте '1x1', '1x2', '1x3' или список пропорций")
-            self.layout = layout
-            self.custom_layout = None
-            # Создаём ячейки в зависимости от layout
-            cell_count = int(layout.split('x')[1])
-            for _ in range(cell_count):
-                self.cells.append(Cell())
-        elif isinstance(layout, list):
-            # Кастомный layout с пропорциями
-            self.layout = f"custom-{len(layout)}"
-            self.custom_layout = layout
-            self.cells: List[Cell] = []
-            for _ in range(len(layout)):
-                self.cells.append(Cell())
         else:
-            raise ValueError("Layout должен быть строкой ('1x1', '1x2', '1x3') или списком пропорций (['2fr', '1fr'])")
+            g = tmp.groupby("month", as_index=False).agg(
+                cnt=(target_col, "size"),
+                rr=(target_col, "mean")
+            )
+        return g
 
+    g_train = _prep(train).rename(columns={"cnt":"train_cnt","rr":"rr_train"})
+    g_test  = _prep(test ).rename(columns={"cnt":"test_cnt","rr":"rr_test"})
+    g_oot   = _prep(oot  ).rename(columns={"cnt":"oot_cnt" ,"rr":"rr_oot"})
 
-class Tab:
-    """Вкладка отчёта."""
+    # полная сетка месяцев
+    months = pd.DataFrame({"month": sorted(set(g_train["month"])|set(g_test["month"])|set(g_oot["month"]))})
+    df = (months.merge(g_train, on="month", how="left")
+                 .merge(g_test,  on="month", how="left")
+                 .merge(g_oot,   on="month", how="left"))
     
-    def __init__(self, title: str):
-        self.title = title
-        self.rows: List[Row] = []
-    
-    def add_row(self, layout: Union[Literal['1x1', '1x2', '1x3'], List[str]]) -> Row:
-        """Добавить строку с указанным layout.
-        
-        layout может быть:
-        - '1x1', '1x2', '1x3' для равномерных ячеек
-        - ['2fr', '1fr'] для ячеек в пропорции 2:1
-        - ['1fr', '2fr', '1fr'] для ячеек в пропорции 1:2:1
-        """
-        row = Row(layout)
-        self.rows.append(row)
-        return row
+    df = df[['month', 'train_cnt', 'test_cnt', 'oot_cnt', 'rr_train', 'rr_test', 'rr_oot']]
 
+    # NaN → 0 только для счетчиков
+    for c in ["train_cnt","test_cnt","oot_cnt"]:
+        if c in df: df[c] = df[c].fillna(0).astype(int)
 
-class Report:
-    """Основной класс отчёта."""
+    # --- маски для линий (None, где счетчик = 0) ---
+    rr_train_y = [v*100 if (pd.notna(v) and cnt>0) else None
+                  for v, cnt in zip(df.get("rr_train"), df.get("train_cnt", 0))]
+    rr_test_y  = [v*100 if (pd.notna(v) and cnt>0) else None
+                  for v, cnt in zip(df.get("rr_test"),  df.get("test_cnt",  0))]
+    rr_oot_y   = [v*100 if (pd.notna(v) and cnt>0) else None
+                  for v, cnt in zip(df.get("rr_oot"),   df.get("oot_cnt",   0))]
+
+    fig = go.Figure()
+
+    # stacked bars: train + test (+ oot где есть)
+    fig.add_bar(x=df["month"], y=df["train_cnt"], name="train_cnt")
+    fig.add_bar(x=df["month"], y=df["test_cnt"],  name="test_cnt")
+    fig.add_bar(x=df["month"], y=df["oot_cnt"],   name="OOT_cnt")
+
+    # lines on secondary axis, masked by nonzero counts
+    fig.add_trace(go.Scatter(x=df["month"], y=rr_train_y, mode="lines+markers",
+                             name="RR Train", yaxis="y2", line=dict(color='#17BECF')))
+    fig.add_trace(go.Scatter(x=df["month"], y=rr_test_y,  mode="lines+markers",
+                             name="RR Test",  yaxis="y2", line=dict(color='#FFD200')))
+    fig.add_trace(go.Scatter(x=df["month"], y=rr_oot_y,   mode="lines+markers",
+                             name="RR OOT",   yaxis="y2", line=dict(color='#7B61FF')))
+
+    fig.update_layout(
+        barmode="stack",
+        title=title,
+        xaxis=dict(title="Месяц"),
+        yaxis=dict(title="Количество клиентов", tickformat=",.0f"),
+        yaxis2=dict(title="RR, %", overlaying="y", side="right"),
+        legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5),
+        template="plotly_white"
+    )
+
+    # показать и вернуть
+    fig.show()
+
+    df = df.fillna(0)
+    df['rr_train'] = (df['rr_train']*100).round(2).astype(str)+'%' #переведем в проценты
+    df['rr_test'] = (df['rr_test']*100).round(2).astype(str)+'%' #переведем в проценты
+    df['rr_oot'] = (df['rr_oot']*100).round(2).astype(str)+'%' #переведем в проценты
+    df = df.replace('0.0%', '---')
+    df = df.replace(0, '---')
+    return df, fig
+
+def roc_curve_plotly(
+    y_true,
+    y_score,
+    title: str = "ROC curve"
+) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    Простой ROC-график для одной модели (бинарная классификация).
+    Вход:
+      - y_true: 1D массив истинных меток (0/1)
+      - y_score: 1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
+    Выход:
+      - df_points: DataFrame с FPR/TPR/threshold/AUC
+      - fig: plotly Figure
+    """
+    y_true  = np.asarray(y_true)
+    y_score = np.asarray(y_score)
+
+    if y_score.ndim != 1:
+        raise ValueError("Ожидается 1D массив y_score (например, y_proba[:, 1]).")
+
+    fpr, tpr, thr = roc_curve(y_true, y_score, pos_label=1)
+    auc = roc_auc_score(y_true, y_score)
+
+    df_points = pd.DataFrame({
+        "fpr": fpr,
+        "tpr": tpr,
+        "threshold": thr
+    })
+    df_points["auc"] = auc
+
+    roc_trace = go.Scatter(
+        x=fpr, y=tpr,
+        mode="lines",
+        name=f"ROC {title} (AUC={auc:.3f})",
+        hovertemplate="FPR: %{x:.3f}<br>TPR: %{y:.3f}<br>Threshold: %{customdata:.3f}",
+        customdata=thr,
+        line=dict(width=3)
+    )
+
+    fig = go.Figure([roc_trace])
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="False Positive Rate (FPR)", range=[0, 1]),
+        yaxis=dict(title="True Positive Rate (TPR)",  range=[0, 1]),
+        template="plotly_white",
+        legend=dict(orientation="h", y=-0.35, x=1, xanchor="right", yanchor="top"),
+        margin=dict(t=70, r=40, b=50, l=60),
+        hovermode="x unified",
+        # height=420,
+        # width=420
+    )
+    # fig.show()
+    return df_points, fig
+
+def precision_recall_curve_plotly(
+    y_true,
+    y_score,
+    title: str = "Precision–Recall curve"
+) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    y_true : 1D массив меток (0/1)
+    y_score: 1D массив скорингов/вероятностей ПОЛОЖИТЕЛЬНОГО класса
+    """
+    y_true  = np.asarray(y_true)
+    y_score = np.asarray(y_score)
+    if y_score.ndim != 1:
+        raise ValueError("Ожидается 1D массив y_score (например, y_proba[:, 1]).")
+
+    precision, recall, thresholds = precision_recall_curve(y_true, y_score, pos_label=1)
+    ap = average_precision_score(y_true, y_score)
+    prevalence = y_true.mean()  # базовый уровень precision у случайного классификатора
+
+    # precision_recall_curve возвращает thresholds на 1 короче
+    thr_padded = np.r_[np.nan, thresholds]
+
+    df_points = pd.DataFrame({
+        "recall": recall,
+        "precision": precision,
+        "threshold": thr_padded
+    })
+    df_points["average_precision"] = ap
+    df_points["prevalence"] = prevalence
+
+    # График
+    fig = go.Figure()
     
-    def __init__(self, title: str, description: Optional[str] = None, 
-                 footer: Optional[str] = None):
-        self.title = title
-        self.description = description
-        self.footer = footer
-        self.tabs: List[Tab] = []
-    
-    def add_tab(self, title: str) -> Tab:
-        """Добавить вкладку."""
-        tab = Tab(title)
-        self.tabs.append(tab)
-        return tab
-    
-    def render(self) -> str:
-        """Сгенерировать HTML."""
-        template = Template(self._get_template())
-        return template.render(
-            report=self,
-            css=self._get_css(),
-            js=self._get_js()
+    # PR-кривая
+    fig.add_trace(go.Scatter(
+        x=recall, y=precision,
+        mode="lines",
+        name=f"PR {title} (AP={ap:.3f})",
+        customdata=thr_padded,
+        hovertemplate="Recall: %{x:.3f}<br>Precision: %{y:.3f}<br>Threshold: %{customdata:.3f}",
+        line=dict(width=3)
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="Recall", range=[0, 1], tickformat=".2f"),
+        yaxis=dict(title="Precision", range=[0, 1], tickformat=".2f"),
+        template="plotly_white",
+        legend=dict(orientation="h", y=1.02, x=1, xanchor="right", yanchor="bottom"),
+        margin=dict(t=70, r=40, b=50, l=60),
+        hovermode="x unified"
+    )
+
+    return df_points, fig
+
+def confusion_matrix_plotly(
+    y_true: Sequence,
+    y_pred: Optional[Sequence] = None,
+    y_score: Optional[Sequence] = None,
+    threshold: float = 0.5,
+    title: str = "Confusion matrix"
+) -> Tuple[pd.DataFrame, go.Figure]:
+    y_true = np.asarray(y_true)
+
+    if y_pred is None:
+        if y_score is None:
+            raise ValueError("Ожидается либо y_pred, либо y_score + threshold.")
+        y_score = np.asarray(y_score)
+        if y_score.ndim != 1:
+            raise ValueError("y_score должен быть 1D (например, y_proba[:, 1]).")
+        y_pred = (y_score >= threshold).astype(int)
+    else:
+        y_pred = np.asarray(y_pred)
+
+    # фиксируем порядок меток по объединению y_true и y_pred
+    labels = np.unique(np.concatenate([y_true, y_pred]))
+
+    cm = confusion_matrix(y_true, y_pred, labels=labels)  # абсолюты
+    df_cm = pd.DataFrame(cm, index=labels, columns=labels)
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=df_cm.values,
+            x=[str(x) for x in df_cm.columns],
+            y=[str(y) for y in df_cm.index],
+            colorscale="Blues",
+            colorbar=dict(title="Count"),
+            text=df_cm.values.astype(int),
+            texttemplate="%{text}",
+            textfont=dict(size=12),
+            hovertemplate="True: %{y}<br>Pred: %{x}<br>Count: %{z}<extra></extra>"
         )
+    )
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="Predicted"),
+        yaxis=dict(title="True", autorange="reversed"),
+        template="plotly_white",
+        margin=dict(t=70, r=40, b=60, l=70)
+    )
+    fig.show()
+    return df_cm, fig
+
+def model_results_plotly(df_train, df_test, df_oot, target_name, features, Model):
+
+    #Инициализация модели
+    model = Model
+
+    X_train, y_train = df_train[features], df_train[target_name]
+    X_test, y_test = df_test[features], df_test[target_name]
+    X_oot, y_oot = df_oot[features], df_oot[target_name]
     
-    def save(self, path: str) -> None:
-        """Сохранить отчёт в файл."""
-        html_content = self.render()
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
+    #Предикты
+    y_train_pred_proba = model.predict_proba(X_train)[:,1]
+    y_test_pred_proba = model.predict_proba(X_test)[:,1]
+    y_oot_pred_proba = model.predict_proba(X_oot)[:,1]
+
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
+    y_oot_pred = model.predict(X_oot)
     
-    def _get_template(self) -> str:
-        """HTML шаблон."""
-        return '''<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ report.title }}</title>
-    <style>{{ css }}</style>
-</head>
-<body>
-    <div class="report-container">
-        <!-- Шапка -->
-        <header class="report-header">
-            <h1>{{ report.title }}</h1>
-            {% if report.description %}
-            <p class="report-description">{{ report.description }}</p>
-            {% endif %}
-        </header>
-        
-        <!-- Навигация по вкладкам -->
-        {% if report.tabs|length > 1 %}
-        <nav class="tab-nav">
-            {% for tab in report.tabs %}
-            <button class="tab-button {% if loop.first %}active{% endif %}" 
-                    onclick="switchTab('{{ loop.index0 }}')">
-                {{ tab.title }}
-            </button>
-            {% endfor %}
-        </nav>
-        {% endif %}
-        
-        <!-- Контент вкладок -->
-        <main class="tab-content">
-            {% for tab in report.tabs %}
-            <div class="tab-panel {% if loop.first %}active{% endif %}" id="tab-{{ loop.index0 }}">
-                {% for row in tab.rows %}
-                <div class="grid-row grid-{{ row.layout }}"{% if row.custom_layout %} style="grid-template-columns: {{ row.custom_layout|join(' ') }}"{% endif %}>
-                    {% for cell in row.cells %}
-                    <div class="grid-cell">
-                        {% for section in cell.sections %}
-                        <div class="content-section">
-                            {% if section.title %}
-                            <h3 class="section-title">{{ section.title }}</h3>
-                            {% endif %}
-                            <div class="section-content section-{{ section.content_type }}">
-                                {{ section.content|safe }}
-                            </div>
-                            {% if section.caption %}
-                            <p class="section-caption">{{ section.caption }}</p>
-                            {% endif %}
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </div>
-            {% endfor %}
-        </main>
-        
-        <!-- Подвал -->
-        {% if report.footer %}
-        <footer class="report-footer">
-            <p>{{ report.footer }}</p>
-        </footer>
-        {% endif %}
-    </div>
+    N_feat = len(features)
     
-    <script>{{ js }}</script>
-</body>
-</html>'''
+    #Метрики
+    train_N=X_train.shape[0]
+    test_N=X_test.shape[0]
+    oot_N=X_oot.shape[0]
     
-    def _get_css(self) -> str:
-        """CSS стили."""
-        return '''
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background-color: #f8f9fa;
-        }
-        
-        .report-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .report-header {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        
-        .report-header h1 {
-            color: #2c3e50;
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-        
-        .report-description {
-            color: #7f8c8d;
-            font-size: 1.1rem;
-        }
-        
-        .tab-nav {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 20px;
-            background: white;
-            padding: 10px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .tab-button {
-            padding: 12px 24px;
-            border: none;
-            background: #ecf0f1;
-            color: #34495e;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .tab-button:hover {
-            background: #d5dbdb;
-        }
-        
-        .tab-button.active {
-            background: #3498db;
-            color: white;
-        }
-        
-        .tab-panel {
-            display: none;
-        }
-        
-        .tab-panel.active {
-            display: block;
-        }
-        
-        .grid-row {
-            display: grid;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .grid-1x1 {
-            grid-template-columns: 1fr;
-        }
-        
-        .grid-1x2 {
-            grid-template-columns: 1fr 1fr;
-        }
-        
-        .grid-1x3 {
-            grid-template-columns: 1fr 1fr 1fr;
-        }
-        
-        /* Кастомные layout'ы */
-        .grid-row[class*="custom-"] {
-            display: grid;
-            gap: 20px;
-            /* grid-template-columns устанавливается inline через style="" */
-        }
-        
-        @media (max-width: 768px) {
-            .grid-1x2,
-            .grid-1x3,
-            .grid-row[class*="custom-"] {
-                grid-template-columns: 1fr !important;
-            }
-        }
-        
-        .grid-cell {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .content-section {
-            padding: 20px;
-        }
-        
-        .content-section:not(:last-child) {
-            border-bottom: 1px solid #ecf0f1;
-        }
-        
-        .section-title {
-            color: #2c3e50;
-            font-size: 1.2rem;
-            margin-bottom: 15px;
-            font-weight: 600;
-        }
-        
-        .section-caption {
-            margin-top: 10px;
-            font-size: 0.9rem;
-            color: #7f8c8d;
-            font-style: italic;
-        }
-        
-        /* Стили для Markdown контента */
-        .section-content h2,
-        .section-content h3 {
-            margin-top: 1.5rem;
-            margin-bottom: 1rem;
-            color: #2c3e50;
-            line-height: 1.3;
-        }
-        
-        .section-content h2 {
-            font-size: 1.4rem;
-            border-bottom: 2px solid #ecf0f1;
-            padding-bottom: 0.5rem;
-        }
-        
-        .section-content h3 {
-            font-size: 1.2rem;
-        }
-        
-        .section-content ul,
-        .section-content ol {
-            margin: 1rem 0;
-            padding-left: 1.5rem;
-            line-height: 1.6;
-        }
-        
-        .section-content li {
-            margin-bottom: 0.5rem;
-        }
-        
-        .section-content p {
-            margin-bottom: 1rem;
-            line-height: 1.6;
-        }
-        
-        .section-content strong {
-            color: #2c3e50;
-            font-weight: 600;
-        }
-        
-        /* Обеспечиваем правильное переносы в длинном тексте */
-        .section-content {
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            hyphens: auto;
-        }
-        
-        /* Key-Value стили */
-        .kv-container {
-            display: grid;
-            gap: 6px;
-        }
-        
-        .kv-item {
-            display: grid;
-            grid-template-columns: minmax(200px, 35%) 1fr;  /* Фиксированная ширина для ключей */
-            gap: 24px;
-            align-items: start;
-            padding: 10px 0;
-            border-bottom: 1px solid #f1f3f4;
-        }
-        
-        .kv-item:last-child {
-            border-bottom: none;
-        }
-        
-        .kv-key {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-weight: 600;
-            color: #2c3e50;
-            text-align: left;  /* Выравнивание по левому краю для лучшей читаемости */
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            line-height: 1.4;
-        }
-        
-        .kv-value {
-            color: #34495e;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            line-height: 1.4;
-            font-weight: 400;
-        }
-        
-        /* Альтернативный стиль для компактного отображения */
-        .kv-container.compact .kv-item {
-            grid-template-columns: minmax(150px, 30%) 1fr;
-            gap: 16px;
-            padding: 6px 0;
-        }
-        
-        .kv-container.compact .kv-key {
-            font-size: 0.9rem;
-        }
-        
-        .kv-container.compact .kv-value {
-            font-size: 0.9rem;
-        }
-        
-        /* DataFrame стили */
-        .dataframe-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-        
-        .dataframe-table th,
-        .dataframe-table td {
-            padding: 6px 12px;  /* Уменьшили высоту строк */
-            text-align: left;
-            border: 1px solid #dee2e6;
-            line-height: 1.3;   /* Компактная высота строки */
-        }
-        
-        .dataframe-table th {
-            background-color: #f8f9fa;
-            font-weight: 700;   /* Более жирные заголовки */
-            color: #2c3e50;     /* Более контрастный цвет */
-            font-size: 0.95rem; /* Крупнее заголовки */
-            padding: 8px 12px;  /* Чуть больше отступ для заголовков */
-        }
-        
-        .dataframe-table tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-        
-        .dataframe-table tr:hover {
-            background-color: #e3f2fd;
-        }
-        
-        /* Plotly контейнер */
-        .section-plotly .plotly-graph-div {
-            width: 100% !important;
-            height: 450px !important;  /* Компактная высота */
-        }
-        
-        /* Исправление для легенды Plotly */
-        .section-plotly .legend {
-            max-width: none !important;
-        }
-        
-        /* Обеспечиваем корректное отображение графиков */
-        .section-plotly {
-            overflow: visible;
-            min-height: auto;  /* Автоматическая высота */
-            padding-bottom: 60px;  /* Место для легенды снизу */
-        }
-        
-        /* Стили для toolbar Plotly */
-        .section-plotly .modebar {
-            position: absolute !important;
-            top: 25px !important;  /* Больше отступ от заголовка */
-            right: 15px !important;
-            z-index: 1000;
-        }
-        
-        /* Дополнительные отступы для заголовков секций с графиками */
-        .section-plotly .section-title {
-            margin-bottom: 25px;  /* Больше отступ под заголовком */
-            padding-top: 5px;     /* Небольшой отступ сверху */
-        }
-        
-        .report-footer {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-top: 20px;
-            text-align: center;
-            color: #7f8c8d;
-        }
-        '''
+    train_share=y_train.mean()
+    test_share=y_test.mean()
+    oot_share=y_oot.mean()
     
-    def _get_js(self) -> str:
-        """JavaScript для переключения вкладок."""
-        return '''
-        function switchTab(tabIndex) {
-            // Скрыть все панели
-            const panels = document.querySelectorAll('.tab-panel');
-            panels.forEach(panel => panel.classList.remove('active'));
-            
-            // Убрать активный класс с кнопок
-            const buttons = document.querySelectorAll('.tab-button');
-            buttons.forEach(button => button.classList.remove('active'));
-            
-            // Показать выбранную панель
-            const targetPanel = document.getElementById('tab-' + tabIndex);
-            if (targetPanel) {
-                targetPanel.classList.add('active');
-            }
-            
-            // Активировать выбранную кнопку
-            if (buttons[tabIndex]) {
-                buttons[tabIndex].classList.add('active');
-            }
-            
-            // Принудительно обновляем размеры Plotly графиков после переключения
-            setTimeout(function() {
-                const activePanel = document.getElementById('tab-' + tabIndex);
-                if (activePanel) {
-                    const plotlyDivs = activePanel.querySelectorAll('.plotly-graph-div');
-                    plotlyDivs.forEach(function(div) {
-                        if (window.Plotly && div.layout) {
-                            window.Plotly.Plots.resize(div);
-                        }
-                    });
-                }
-            }, 100);
-        }
+    train_roc = round(roc_auc_score(y_train, y_train_pred_proba),3)
+    test_roc = round(roc_auc_score(y_test, y_test_pred_proba),3)
+    oot_roc = round(roc_auc_score(y_oot, y_oot_pred_proba),3)
+    
+    train_gini = 2 * train_roc - 1
+    test_gini = 2 * test_roc - 1
+    oot_gini = 2 * oot_roc - 1
+    
+    train_rec = round(recall_score(y_train, y_train_pred),3)
+    test_rec = round(recall_score(y_test, y_test_pred),3)
+    oot_rec = round(recall_score(y_oot, y_oot_pred),3)
+    
+    train_prec = round(precision_score(y_train, y_train_pred),3)
+    test_prec = round(precision_score(y_test, y_test_pred),3)
+    oot_prec =round( precision_score(y_oot, y_oot_pred),3)
+    
+    train_f1 = round(f1_score(y_train, y_train_pred),3)
+    test_f1 = round(f1_score(y_test, y_test_pred),3)
+    oot_f1 = round(f1_score(y_oot, y_oot_pred),3)
+    
+    train_fbeta2 = round(fbeta_score(y_train, y_train_pred, beta=2),3)
+    test_fbeta2 = round(fbeta_score(y_test, y_test_pred, beta=2),3)
+    oot_fbeta2 = round(fbeta_score(y_oot, y_oot_pred, beta=2),3) 
+    
+    train_fbeta05 = round(fbeta_score(y_train, y_train_pred, beta=0.5),3)
+    test_fbeta05 = round(fbeta_score(y_test, y_test_pred, beta=0.5),3)
+    oot_fbeta05 = round(fbeta_score(y_oot, y_oot_pred, beta=0.5),3)  
+
+    _, roc_fig_train = roc_curve_plotly(y_train, y_train_pred_proba, "Train")
+    _, roc_fig_test = roc_curve_plotly(y_test, y_test_pred_proba, "Test")
+    _, roc_fig_oot = roc_curve_plotly(y_oot, y_oot_pred_proba, "OOT")
+
+    fig_roc = go.Figure()
+    for f in [roc_fig_train, roc_fig_test, roc_fig_oot]:
+        for tr in f.data:
+            fig_roc.add_trace(tr)
+    # Линия 'chance'
+    fig_roc.add_trace(go.Scatter(
+        x=[0, 1], y=[0, 1],
+        mode="lines",
+        name="Chance",
+        line=dict(width=2, dash="dash", color="#999"),
+        hoverinfo="skip"
+    ))
+    fig_roc.update_layout(
+        title='ROC curve Train/Test/OOT',
+        xaxis=dict(title="False Positive Rate (FPR)", range=[0, 1]),
+        yaxis=dict(title="True Positive Rate (TPR)",  range=[0, 1]),
+        template="plotly_white",
+        legend=dict(orientation="h", y=-0.35, x=1, xanchor="right", yanchor="top"),
+        margin=dict(t=70, r=40, b=50, l=60),
+        hovermode="x unified",)  
+    fig_roc.show()
+
+    #precision_recall кривая 
+    _, pr_fig_train = precision_recall_curve_plotly(y_train, y_train_pred_proba, "Train")
+    _, pr_fig_test = precision_recall_curve_plotly(y_test, y_test_pred_proba, "Test") 
+    _, pr_fig_oot = precision_recall_curve_plotly(y_oot, y_oot_pred_proba, "OOT") 
+
+    fig_pr = go.Figure()
+    for f in [pr_fig_train, pr_fig_test, pr_fig_oot]:
+        for tr in f.data:
+            fig_pr.add_trace(tr)
+
+    fig_pr.update_layout(
+        title='ROC curve Train/Test/OOT',
+        xaxis=dict(title="False Positive Rate (FPR)", range=[0, 1]),
+        yaxis=dict(title="True Positive Rate (TPR)",  range=[0, 1]),
+        template="plotly_white",
+        legend=dict(orientation="h", y=-0.35, x=1, xanchor="right", yanchor="top"),
+        margin=dict(t=70, r=40, b=50, l=60),
+        hovermode="x unified",)  
+    fig_pr.show()
+
+    _, cm_fig_train = confusion_matrix_plotly(y_true=y_train, y_score=y_train_pred_proba, threshold=0.5, title="Train")
+    _, cm_fig_test = confusion_matrix_plotly(y_true=y_test, y_score=y_test_pred_proba, threshold=0.5, title="Test")
+    _, cm_fig_oot = confusion_matrix_plotly(y_true=y_oot, y_score=y_oot_pred_proba, threshold=0.5, title="OOT")
+    
+    #Таблица с результатами
+    res = {'train': [train_N, N_feat, train_share, train_roc, train_gini, train_rec, 
+                     train_prec, train_fbeta05, train_f1, train_fbeta2],
+           'test': [test_N, N_feat, test_share, test_roc, test_gini, test_rec, 
+                    test_prec, test_fbeta05, test_f1, test_fbeta2],
+           'oot': [oot_N, N_feat,oot_share, oot_roc, oot_gini, oot_rec, 
+                   oot_prec, oot_fbeta05, oot_f1, oot_fbeta2]}
+    res_df = pd.DataFrame(data=res, index=['N_samples', 'N_feat', 'target_share', 'ROC', 'gini', 
+                                           'Recall', 'Precision', 'f05_score','f1_score', 'f2_score'])
+    display(res_df.T)
+    
+    # Лифты
+    df_train_tmp = pd.DataFrame()
+    df_train_tmp['target'] = y_train
+    df_train_tmp['pred'] = y_train_pred_proba
+    _, lift_fig_train = lift_plotly(df_train_tmp, 'pred', 'target', 'Лифт train')
+    
+    df_test_tmp = pd.DataFrame()
+    df_test_tmp['target'] = y_test
+    df_test_tmp['pred'] = y_test_pred_proba
+    _, lift_fig_test = lift_plotly(df_test_tmp, 'pred', 'target', 'Лифт test')
+    
+    df_oot_tmp = pd.DataFrame()
+    df_oot_tmp['target'] = y_oot
+    df_oot_tmp['pred'] = y_oot_pred_proba
+    _, lift_fig_oot = lift_plotly(df_oot_tmp, 'pred', 'target', 'Лифт oot')
+      
+    return res_df, fig_roc, fig_pr, [lift_fig_train, lift_fig_test, lift_fig_oot], [cm_fig_train, cm_fig_test, cm_fig_oot]
+
+def lift_plotly(
+    df: pd.DataFrame,
+    pred_col: str,
+    target_col: str,
+    name: str = "Лифт",
+    q: int = 10,
+    show: bool = True
+) -> Tuple[pd.DataFrame, go.Figure]:
+    """
+    Лифт по децилям предсказанного скора.
+    Возвращает (df_lift, fig).
+
+    df_lift колонки:
+      bucket (1..q), count, true_count, share_true_pct,
+      mean_target, mean_score, mean_overall, lift
+    """
+
+    data = df[[pred_col, target_col]].dropna().copy()
+
+    # Децильные "бакеты" по предсказанию
+    # метки делаем 1..q (1 = низкие скора, q = высокие)
+    data["bucket"] = pd.qcut(data[pred_col], q=q, labels=range(1, q + 1), duplicates="drop")
+
+    # Агрегация по бакетам
+    g = (
+        data.groupby("bucket", observed=False)
+            .agg(
+                mean_target=(target_col, "mean"),
+                mean_score=(pred_col, "mean"),
+                count=(target_col, "size"),
+                true_count=(target_col, "sum"),
+            )
+            .reset_index()
+            .astype({"bucket": int})
+            .sort_values("bucket")
+    )
+
+    mean_overall = data[target_col].mean()
+    g["mean_overall"] = mean_overall
+    g["lift"] = g["mean_target"] / mean_overall if mean_overall > 0 else 0.0
+
+    total_true = data[target_col].sum()
+    g["share_true_pct"] = np.where(total_true > 0, g["true_count"] / total_true * 100.0, 0.0)
+
+    # ------- Рисуем -------
+    fig = go.Figure()
+
+    # Бар: Lift (левая ось)
+    fig.add_bar(
+        x=g["bucket"], y=g["lift"],
+        name="Lift",
+        marker_color="silver",
+        # text=[f"{c/1000:.1f}k" for c in g["count"]],   # подписи количества над столбцами
+        textposition="outside",
+        cliponaxis=False
+    )
+
+    # Линии: средний таргет в бакете, средний скор, средний по выборке (константа), правая ось
+    fig.add_trace(go.Scatter(
+        x=g["bucket"], y=g["mean_target"],
+        mode="lines", name="Средний таргет в бакете",
+        yaxis="y2", line=dict(width=3)
+    ))
+    fig.add_trace(go.Scatter(
+        x=g["bucket"], y=g["mean_score"],
+        mode="lines", name="Средний скор в бакете",
+        yaxis="y2", line=dict(width=3, color="#FF7F0E")
+    ))
+    fig.add_trace(go.Scatter(
+        x=g["bucket"], y=g["mean_overall"],
+        mode="lines", name="Средний таргет в выборке",
+        yaxis="y2", line=dict(width=2, dash="dash", color="#2ca02c")
+    ))
+
+    # Подписи «Доля true единиц» под осью X
+    fig.add_annotation(
+        xref="paper", yref="paper", x=0, y=-0.16,
+        text="Доля true единиц", showarrow=False, align="left"
+    )
+    for x_i, pct in zip(g["bucket"], g["share_true_pct"]):
+        fig.add_annotation(
+            x=x_i, yref="paper", y=-0.22,
+            text=f"{pct:.1f}%", showarrow=False
+        )
+
+    # Оси и оформление
+    ymax = float(max(1.0, g["lift"].max()))
+    fig.update_layout(
+        title=f"{name}",
+        xaxis=dict(tickmode="array", tickvals=g["bucket"]),
+        yaxis=dict(title="Лифт", range=[0, ymax * 1.15]),          # запас сверху для подписей
+        yaxis2=dict(title="Средний таргет", overlaying="y", side="right"),
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=70, r=70, b=120, l=70),
+        # height=520,
+        # width=520
+    )
+
+    if show:
+        fig.show()
+
+    # Итоговый датафрейм с метриками по бакетам
+    df_lift = g[[
+        "bucket", "count", "true_count", "share_true_pct",
+        "mean_target", "mean_score", "mean_overall", "lift"
+    ]].reset_index(drop=True)
+
+    return df_lift, fig
+
+def psi_plotly(
+    psi_pivot: pd.DataFrame,
+    title: str = "PSI по месяцам",
+    thresholds: tuple[float, float] = (0.10, 0.25),  # референс-линии
+) -> Tuple[pd.DataFrame, "go.Figure"]:
+    """
+    psi_pivot: DataFrame
+        index  -> имена фичей
+        columns-> даты (datetime или строки)
+        values -> PSI (float)
+    Возвращает:
+        df_long: ['feature','date','psi']
+        fig: Plotly Figure
+    """
+    if psi_pivot.empty:
+        raise ValueError("psi_pivot пуст.")
+
+    # long-формат для ВСЕХ фичей из индекса
+    df_long = (
+        psi_pivot.assign(feature=lambda d: d.index)
+                 .reset_index(drop=True)
+                 .melt(id_vars="feature", var_name="date", value_name="psi")
+    )
+    # даты -> datetime (если распарсятся)
+    df_long["date"] = pd.to_datetime(df_long["date"], errors="coerce")
+    df_long = df_long.sort_values(["feature", "date"]).reset_index(drop=True)
+
+    def shorten_name(text, max_len=41):
+        return text if len(text) <= max_len else text[:max_len] + '...'
         
-        // Инициализация после загрузки страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            // Обеспечиваем корректное отображение графиков на активной вкладке
-            setTimeout(function() {
-                const activePanel = document.querySelector('.tab-panel.active');
-                if (activePanel) {
-                    const plotlyDivs = activePanel.querySelectorAll('.plotly-graph-div');
-                    plotlyDivs.forEach(function(div) {
-                        if (window.Plotly && div.layout) {
-                            window.Plotly.Plots.resize(div);
-                        }
-                    });
-                }
-            }, 500);
-        });
-        '''
+    # фигура
+    fig = go.Figure()
+    for f, part in df_long.groupby("feature", sort=False):
+        fig.add_trace(go.Scatter(
+            x=part["date"], y=part["psi"],
+            mode="lines+markers",
+            name=shorten_name(str(f)),
+            hovertemplate=f"<b>{f}</b><br>Дата: %{{x|%Y-%m-%d}}<br>PSI: %{{y:.4f}}<extra></extra>",
+            line=dict(width=3),
+            marker=dict(size=6, line=dict(width=1, color="white"))
+        ))
+
+    # референс-линии PSI
+    for thr in thresholds:
+        fig.add_hline(y=thr, line_dash="dash", line_color="#888",
+                      annotation_text=f"{thr:.2f}", annotation_position="top left")
+
+    ymax = np.nanmax(df_long["psi"].values)
+    fig.update_layout(
+        title=title,
+        xaxis=dict(),
+        yaxis=dict(title="PSI", range=[0, max(0.2, float(ymax)*1.3)]),
+        template="plotly_white",
+        # hovermode='x',
+        # legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="left", x=0),
+        margin=dict(t=70, r=40, b=60, l=60)
+    )
+
+    return df_long, fig
+
+def target_tts_plot(train_df, test_df, sample_df, date_col):
+    train = train_df.copy()
+    test = test_df.copy()
+    sample = sample_df.copy()
+    
+    train[date_col] = train[date_col].dt.strftime('%Y-%m-%d')
+    test[date_col] = test[date_col].dt.strftime('%Y-%m-%d')
+    sample[date_col] = sample[date_col].dt.strftime('%Y-%m-%d')
+    
+    train_by_waves = train.groupby(date_col)['target'].mean()
+    test_by_waves = test.groupby(date_col)['target'].mean()
+    target_by_waves = sample.groupby(date_col)['target'].mean()
+    
+    plt.figure(figsize=(16, 6))
+    plt.plot(target_by_waves.index[0:].to_numpy(), target_by_waves.values[0:], label='full')
+    plt.plot(train_by_waves.index[0:].to_numpy(), train_by_waves.values[0:], label='train')
+    plt.plot(test_by_waves.index[0:].to_numpy(), test_by_waves.values[0:], label='test')
+    
+    plt.legend(labels=['full', 'train', 'test'])
+    plt.xticks(target_by_waves.index[0:], rotation=55)
+    plt.grid(axis='y')
+    plt.title('Доля таргета в train_test_oot после преобразований')
+    plt.show()
+
+def decile_target(
+    df: pd.DataFrame,
+    score_col: str,          # скор/вероятность
+    target_col: str,         # 0/1
+    id_col: str,
+    q: int = 10,
+    as_percent: bool = True  # вернуть ratio в процентах
+) -> pd.DataFrame:
+    d = df[[score_col, target_col] + ([id_col] if id_col else [])].dropna().copy()
+
+    # Дециль: 1 = максимум score
+    d["decile"] = pd.qcut(-d[score_col], q=q, labels=False, duplicates="drop") + 1
+
+    # target_0 / target_1 по децилям
+    pivot = (
+        d.groupby(["decile", target_col])[id_col]
+         .nunique()
+         .unstack(fill_value=0)
+         .rename(columns={0: "target_0", 1: "target_1"})
+         .reset_index()
+         .sort_values("decile")
+    )
+
+    # всего клиентов в дециле
+    pivot["client_all"] = pivot["target_0"] + pivot["target_1"]
+
+    # доля target=1 в дециле от общего числа target=1 по всей выборке
+    total_pos = pivot["target_1"].sum()
+    pivot["ratio"] = pivot["target_1"] / total_pos if total_pos > 0 else 0.0
+
+    # формат процентов по желанию
+    if as_percent:
+        pivot["ratio"] = (pivot["ratio"] * 100).round(2).astype(str) + "%"
+
+    # привести тип decile к int (а не category)
+    pivot["decile"] = pivot["decile"].astype(int)
+
+    # финальные колонки в нужном порядке
+    pivot = pivot[["decile", "client_all", "target_0", "target_1", "ratio"]]
+    pivot.columns.name = None
+    return pivot
+
+def lgbm_model_results(df_train, df_test, df_oot, target_name, features, Model):
+
+    #Инициализация модели
+    model = Model
+
+    X_train, y_train = df_train[features], df_train[target_name]
+    X_test, y_test = df_test[features], df_test[target_name]
+    X_oot, y_oot = df_oot[features], df_oot[target_name]
+    
+    #Предикты
+    y_train_pred_proba = model.predict_proba(X_train)[:,1]
+    y_test_pred_proba = model.predict_proba(X_test)[:,1]
+    y_oot_pred_proba = model.predict_proba(X_oot)[:,1]
+
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
+    y_oot_pred = model.predict(X_oot)
+    
+    N_feat = len(features)
+    
+    #Метрики
+    train_N=X_train.shape[0]
+    test_N=X_test.shape[0]
+    oot_N=X_oot.shape[0]
+    
+    train_share=y_train.mean()
+    test_share=y_test.mean()
+    oot_share=y_oot.mean()
+    
+    train_roc = round(roc_auc_score(y_train, y_train_pred_proba),3)
+    test_roc = round(roc_auc_score(y_test, y_test_pred_proba),3)
+    oot_roc = round(roc_auc_score(y_oot, y_oot_pred_proba),3)
+    
+    train_gini = 2 * train_roc - 1
+    test_gini = 2 * test_roc - 1
+    oot_gini = 2 * oot_roc - 1
+    
+    train_rec = round(recall_score(y_train, y_train_pred),3)
+    test_rec = round(recall_score(y_test, y_test_pred),3)
+    oot_rec = round(recall_score(y_oot, y_oot_pred),3)
+    
+    train_prec = round(precision_score(y_train, y_train_pred),3)
+    test_prec = round(precision_score(y_test, y_test_pred),3)
+    oot_prec =round( precision_score(y_oot, y_oot_pred),3)
+    
+    train_f1 = round(f1_score(y_train, y_train_pred),3)
+    test_f1 = round(f1_score(y_test, y_test_pred),3)
+    oot_f1 = round(f1_score(y_oot, y_oot_pred),3)
+    
+    train_fbeta2 = round(fbeta_score(y_train, y_train_pred, beta=2),3)
+    test_fbeta2 = round(fbeta_score(y_test, y_test_pred, beta=2),3)
+    oot_fbeta2 = round(fbeta_score(y_oot, y_oot_pred, beta=2),3) 
+    
+    train_fbeta05 = round(fbeta_score(y_train, y_train_pred, beta=0.5),3)
+    test_fbeta05 = round(fbeta_score(y_test, y_test_pred, beta=0.5),3)
+    oot_fbeta05 = round(fbeta_score(y_oot, y_oot_pred, beta=0.5),3)  
+
+    fig, ax = plt.subplots(2, 3, figsize=(15,9))
+
+    RocCurveDisplay.from_predictions(y_train, y_train_pred_proba, ax=ax[0,0], name=f'{type(model).__name__} Train')
+    RocCurveDisplay.from_predictions(y_test, y_test_pred_proba, ax=ax[0,0], name=f'{type(model).__name__} Test')
+    RocCurveDisplay.from_predictions(y_oot, y_oot_pred_proba, ax=ax[0,0], name=f'{type(model).__name__} OOT')
+    
+    #Precision-recall кривая
+    precision_train, recall_train, _ = precision_recall_curve(y_train, y_train_pred_proba)
+    precision_test, recall_test, _ = precision_recall_curve(y_test, y_test_pred_proba)
+    precision_oot, recall_oot, _ = precision_recall_curve(y_oot, y_oot_pred_proba)
+
+    ax[0,1].plot(recall_train, precision_train, label='Train')
+    ax[0,1].plot(recall_test, precision_test, label='Test')
+    ax[0,1].plot(recall_oot, precision_oot, label='OOT')
+
+    #Confusion_matrix    
+    ConfusionMatrixDisplay.from_predictions(y_train, y_train_pred, ax=ax[1,0], values_format='d')
+    ConfusionMatrixDisplay.from_predictions(y_test, y_test_pred,  ax=ax[1,1], values_format='d')
+    ConfusionMatrixDisplay.from_predictions(y_oot, y_oot_pred, ax=ax[1,2], values_format='d')
+    
+    ax[1,0].set_title('train')
+    ax[1,1].set_title('test')
+    ax[1,2].set_title('oot')
+
+    fig.tight_layout()
+    plt.show()
+    
+    #Таблица с результатами
+    res = {'train': [train_N, N_feat, train_share, train_roc, train_gini, train_rec, 
+                     train_prec, train_fbeta05, train_f1, train_fbeta2],
+           'test': [test_N, N_feat, test_share, test_roc, test_gini, test_rec, 
+                    test_prec, test_fbeta05, test_f1, test_fbeta2],
+           'oot': [oot_N, N_feat,oot_share, oot_roc, oot_gini, oot_rec, 
+                   oot_prec, oot_fbeta05, oot_f1, oot_fbeta2]}
+    res_df = pd.DataFrame(data=res, index=['N_samples', 'N_feat', 'target_share', 'ROC', 'gini', 
+                                           'Recall', 'Precision', 'f05_score','f1_score', 'f2_score'])
+    display(res_df.T)
+
+    #Gini по месяцам
+
+    # Лифты
+    df_train_tmp = pd.DataFrame()
+    df_train_tmp['target_c_30'] = y_train
+    df_train_tmp['pred'] = y_train_pred_proba
+    lift(df_train_tmp, 'target_c_30', 'Лифт train')
+    
+    df_test_tmp = pd.DataFrame()
+    df_test_tmp['target_c_30'] = y_test
+    df_test_tmp['pred'] = y_test_pred_proba
+    lift(df_test_tmp, 'target_c_30', 'Лифт test')
+    
+    df_oot_tmp = pd.DataFrame()
+    df_oot_tmp['target_c_30'] = y_oot
+    df_oot_tmp['pred'] = y_oot_pred_proba
+    lift(df_oot_tmp, 'target_c_30', 'Лифт oot')
+    
+    
+    return res_df  
+
+
+def lift(df, target, name = 'no_name'):
+
+    df['bucket'] = pd.qcut(df['pred'], q = 10, duplicates = 'drop')
+    
+    y_oot_lift = pd.DataFrame(df.groupby('bucket', observed=False).mean()[target])
+    y_oot_lift['mean_overall'] = df[target].mean()
+    y_oot_lift['lift'] = y_oot_lift[target] / y_oot_lift['mean_overall']
+    y_oot_lift['mean_score'] = df.groupby('bucket', observed=False).mean()['pred']
+
+    cnt_in_buckets_oot = df.groupby('bucket', observed=False).count()[target].values
+    
+    cnt_true_1_in_buckets = df.groupby('bucket', observed=False).sum()[target].values/df[target].sum()*100
+
+    fig, _ = plt.subplots(figsize=(8, 6))
+    fig.axes[1] = plt.twinx()
+    fig.axes[0].bar(range(1, len(y_oot_lift.index) + 1), y_oot_lift['lift'], color='silver', label='Lift')
+    fig.axes[0].set_xticks(range(1, len(y_oot_lift.index) + 1))
+    fig.axes[0].set_ylabel('Лифт')
+    fig.axes[0].set_xlabel('Бакеты')
+    fig.axes[0].legend(loc=2)
+    fig.axes[1].plot(range(1, len(y_oot_lift.index) + 1), y_oot_lift[target].values, label='Средний таргет в бакете')
+    fig.axes[1].plot(range(1, len(y_oot_lift.index) + 1), y_oot_lift['mean_score'].values, label='Средний скор в бакете')
+    fig.axes[1].plot(range(1, len(y_oot_lift.index) + 1), y_oot_lift['mean_overall'], '--', label='Средний таргет в выборке')
+    fig.axes[1].legend(loc=9)
+    fig.axes[1].grid()
+    fig.axes[1].set_ylabel('Средний таргет')
+    fig.suptitle(name)
+
+    for i, n in enumerate(cnt_in_buckets_oot):
+        fig.axes[0].text(i+0.62, 0.2, str(np.round(n/1000, 1)) + 'k')
+    
+    
+    for i, n in enumerate(cnt_true_1_in_buckets):
+        fig.axes[0].text(i+0.8, -1.2, str(round(n, 1)) + '%')
+    
+    fig.axes[0].text(0, -0.75, 'Доля\ntrue\nединиц')  
+        
+    plt.show()
+
+def gini_rate_plotly(
+    data: pd.DataFrame,
+    date_col: str,      # колонка с датой
+    target_col: str,    # 0/1
+    score_col: str,     # вероятность/скор позитивного класса
+    title: str = "Gini by months",
+) -> Tuple[pd.DataFrame, "go.Figure"]:
+    """
+    Строит график: слева CNT (столбики), справа GINI (линия).
+    Gini для каждого месяца = 2 * AUC - 1.
+    Возвращает (df_agg, fig).
+    """
+    df = data[[date_col, target_col, score_col]].copy()
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col])
+
+    # месяц = начало месяца
+    df["month"] = df[date_col].dt.to_period("M").dt.to_timestamp()
+
+    # cnt по месяцам
+    agg_cnt = df.groupby("month", as_index=False).agg(cnt=(target_col, "size"))
+
+    # gini по месяцам
+    def _gini_month(gr: pd.DataFrame) -> float:
+        y = gr[target_col].values
+        s = gr[score_col].values
+        if len(np.unique(y)) < 2:
+            return np.nan  # AUC не определён, если в месяце один класс
+        auc = roc_auc_score(y, s)
+        return 2 * auc - 1
+
+    gini = df.groupby("month").apply(_gini_month).reset_index(name="gini")
+
+    df_agg = (
+        agg_cnt.merge(gini, on="month", how="left")
+               .sort_values("month")
+               .reset_index(drop=True)
+    )
+
+    # --- Plotly ---
+    fig = go.Figure()
+    fig.add_bar(
+        x=df_agg["month"], y=df_agg["cnt"],
+        name="CNT",
+        marker_color="royalblue", opacity=0.9
+    )
+    fig.add_trace(go.Scatter(
+        x=df_agg["month"], y=df_agg["gini"],
+        mode="lines+markers",
+        name="GINI",
+        yaxis="y2",
+        line=dict(width=3, color="red"),
+        marker=dict(size=7, line=dict(width=1, color="white"))
+    ))
+
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title=None, tickangle=45),
+        yaxis=dict(title="CNT", tickformat=",.0f", color="royalblue",
+                   titlefont=dict(color="royalblue")),
+        yaxis2=dict(title="GINI", overlaying="y", side="right",
+                    range=[0, 1], tickformat=".2f",
+                    color="red", titlefont=dict(color="red")),
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="top", y=-0.35,
+                    xanchor="center", x=0.5),
+        margin=dict(t=70, r=70, b=70, l=70),
+    )
+
+    fig.show()
+
+    return df_agg[["month", "cnt", "gini"]], fig
+    
+def plot_gini_by_months_vs_clients(df, date_col='year_month', target='target', pred='predictions'):
+    """
+    Строит график с динамикой Gini и количеством клиентов по месяцам + выводит таблицу с расчетами.
+    Предполагает, что date_col уже содержит готовые периоды (например, '2023-01-01' для января 2023).
+
+    Параметры:
+    -----------
+    df : pd.DataFrame
+        Исходный DataFrame с данными.
+    date_col : str, optional (default='year_month')
+        Название колонки с готовыми месячными периодами.
+    target_col : str, optional (default='target')
+        Название колонки с таргетом (0/1).
+    pred_col : str, optional (default='predictions')
+        Название колонки с предсказаниями модели (вероятности).
+    """
+
+    grouped = df.groupby(date_col)
+
+    summary = []
+
+    def compute_gini(y_true, y_scores):
+        auc = roc_auc_score(y_true, y_scores)
+        return 2 * auc - 1
+
+    for date, group in grouped:
+        gini = compute_gini(group[target], group[pred])
+        summary.append({
+            'date': date,
+            'gini': round(gini, 2),
+            'count': len(group)
+        })
+
+    summary_df = pd.DataFrame(summary)
+
+    # Построение графика
+    fig, ax1 = plt.subplots(figsize=(14, 6))
+    ax1.bar(summary_df['date'], summary_df['count'], width=20, color='cornflowerblue', label='CNT')
+    ax1.set_ylabel('CNT', color='blue')
+    ax1.set_ylim(0, summary_df['count'].max() * 1.2)
+    ax1.tick_params(axis='x', rotation=45)
+
+    ax2 = ax1.twinx()
+    ax2.plot(summary_df['date'], summary_df['gini'], color='green', label='GINI', linewidth=2)
+    ax2.set_ylabel('GINI', color='green')
+    ax2.set_ylim(0, 1)
+
+    ax1.legend(loc='upper left')
+    ax2.legend(loc='upper right')
+    plt.title('Gini by generations')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    print("GINI Summary by Month:")
+    return summary_df
