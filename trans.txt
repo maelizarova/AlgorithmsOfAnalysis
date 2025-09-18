@@ -1,20 +1,71 @@
-join_expressions = []
+from typing import List, Dict, Any
+import pandas as pd
 
-for key, config in your_dict.items():
-    # Находим совпадающие строки
-    matches = df[(df['proc'] == config['procedure'])]
+def create_sql_query(features: List[str], in_table: str, out_table: str) -> str:
+    """
+    Создает SQL запрос для выборки фичей из feature registry с JOIN выражений.
     
-    for _, row in matches.iterrows():
-        suffix = config['suffix']
-        part = row['online_table']
+    Функция выполняет следующие действия:
+    1. Формирует запрос к FEATURE_REGISTRY для получения информации о фичах
+    2. Строит JOIN выражения на основе конфигурации процедур
+    3. Создает итоговый SQL запрос с выборкой указанных фичей
+    
+    Parameters:
+    -----------
+    features : List[str]
+        Список названий фичей (features) для выборки
+    in_table : str
+        Название основной таблицы для FROM clause
+    out_table : str
+        Префикс для названий таблиц в JOIN выражениях
         
-        if pd.notna(part):
-            table_name = f"{out_table}_{suffix}_{part}"
-            alias = f"{suffix}_{part}"
-        else:
-            table_name = f"{out_table}_{suffix}"
-            alias = f"{suffix}"
+    Returns:
+    --------
+    str
+        Готовый SQL запрос в виде строки
         
-        join_expressions.append(f"LEFT JOIN {table_name} as {alias}")
-
-final_join_string = '\n'.join(join_expressions)
+    Example:
+    --------
+    >>> query = create_sql_query(
+    ...     features=['feature1', 'feature2'],
+    ...     in_table='input_table',
+    ...     out_table='output'
+    ... )
+    """
+    
+    # Формируем строку с фичами для IN условия
+    features_str = ','.join(f"'{x}'" for x in features)
+    query = f"SELECT * FROM FEATURE_REGISTRY WHERE f_name IN ({features_str})"
+    
+    # Выполняем запрос к Oracle (предполагается, что oracle.read_all существует)
+    df = oracle.read_all(query, engine_cdw)
+    
+    # Создаем строку с перечислением фичей для SELECT
+    features_cols = ',\n'.join(x for x in features)
+    
+    join_sql = []
+    for key, config in procedure_params.items():
+        # Ищем совпадения процедур (регистронезависимо)
+        matches = df[(df['proc'] == config['procedure'].lower())]
+        
+        for _, row in matches.iterrows():  # Исправлено: iterrows вместо itemrows
+            suffix = config['suffix']
+            part = row['online_table']
+            
+            # Формируем имена таблиц и алиасов
+            if pd.notna(part):
+                table_name = f"{out_table}_{suffix}_{part}"  # Исправлено: фигурные скобки
+                alias = f"{suffix}_{part}"  # Исправлено: фигурные скобки
+            else:
+                table_name = f"{out_table}_{suffix}"  # Исправлено: фигурные скобки
+                alias = f"{suffix}"  # Исправлено: фигурные скобки
+            
+            join_sql.append(f"LEFT JOIN {table_name} as {alias}")
+    
+    # Объединяем JOIN выражения
+    final_join = '\n'.join(join_sql)
+    
+    # Формируем итоговый SQL запрос
+    sql_query = f"SELECT {features_cols} \nFROM {in_table} AS in_table \n{final_join}"  # Исправлено: добавлена фигурная скобка
+    
+    return sql_query
