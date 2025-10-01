@@ -1,17 +1,8 @@
-days_stats AS (
-  SELECT 
-    days_between,
-    COUNT(*) as cards_count,
-    SUM(COUNT(*)) OVER (ORDER BY days_between ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as cumulative_count,
-    (SELECT COUNT(*) FROM card_data) as total_cards
-  FROM card_data
-  GROUP BY days_between
-)
-SELECT 
-  days_between as "Период (дни)",
-  cards_count as "Количество карт",
-  cumulative_count as "Накопленное количество",
-  total_cards as "Всего карт",
-  ROUND(cumulative_count * 100.0 / total_cards, 2) as "Процент открытых ДК, %"
-FROM days_stats
-ORDER BY days_between;
+# Все столбцы где есть разные значения для одинаковых ключей
+conflicting_cols = [
+    col for col in feat_df.columns 
+    if col != PRIMARY_KEY 
+    and feat_df.groupby(PRIMARY_KEY)[col].nunique().max() > 1
+]
+
+print("Конфликтующие столбцы:", conflicting_cols)
