@@ -1,14 +1,25 @@
-import polars as pl
+# Проверяем, есть ли дубликаты по PRIMARY_KEY
+has_duplicates = merged_df.select(
+    pl.col(PRIMARY_KEY).is_duplicated().any()
+).item()
 
-merged_df = pl.scan_parquet(PATH_TO_SAMPLE)
-
-feats = [pl.scan_parquet(f) for f in feature_paths]
-
-for feat_df in tqdm.tqdm(feats):
-    # Приводим тип в правом DataFrame к типу левого
-    feat_df_casted = feat_df.with_columns([
-        pl.col("client_did").cast(merged_df.schema["client_did"])
-    ])
-    merged_df = merged_df.join(feat_df_casted, on=PRIMARY_KEY, how='left')
-
-merged_df
+if has_duplicates:
+    print("Есть дубликаты по PRIMARY_KEY")
+    
+    # Находим колонки с различающимися значениями у дубликатов
+    diff_cols = (
+        merged_df
+        .group_by(PRIMARY_KEY)
+        .agg(pl.all().n_unique())
+        .select(
+            pl.exclude(PRIMARY_KEY).gt(1).any()
+        )
+    )
+    
+    res = [
+        col for col, has_diff in diff_cols.row(0)
+        if has_diff
+    ]
+    print("Колонки с различающимися значениями:", res)
+else:
+    print("Дубликатов нет")
