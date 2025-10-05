@@ -1,47 +1,14 @@
 import polars as pl
 
-merged_df = pl.scan_parquet(PATH_TO_SAMPLE).collect()  # Вычисляем сразу
-client_did_dtype = merged_df['client_did'].dtype  # Получаем тип только client_did
+merged_df = pl.scan_parquet(PATH_TO_SAMPLE)
 
+# Ленивое чтение данных
 feats = [pl.scan_parquet(f) for f in feature_paths]
-
+# Ленивый join
 for feat_df in tqdm.tqdm(feats):
-    # Приводим тип только client_did и вычисляем feat_df
     feat_df_casted = feat_df.with_columns([
-        pl.col('client_did').cast(client_did_dtype)  # Приведение только client_did
-    ]).collect()
+        pl.col('client_did').cast(merged_df.schema['client_did'])
+    ])
     
-    # Выполняем join по PRIMARY_KEY (составному ключу)
     merged_df = merged_df.join(feat_df_casted, on=PRIMARY_KEY, how='left')
-    
-    # Проверяем дубликаты по PRIMARY_KEY - правильный способ
-    has_duplicates = merged_df.select(
-        pl.struct(PRIMARY_KEY).is_duplicated().any()
-    ).item()
-    
-    if has_duplicates:
-        # Находим дубликаты через группировку
-        duplicates = merged_df.filter(
-            pl.struct(PRIMARY_KEY).is_duplicated()
-        )
-        
-        # Находим конфликтующие колонки
-        diff_cols = (
-            duplicates
-            .group_by(PRIMARY_KEY)
-            .agg(pl.all().n_unique().gt(1))
-            .select(pl.exclude(PRIMARY_KEY))
-            .any()
-        )
-        
-        res = [col for col, has_diff in diff_cols.row(0) if has_diff]
-        
-        if res:
-            print(f"Удаляем конфликтующие колонки: {res}")
-            merged_df = merged_df.drop(res)
-        
-        # Удаляем дубликаты по PRIMARY_KEY
-        merged_df = merged_df.unique(subset=PRIMARY_KEY, keep='first')
-
-# В конце можно преобразовать обратно в LazyFrame если нужно
-merged_df = merged_df.lazy()
+    merged_df = merged_df.unique()
