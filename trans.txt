@@ -1,14 +1,79 @@
 import polars as pl
+from pathlib import Path
 
+# Пример: составной ключ
+PRIMARY_KEY = ["client_did", "event_date"]  # подставьте ваш составной ключ
+
+# Базовый датасет
 merged_df = pl.scan_parquet(PATH_TO_SAMPLE)
 
-# Ленивое чтение данных
-feats = [pl.scan_parquet(f) for f in feature_paths]
-# Ленивый join
-for feat_df in tqdm.tqdm(feats):
-    feat_df_casted = feat_df.with_columns([
-        pl.col('client_did').cast(merged_df.schema['client_did'])
-    ])
-    
-    merged_df = merged_df.join(feat_df_casted, on=PRIMARY_KEY, how='left')
-    merged_df = merged_df.unique()
+# Приведём типы ключей, чтобы все join'ы были без кастов в рантайме
+key_dtypes = {k: merged_df.schema[k] for k in PRIMARY_KEY}
+
+def constant_columns_for_key(lf: pl.LazyFrame, pk: list[str]) -> list[str]:
+    """
+    Возвращает список НЕключевых столбцов, у которых для каждого pkровно одно значение.
+    Реализовано через group_by(pk).agg(n_unique) и последующий max по колонкам.
+    Собираем только одну строку со сводкой — экономно по памяти.
+    """
+    non_key = [c for c in lf.columns if c not in pk]
+    if not non_key:
+        return []
+
+    # n_unique по каждому неключевому столбцу в разрезе ключа
+    per_key_counts = lf.group_by(pk).agg(
+        [pl.col(c).n_unique().alias(c) for c in non_key]
+    )
+    # Максимум по каждому столбцу среди всех ключей (получим одну строку)
+    maxima = per_key_counts.select(
+        [pl.max(pl.col(c)).alias(c) for c in non_key]
+    ).collect(streaming=True)
+
+    # Оставляем только те, где максимум == 1 (т.е. в каждой группе значение единственно)
+    row = maxima.row(0, named=True)
+    keep = [c for c, mx in row.items() if mx == 1]
+    return keep
+
+def prepare_feature(lf: pl.LazyFrame, pk: list[str], key_dtypes: dict[str, pl.DataType]) -> pl.LazyFrame:
+    """
+    1) Приводим типы ключей
+    2) Определяем стабильные (константные на ключ) столбцы
+    3) Сжимаем по ключу (first()), чтобы на ключ была одна строка
+    """
+    # Приведение типов ключей (важно для join без materialize)
+    for k in pk:
+        if k in lf.schema and lf.schema[k] != key_dtypes[k]:
+            lf = lf.with_columns(pl.col(k).cast(key_dtypes[k]))
+
+    keep = constant_columns_for_key(lf, pk)
+
+    # Если ни одного стабильного столбца — оставим только ключ (для корректного join без размножения строк)
+    if not keep:
+        return lf.select(pk).unique(subset=pk)
+
+    # Выбираем ключ + стабильные столбцы и аггрегируем до одной строки на ключ
+    # first() безопасно, т.к. мы гарантировали уникальность значений на ключ
+    return (
+        lf.select(pk + keep)
+        .group_by(pk)
+        .agg([pl.col(c).first().alias(c) for c in keep])
+    )
+
+# Основной конвейер: для каждого feature — подготовка и стриминговый join
+for feat_path in feature_paths:
+    feat_df = pl.scan_parquet(feat_path)
+
+    # Если нужно кастовать конкретные колонки ещё (пример из вашего кода):
+    if "client_did" in feat_df.schema and "client_did" in merged_df.schema:
+        feat_df = feat_df.with_columns(
+            pl.col("client_did").cast(merged_df.schema["client_did"])
+        )
+
+    cleaned = prepare_feature(feat_df, PRIMARY_KEY, key_dtypes)
+
+    # Важно: streaming=True снижает потребление памяти при очень больших таблицах
+    merged_df = merged_df.join(cleaned, on=PRIMARY_KEY, how="left", streaming=True)
+
+# Итог: НЕ вызываем merged_df.unique() — оно не нужно после агрегации каждой feature.
+# Если результат огромный — лучше писать напрямую в Parquet без materialize в RAM:
+# merged_df.sink_parquet("/path/to/out.parquet")
