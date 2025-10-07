@@ -1,22 +1,45 @@
- %%time
-for feat_df, filename in tqdm.tqdm(zip(df_features_lst, filenames), total=len(df_features_lst)):
-    duplicates = feat_df[feat_df.duplicated(subset=PRIMARY_KEY, keep=False)]
-    diff_cols = (duplicates
-                .groupby(PRIMARY_KEY)
-                .nunique()
-                .gt(1)
-                .any(axis=0))
-    res = diff_cols[diff_cols].index.tolist()
-    feat_df = feat_df.drop(res, axis=1)
-    
-    MISSING_THRESHOLD = 0.8  # Доля пропусков не более чем
-    
-    missing_df = preprocessing.analyze_missing_values(feat_df, missing_threshold=MISSING_THRESHOLD)
-    if missing_df is not None and not missing_df.empty:
-        missing_df.to_excel(f'{REPORTS_FOLDER}/{filename}_missing.xlsx')
-        feat_df = preprocessing.remove_columns_by_missing(feat_df, missing_df, 0.8)
-    
-    merged_df = pd.merge(merged_df, feat_df, on=PRIMARY_KEY, how='left')
-    print(feat_df.shape)
-    print(merged_df.shape)
-    # gc.collect()
+def objective(params):
+    params = {
+        'n_estimators': int(params['n_estimators']),
+        'max_depth': int(params['max_depth']),
+        'learning_rate': params['learning_rate'],
+        'num_leaves': int(params['num_leaves']),
+        'min_child_samples': int(params['min_child_samples'])
+    }
+
+    model = lgb.LGBMClassifier(
+            n_estimators = params['n_estimators'],
+            max_depth = params['max_depth'],
+            learning_rate = params['learning_rate'],
+            num_leaves = params['num_leaves'],
+            min_child_samples = params['min_child_samples'],
+            random_state = SEED,
+            n_jobs=-1
+    )
+
+    model.fit(train[best_features], train[TARGET])
+
+    y_pred = model.predict_proba(test[best_features])[:, 1]
+
+    roc_auc = roc_auc_score(test[TARGET], y_pred)
+
+    # оптимизация Hyperopt минимизирует loss, поэтому берём -roc_auc
+    return {'loss': -roc_auc, 'status': STATUS_OK}
+
+space = {
+    'n_estimators': hp.quniform('n_estimators', 100, 300, 1),
+    'max_depth': hp.quniform('max_depth', 3, 10, 1),
+    'learning_rate': hp.loguniform('learning_rate', -4, -1),
+    'num_leaves': hp.quniform('num_leaves', 20, 60, 1),
+    'min_child_samples': hp.quniform('min_child_samples', 5, 30, 1)
+}
+
+trials = Trials()
+
+best = fmin(
+    fn=objective,
+    space=space,
+    algo=tpe.suggest,
+    max_evals=50,  # количество итераций - можно менять, в зависимости от размеров трейна; можно уменьшить, если кернел умирает
+    trials=trials
+)
