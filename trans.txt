@@ -4,34 +4,51 @@ def objective(params):
         'max_depth': int(params['max_depth']),
         'learning_rate': params['learning_rate'],
         'num_leaves': int(params['num_leaves']),
-        'min_child_samples': int(params['min_child_samples'])
+        'min_child_samples': int(params['min_child_samples']),
+        'reg_alpha': params['reg_alpha'],
+        'reg_lambda': params['reg_lambda'],
+        'subsample': params['subsample'],
+        'colsample_bytree': params['colsample_bytree']
     }
 
     model = lgb.LGBMClassifier(
-            n_estimators = params['n_estimators'],
-            max_depth = params['max_depth'],
-            learning_rate = params['learning_rate'],
-            num_leaves = params['num_leaves'],
-            min_child_samples = params['min_child_samples'],
-            random_state = SEED,
-            n_jobs=-1
+        n_estimators=params['n_estimators'],
+        max_depth=params['max_depth'],
+        learning_rate=params['learning_rate'],
+        num_leaves=params['num_leaves'],
+        min_child_samples=params['min_child_samples'],
+        reg_alpha=params['reg_alpha'],
+        reg_lambda=params['reg_lambda'],
+        subsample=params['subsample'],
+        colsample_bytree=params['colsample_bytree'],
+        random_state=SEED,
+        n_jobs=-1
     )
 
-    model.fit(train[best_features], train[TARGET])
+    # Добавляем early stopping и валидацию
+    model.fit(
+        train[best_features], train[TARGET],
+        eval_set=[(test[best_features], test[TARGET])],
+        early_stopping_rounds=50,
+        verbose=0
+    )
 
+    # Используем лучшую итерацию
     y_pred = model.predict_proba(test[best_features])[:, 1]
-
     roc_auc = roc_auc_score(test[TARGET], y_pred)
 
-    # оптимизация Hyperopt минимизирует loss, поэтому берём -roc_auc
     return {'loss': -roc_auc, 'status': STATUS_OK}
 
 space = {
-    'n_estimators': hp.quniform('n_estimators', 100, 300, 1),
-    'max_depth': hp.quniform('max_depth', 3, 10, 1),
+    'n_estimators': hp.quniform('n_estimators', 100, 500, 1),
+    'max_depth': hp.quniform('max_depth', 3, 8, 1),  # Уменьшил максимум
     'learning_rate': hp.loguniform('learning_rate', -4, -1),
-    'num_leaves': hp.quniform('num_leaves', 20, 60, 1),
-    'min_child_samples': hp.quniform('min_child_samples', 5, 30, 1)
+    'num_leaves': hp.quniform('num_leaves', 20, 40, 1),  # Уменьшил максимум
+    'min_child_samples': hp.quniform('min_child_samples', 20, 100, 1),  # Увеличил
+    'reg_alpha': hp.loguniform('reg_alpha', -5, 2),
+    'reg_lambda': hp.loguniform('reg_lambda', -5, 2),
+    'subsample': hp.uniform('subsample', 0.6, 1.0),
+    'colsample_bytree': hp.uniform('colsample_bytree', 0.6, 1.0)
 }
 
 trials = Trials()
@@ -40,6 +57,6 @@ best = fmin(
     fn=objective,
     space=space,
     algo=tpe.suggest,
-    max_evals=50,  # количество итераций - можно менять, в зависимости от размеров трейна; можно уменьшить, если кернел умирает
+    max_evals=50,
     trials=trials
 )
