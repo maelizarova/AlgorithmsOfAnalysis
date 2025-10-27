@@ -1,62 +1,473 @@
-def objective(params):
-    params = {
-        'n_estimators': int(params['n_estimators']),
-        'max_depth': int(params['max_depth']),
-        'learning_rate': params['learning_rate'],
-        'num_leaves': int(params['num_leaves']),
-        'min_child_samples': int(params['min_child_samples']),
-        'reg_alpha': params['reg_alpha'],
-        'reg_lambda': params['reg_lambda'],
-        'subsample': params['subsample'],
-        'colsample_bytree': params['colsample_bytree']
-    }
+CREATE OR REPLACE PROCEDURE build_income_features (
+    p_in_table  IN VARCHAR2,   -- вход: (client_did, report_date)
+    p_out_table IN VARCHAR2    -- выход: витрина фич
+) IS
+    -- имя таблицы фактов доходов и имена колонок
+    v_income_table CONSTANT VARCHAR2(128) := 'CLIENT_INCOME';
+BEGIN
+    --------------------------------------------------------------------
+    -- 0) пары входа (все client_did, report_date, даже если доходов нет)
+    --------------------------------------------------------------------
+    BEGIN
+        EXECUTE IMMEDIATE '
+            CREATE GLOBAL TEMPORARY TABLE gtt_pairs (
+                client_did  NUMBER,
+                report_date DATE
+            ) ON COMMIT PRESERVE ROWS';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLCODE != -955 THEN RAISE; END IF;
+    END;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE gtt_pairs';
+    EXECUTE IMMEDIATE 'INSERT INTO gtt_pairs (client_did, report_date)
+                       SELECT client_did, report_date FROM '||p_in_table;
 
-    model = lgb.LGBMClassifier(
-        n_estimators=params['n_estimators'],
-        max_depth=params['max_depth'],
-        learning_rate=params['learning_rate'],
-        num_leaves=params['num_leaves'],
-        min_child_samples=params['min_child_samples'],
-        reg_alpha=params['reg_alpha'],
-        reg_lambda=params['reg_lambda'],
-        subsample=params['subsample'],
-        colsample_bytree=params['colsample_bytree'],
-        random_state=SEED,
-        n_jobs=-1
-    )
+    --------------------------------------------------------------------
+    -- 1) данные за последние 12 месяцев БЕЗ текущего (M-12..M-1),
+    --    агрегируем до уровня "1 строка = (client_did, report_date, report_month)"
+    --    ВНИМАНИЕ: без NVL — сохраняем NULL как NULL.
+    --------------------------------------------------------------------
+    BEGIN
+        EXECUTE IMMEDIATE '
+            CREATE GLOBAL TEMPORARY TABLE gtt_income_12m (
+                client_did     NUMBER,
+                report_date    DATE,
+                report_month   DATE,
+                sal_sum        NUMBER,
+                izp_sum        NUMBER,
+                pens_sum       NUMBER,
+                doc_sum        NUMBER,
+                salary_income  NUMBER
+            ) ON COMMIT PRESERVE ROWS';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLCODE != -955 THEN RAISE; END IF;
+    END;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE gtt_income_12m';
 
-    # Добавляем early stopping и валидацию
-    model.fit(
-        train[best_features], train[TARGET],
-        eval_set=[(test[best_features], test[TARGET])],
-        early_stopping_rounds=50,
-        verbose=0
-    )
+    EXECUTE IMMEDIATE '
+        INSERT /*+ APPEND */ INTO gtt_income_12m
+        (client_did, report_date, report_month,
+         sal_sum, izp_sum, pens_sum, doc_sum, salary_income)
+        SELECT
+            s.client_did,
+            p.report_date,
+            s.report_month,
+            SUM(s.sal_sum),
+            SUM(s.izp_sum),
+            SUM(s.pens_sum),
+            SUM(s.doc_sum),
+            SUM(s.salary_income)
+        FROM '||v_income_table||' s
+        JOIN gtt_pairs p
+          ON p.client_did = s.client_did
+         AND s.report_month BETWEEN ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                                AND ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)
+        GROUP BY s.client_did, p.report_date, s.report_month';
 
-    # Используем лучшую итерацию
-    y_pred = model.predict_proba(test[best_features])[:, 1]
-    roc_auc = roc_auc_score(test[TARGET], y_pred)
+    -- Индекс для ускорения финальной агрегации
+    BEGIN
+        EXECUTE IMMEDIATE '
+            CREATE INDEX gtt_income_12m_idx
+            ON gtt_income_12m (client_did, report_date, report_month)';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLCODE != -955 THEN RAISE; END IF;
+    END;
 
-    return {'loss': -roc_auc, 'status': STATUS_OK}
+    --------------------------------------------------------------------
+    -- 2) конструируем общий SELECT фич (один GROUP BY, без подзапросов)
+    --    <ВЕЗДЕ> окна определяются сравнением report_month и report_date
+    --    так как в GTT уже нет текущего месяца, условие окна = ">= -N"
+    --------------------------------------------------------------------
+    DECLARE
+        v_select_long CLOB;
+        v_ctas_sql    CLOB;
+        v_insert_sql  CLOB;
+    BEGIN
+        v_select_long := '
+        SELECT
+            p.client_did,
+            p.report_date
 
-space = {
-    'n_estimators': hp.quniform('n_estimators', 100, 500, 1),
-    'max_depth': hp.quniform('max_depth', 3, 8, 1),  # Уменьшил максимум
-    'learning_rate': hp.loguniform('learning_rate', -4, -1),
-    'num_leaves': hp.quniform('num_leaves', 20, 40, 1),  # Уменьшил максимум
-    'min_child_samples': hp.quniform('min_child_samples', 20, 100, 1),  # Увеличил
-    'reg_alpha': hp.loguniform('reg_alpha', -5, 2),
-    'reg_lambda': hp.loguniform('reg_lambda', -5, 2),
-    'subsample': hp.uniform('subsample', 0.6, 1.0),
-    'colsample_bytree': hp.uniform('colsample_bytree', 0.6, 1.0)
-}
+            /* ========================= TOTAL (salary_income) ========================= */
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)
+                     THEN g.salary_income END) AS tot_sum_1m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN g.salary_income END) AS tot_sum_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN g.salary_income END) AS tot_sum_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN g.salary_income END) AS tot_sum_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN g.salary_income END) AS tot_sum_12m
 
-trials = Trials()
+            /* ========================= SAL ========================= */
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)
+                     THEN g.sal_sum END) AS sal_sum_1m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN g.sal_sum END) AS sal_sum_2m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN g.sal_sum END) AS sal_sum_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN g.sal_sum END) AS sal_sum_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN g.sal_sum END) AS sal_sum_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN g.sal_sum END) AS sal_sum_12m
 
-best = fmin(
-    fn=objective,
-    space=space,
-    algo=tpe.suggest,
-    max_evals=50,
-    trials=trials
-)
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_min_2m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_min_3m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_min_6m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_min_9m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_min_12m
+
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_max_2m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_max_3m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_max_6m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_max_9m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_max_12m
+
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_avg_2m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_avg_3m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_avg_6m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_avg_9m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.sal_sum,0) END) AS sal_avg_12m
+
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                      AND g.sal_sum > 0 THEN 1 ELSE 0 END) AS sal_cnt_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                      AND g.sal_sum > 0 THEN 1 ELSE 0 END) AS sal_cnt_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                      AND g.sal_sum > 0 THEN 1 ELSE 0 END) AS sal_cnt_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                      AND g.sal_sum > 0 THEN 1 ELSE 0 END) AS sal_cnt_12m
+
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1) THEN g.sal_sum END) > 0 THEN 1 ELSE 0 END AS sal_flag_1m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN g.sal_sum END) > 0 THEN 1 ELSE 0 END AS sal_flag_3m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6) THEN g.sal_sum END) > 0 THEN 1 ELSE 0 END AS sal_flag_6m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9) THEN g.sal_sum END) > 0 THEN 1 ELSE 0 END AS sal_flag_9m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.sal_sum END) > 0 THEN 1 ELSE 0 END AS sal_flag_12m
+
+          , CASE WHEN
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN CASE WHEN g.sal_sum > 0 THEN 1 ELSE 0 END END) = 0
+                AND
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                           AND g.report_month <  ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                         THEN CASE WHEN g.sal_sum > 0 THEN 1 ELSE 0 END END) > 0
+            THEN 1 ELSE 0 END AS sal_churn3m_flag
+
+            /* ========================= IZP ========================= */
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)
+                     THEN g.izp_sum END) AS izp_sum_1m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN g.izp_sum END) AS izp_sum_2m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN g.izp_sum END) AS izp_sum_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN g.izp_sum END) AS izp_sum_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN g.izp_sum END) AS izp_sum_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN g.izp_sum END) AS izp_sum_12m
+
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_min_2m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_min_3m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_min_6m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_min_9m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_min_12m
+
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_max_2m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_max_3m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_max_6m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_max_9m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_max_12m
+
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_avg_2m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_avg_3m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_avg_6m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_avg_9m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.izp_sum,0) END) AS izp_avg_12m
+
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                      AND g.izp_sum > 0 THEN 1 ELSE 0 END) AS izp_cnt_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                      AND g.izp_sum > 0 THEN 1 ELSE 0 END) AS izp_cnt_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                      AND g.izp_sum > 0 THEN 1 ELSE 0 END) AS izp_cnt_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                      AND g.izp_sum > 0 THEN 1 ELSE 0 END) AS izp_cnt_12m
+
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1) THEN g.izp_sum END) > 0 THEN 1 ELSE 0 END AS izp_flag_1m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN g.izp_sum END) > 0 THEN 1 ELSE 0 END AS izp_flag_3m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6) THEN g.izp_sum END) > 0 THEN 1 ELSE 0 END AS izp_flag_6m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9) THEN g.izp_sum END) > 0 THEN 1 ELSE 0 END AS izp_flag_9m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.izp_sum END) > 0 THEN 1 ELSE 0 END AS izp_flag_12m
+
+          , CASE WHEN
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN CASE WHEN g.izp_sum > 0 THEN 1 ELSE 0 END END) = 0
+                AND
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                           AND g.report_month <  ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                         THEN CASE WHEN g.izp_sum > 0 THEN 1 ELSE 0 END END) > 0
+            THEN 1 ELSE 0 END AS izp_churn3m_flag
+
+            /* ========================= PENS ========================= */
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)
+                     THEN g.pens_sum END) AS pens_sum_1m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN g.pens_sum END) AS pens_sum_2m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN g.pens_sum END) AS pens_sum_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN g.pens_sum END) AS pens_sum_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN g.pens_sum END) AS pens_sum_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN g.pens_sum END) AS pens_sum_12m
+
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_min_2m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_min_3m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_min_6m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_min_9m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_min_12m
+
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_max_2m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_max_3m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_max_6m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_max_9m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_max_12m
+
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_avg_2m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_avg_3m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_avg_6m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_avg_9m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.pens_sum,0) END) AS pens_avg_12m
+
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                      AND g.pens_sum > 0 THEN 1 ELSE 0 END) AS pens_cnt_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                      AND g.pens_sum > 0 THEN 1 ELSE 0 END) AS pens_cnt_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                      AND g.pens_sum > 0 THEN 1 ELSE 0 END) AS pens_cnt_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                      AND g.pens_sum > 0 THEN 1 ELSE 0 END) AS pens_cnt_12m
+
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1) THEN g.pens_sum END) > 0 THEN 1 ELSE 0 END AS pens_flag_1m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN g.pens_sum END) > 0 THEN 1 ELSE 0 END AS pens_flag_3m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6) THEN g.pens_sum END) > 0 THEN 1 ELSE 0 END AS pens_flag_6m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9) THEN g.pens_sum END) > 0 THEN 1 ELSE 0 END AS pens_flag_9m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.pens_sum END) > 0 THEN 1 ELSE 0 END AS pens_flag_12m
+
+          , CASE WHEN
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN CASE WHEN g.pens_sum > 0 THEN 1 ELSE 0 END END) = 0
+                AND
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                           AND g.report_month <  ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                         THEN CASE WHEN g.pens_sum > 0 THEN 1 ELSE 0 END END) > 0
+            THEN 1 ELSE 0 END AS pens_churn3m_flag
+
+            /* ========================= DOC ========================= */
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)
+                     THEN g.doc_sum END) AS doc_sum_1m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN g.doc_sum END) AS doc_sum_2m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN g.doc_sum END) AS doc_sum_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN g.doc_sum END) AS doc_sum_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN g.doc_sum END) AS doc_sum_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN g.doc_sum END) AS doc_sum_12m
+
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_min_2m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_min_3m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_min_6m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_min_9m
+          , MIN(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_min_12m
+
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_max_2m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_max_3m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_max_6m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_max_9m
+          , MAX(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_max_12m
+
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -2)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_avg_2m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_avg_3m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_avg_6m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_avg_9m
+          , AVG(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                     THEN NULLIF(g.doc_sum,0) END) AS doc_avg_12m
+
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                      AND g.doc_sum > 0 THEN 1 ELSE 0 END) AS doc_cnt_3m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                      AND g.doc_sum > 0 THEN 1 ELSE 0 END) AS doc_cnt_6m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)
+                      AND g.doc_sum > 0 THEN 1 ELSE 0 END) AS doc_cnt_9m
+          , SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                      AND g.doc_sum > 0 THEN 1 ELSE 0 END) AS doc_cnt_12m
+
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1) THEN g.doc_sum END) > 0 THEN 1 ELSE 0 END AS doc_flag_1m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN g.doc_sum END) > 0 THEN 1 ELSE 0 END AS doc_flag_3m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6) THEN g.doc_sum END) > 0 THEN 1 ELSE 0 END AS doc_flag_6m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9) THEN g.doc_sum END) > 0 THEN 1 ELSE 0 END AS doc_flag_9m
+          , CASE WHEN SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.doc_sum END) > 0 THEN 1 ELSE 0 END AS doc_flag_12m
+
+          , CASE WHEN
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3) THEN CASE WHEN g.doc_sum > 0 THEN 1 ELSE 0 END END) = 0
+                AND
+                SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                           AND g.report_month <  ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                         THEN CASE WHEN g.doc_sum > 0 THEN 1 ELSE 0 END END) > 0
+            THEN 1 ELSE 0 END AS doc_churn3m_flag
+
+            /* ========================= ДОЛИ категорий ========================= */
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.sal_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.salary_income END), 0) ) AS sal_share_1m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.sal_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.salary_income END), 0) ) AS sal_share_3m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.sal_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.salary_income END), 0) ) AS sal_share_6m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.sal_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.salary_income END), 0) ) AS sal_share_9m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.sal_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.salary_income END), 0) ) AS sal_share_12m
+
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.izp_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.salary_income END), 0) ) AS izp_share_1m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.izp_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.salary_income END), 0) ) AS izp_share_3m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.izp_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.salary_income END), 0) ) AS izp_share_6m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.izp_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.salary_income END), 0) ) AS izp_share_9m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.izp_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.salary_income END), 0) ) AS izp_share_12m
+
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.pens_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.salary_income END), 0) ) AS pens_share_1m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.pens_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.salary_income END), 0) ) AS pens_share_3m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.pens_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.salary_income END), 0) ) AS pens_share_6m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.pens_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.salary_income END), 0) ) AS pens_share_9m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.pens_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.salary_income END), 0) ) AS pens_share_12m
+
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.doc_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)  THEN g.salary_income END), 0) ) AS doc_share_1m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.doc_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)  THEN g.salary_income END), 0) ) AS doc_share_3m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.doc_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)  THEN g.salary_income END), 0) ) AS doc_share_6m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.doc_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -9)  THEN g.salary_income END), 0) ) AS doc_share_9m
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.doc_sum END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12) THEN g.salary_income END), 0) ) AS doc_share_12m
+
+            /* ========================= Отношения TOTAL ========================= */
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -1)
+                       THEN g.salary_income END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                                 THEN g.salary_income END), 0) ) AS tot_ratio_1_to_3
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -3)
+                       THEN g.salary_income END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                                 THEN g.salary_income END), 0) ) AS tot_ratio_3_to_6
+          , ( SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -6)
+                       THEN g.salary_income END)
+              / NULLIF(SUM(CASE WHEN g.report_month >= ADD_MONTHS(TRUNC(p.report_date,''MM''), -12)
+                                 THEN g.salary_income END), 0) ) AS tot_ratio_6_to_12
+
+        FROM gtt_pairs p
+        LEFT JOIN gtt_income_12m g
+               ON g.client_did  = p.client_did
+              AND g.report_date = p.report_date
+        GROUP BY p.client_did, p.report_date';
+
+        ----------------------------------------------------------------
+        -- 3) выходную таблицу создаём при первом запуске из этого SELECT
+        ----------------------------------------------------------------
+        BEGIN
+            EXECUTE IMMEDIATE 'TRUNCATE TABLE '||p_out_table;
+        EXCEPTION
+            WHEN OTHERS THEN
+                IF SQLCODE = -942 THEN
+                    v_ctas_sql := 'CREATE TABLE '||p_out_table||' AS '||
+                                  REPLACE(v_select_long, 'GROUP BY', 'WHERE 1=2 GROUP BY');
+                    EXECUTE IMMEDIATE v_ctas_sql;
+                ELSE
+                    RAISE;
+                END IF;
+        END;
+
+        ----------------------------------------------------------------
+        -- 4) наполняем витрину
+        ----------------------------------------------------------------
+        v_insert_sql := 'INSERT /*+ APPEND */ INTO '||p_out_table||' '|| v_select_long;
+        EXECUTE IMMEDIATE v_insert_sql;
+
+    END; -- dynamic SQL block
+
+    COMMIT;
+END;
+/
