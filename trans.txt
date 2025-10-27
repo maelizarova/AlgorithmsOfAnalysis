@@ -1,7 +1,5 @@
-# Generate CSV spec for features with prefix "client_agg_monthly_"
+# Regenerate CSV with refined Russian descriptions for category features (no "категория" wording)
 import pandas as pd
-from itertools import product
-
 rows = []
 
 src = "dm_mrk.dm_mk_client_agg_monthly"
@@ -9,85 +7,87 @@ src_desc = "данные о поступлениях на счет клиент�
 proc = "ema_collect_feat_client_agg_monthly"
 online_table = ""
 
-# helper: window description
 def win_desc(n):
     return f"за {n} месяц до отчётного (без текущего)" if n == 1 else f"за последние {n} месяцев до отчётного (без текущего)"
 
-# TOTAL (salary_income) sums and ratios
+# total sums (salary_income)
 for n in [1,3,6,9,12]:
-    f_name = f"client_agg_monthly_tot_sum_{n}m"
-    f_desc = f"сумма всех доходов {win_desc(n)}"
-    rows.append([src, src_desc, proc, "salary_income", f_name, f_desc, 0, online_table])
+    rows.append([src, src_desc, proc, "salary_income",
+                 f"client_agg_monthly_tot_sum_{n}m",
+                 f"сумма всех доходов {win_desc(n)}",
+                 0, online_table])
 
-# Ratios of totals
-ratios = [("1_to_3", "1 к 3"), ("3_to_6", "3 к 6"), ("6_to_12", "6 к 12")]
-for key, label in ratios:
-    f_name = f"client_agg_monthly_tot_ratio_{key}"
-    f_desc = f"отношение суммы всех доходов за {label} месяцев (оба окна без текущего)"
-    rows.append([src, src_desc, proc, "salary_income", f_name, f_desc, 0, online_table])
+# total ratios
+for key, label in [("1_to_3","1 к 3"),("3_to_6","3 к 6"),("6_to_12","6 к 12")]:
+    rows.append([src, src_desc, proc, "salary_income",
+                 f"client_agg_monthly_tot_ratio_{key}",
+                 f"отношение суммы всех доходов за {label} месяцев (оба окна без текущего)",
+                 0, online_table])
 
-# Categories
-cats = [
-    ("sal", "sal_sum"),
-    ("izp", "izp_sum"),
-    ("pens", "pens_sum"),
-    ("soc", "soc_sum"),
-]
+# map: code -> (src_field, phrase)
+cat_map = {
+    "sal":  ("sal_sum",  "зп-поступлений"),
+    "izp":  ("izp_sum",  "поступлений по индивидуальным зарплатным проектам"),
+    "soc":  ("soc_sum",  "социальных выплат"),
+    "pens": ("pens_sum", "пенсионных начислений"),
+}
 
-# Sums per category
-for cat, field in cats:
+# sums per code
+for code, (field, phrase) in cat_map.items():
     for n in [1,2,3,6,9,12]:
-        f_name = f"client_agg_monthly_{cat}_sum_{n}m"
-        f_desc = f"сумма по категории {cat} {win_desc(n)}"
-        rows.append([src, src_desc, proc, field, f_name, f_desc, 0, online_table])
+        rows.append([src, src_desc, proc, field,
+                     f"client_agg_monthly_{code}_sum_{n}m",
+                     f"сумма {phrase} {win_desc(n)}",
+                     0, online_table])
 
-# Min/Max/Avg per category (active months only)
-for cat, field in cats:
+# min/max/avg for active months
+for code, (field, phrase) in cat_map.items():
     for n in [2,3,6,9,12]:
-        for stat, stat_desc in [("min","минимальная"),("max","максимальная"),("avg","средняя")]:
-            f_name = f"client_agg_monthly_{cat}_{stat}_{n}m"
-            f_desc = f"{stat_desc} сумма по категории {cat} {win_desc(n)} по активным месяцам (сумма > 0; null и 0 игнорируются)"
-            rows.append([src, src_desc, proc, field, f_name, f_desc, 0, online_table])
+        for stat, sdesc in [("min","минимальная"),("max","максимальная"),("avg","средняя")]:
+            rows.append([src, src_desc, proc, field,
+                         f"client_agg_monthly_{code}_{stat}_{n}m",
+                         f"{sdesc} сумма {phrase} {win_desc(n)} по активным месяцам (сумма > 0; null и 0 игнорируются)",
+                         0, online_table])
 
-# Counts per category (months with sum > 0)
-for cat, field in cats:
+# counts
+for code, (field, phrase) in cat_map.items():
     for n in [3,6,9,12]:
-        f_name = f"client_agg_monthly_{cat}_cnt_{n}m"
-        f_desc = f"число месяцев с выплатой > 0 в категории {cat} {win_desc(n)}"
-        rows.append([src, src_desc, proc, field, f_name, f_desc, 0, online_table])
+        rows.append([src, src_desc, proc, field,
+                     f"client_agg_monthly_{code}_cnt_{n}m",
+                     f"число месяцев с выплатой > 0 по {phrase} {win_desc(n)}",
+                     0, online_table])
 
-# Flags per category (presence >0) for 1/3/6/9/12
-for cat, field in cats:
+# presence flags
+for code, (field, phrase) in cat_map.items():
     for n in [1,3,6,9,12]:
-        f_name = f"client_agg_monthly_{cat}_flag_{n}m"
-        f_desc = f"флаг наличия выплат (>0) в категории {cat} {win_desc(n)}"
-        rows.append([src, src_desc, proc, field, f_name, f_desc, 1, online_table])
+        rows.append([src, src_desc, proc, field,
+                     f"client_agg_monthly_{code}_flag_{n}m",
+                     f"флаг наличия выплат (>0) по {phrase} {win_desc(n)}",
+                     1, online_table])
 
-# Churn flags per category (3m)
-for cat, field in cats:
-    f_name = f"client_agg_monthly_{cat}_churn3m_flag"
-    f_desc = f"флаг потенциального оттока категории {cat}: нет выплат в последние 3 месяца, но были в период m-12..m-4"
-    rows.append([src, src_desc, proc, field, f_name, f_desc, 1, online_table])
+# churn flags
+for code, (field, phrase) in cat_map.items():
+    rows.append([src, src_desc, proc, field,
+                 f"client_agg_monthly_{code}_churn3m_flag",
+                 f"флаг потенциального оттока по {phrase}: нет выплат в последние 3 месяца, но были в период m-12..m-4",
+                 1, online_table])
 
-# Shares per category (1/3/6/9/12)
-for cat, field in cats:
+# shares
+for code, (field, phrase) in cat_map.items():
     for n in [1,3,6,9,12]:
-        f_name = f"client_agg_monthly_{cat}_share_{n}m"
-        f_desc = f"доля категории {cat} в общих доходах {win_desc(n)} (null при нулевом/отсутствующем знаменателе)"
-        rows.append([src, src_desc, proc, field, f_name, f_desc, 0, online_table])
+        rows.append([src, src_desc, proc, field,
+                     f"client_agg_monthly_{code}_share_{n}m",
+                     f"доля {phrase} в общих доходах {win_desc(n)} (null при нулевом/отсутствующем знаменателе)",
+                     0, online_table])
 
-# Build DataFrame
+# DF and save
 cols = ["src","src_desc","proc","src_field","f_name","f_desc","is_category","online_table"]
 df = pd.DataFrame(rows, columns=cols)
-
-# enforce lowercase (should already be), just in case
 df = df.applymap(lambda x: x.lower() if isinstance(x,str) else x)
-
-# Save CSV
 csv_path = "/mnt/data/client_agg_monthly_features.csv"
 df.to_csv(csv_path, index=False, encoding="utf-8")
 
 import caas_jupyter_tools
-caas_jupyter_tools.display_dataframe_to_user("client_agg_monthly_features.csv (spec)", df)
+caas_jupyter_tools.display_dataframe_to_user("client_agg_monthly_features.csv (updated spec)", df)
 
 csv_path
