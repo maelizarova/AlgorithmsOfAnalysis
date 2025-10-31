@@ -1,15 +1,2 @@
-import re
-import os
-import json
-import joblib
-import numpy as np
-import pandas as pd
-
-from typing import List, Tuple, Dict, Optional
-
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from sklearn.decomposition import LatentDirichletAllocation, TruncatedSVD
-from sklearn.preprocessing import Normalizer
-from sklearn.pipeline import make_pipeline
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from nltk.corpus import stopwords as _nltk_stop
+RU_STOPWORDS = set(_nltk_stop.words("russian"))
