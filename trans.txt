@@ -1,1 +1,287 @@
 
+import re
+import json
+import os
+from datetime import datetime
+
+# Функция для очистки текста от чисел и персональных данных
+def clean_complaint_text(text):
+    """
+    Удаляет все числа из текста жалобы для защиты персональных данных
+    """
+    # Удаляем все цифры
+    cleaned_text = re.sub(r'\d+', '', text)
+    # Удаляем лишние пробелы, которые могли образоваться после удаления цифр
+    cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+    return cleaned_text
+
+# Функция для сохранения результатов
+def save_results(results, batch_number, total_processed, output_dir="classification_results"):
+    """
+    Сохраняет результаты в JSON файл с метаданными
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{output_dir}/batch_{batch_number}_{timestamp}.json"
+    
+    results_data = {
+        "metadata": {
+            "batch_number": batch_number,
+            "total_processed": total_processed,
+            "timestamp": timestamp,
+            "saved_at": datetime.now().isoformat()
+        },
+        "results": results
+    }
+    
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(results_data, f, ensure_ascii=False, indent=2, default=str)
+    
+    print(f"✓ Результаты сохранены в {filename} (обработано: {total_processed} жалоб)")
+    return filename
+
+# Функция для загрузки предыдущих результатов
+def load_previous_results(output_dir="classification_results"):
+    """
+    Загружает последний сохраненный batch для продолжения работы
+    """
+    if not os.path.exists(output_dir):
+        return None, 0
+    
+    # Ищем все файлы результатов
+    result_files = [f for f in os.listdir(output_dir) if f.startswith('batch_') and f.endswith('.json')]
+    if not result_files:
+        return None, 0
+    
+    # Берем последний файл
+    latest_file = sorted(result_files)[-1]
+    latest_path = os.path.join(output_dir, latest_file)
+    
+    with open(latest_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    print(f"✓ Загружены предыдущие результаты из {latest_file}")
+    print(f"  Последний batch: {data['metadata']['batch_number']}")
+    print(f"  Всего обработано: {data['metadata']['total_processed']}")
+    
+    return data, data['metadata']['total_processed']
+
+# Загрузка баз знаний
+def load_knowledge_bases():
+    """Загружает базы знаний продуктов и категорий"""
+    with open('products_knowledge_base.json', 'r', encoding='utf-8') as f:
+        products_kb = json.load(f)
+    
+    with open('complaint_categories_knowledge_base.json', 'r', encoding='utf-8') as f:
+        complaint_categories_kb = json.load(f)
+    
+    return products_kb, complaint_categories_kb
+
+# Формирование промпта для LLM
+def create_prompt(products_kb, categories_kb, complaint_text):
+    """
+    Создает промпт для классификации жалобы
+    """
+    prompt_template = """
+# Роль
+Ты — опытный аналитик службы поддержки банка. Твоя задача — точно классифицировать клиентские жалобы на основе предоставленных справочников.
+
+# База знаний
+
+## Справочник продуктов:
+{products_json}
+
+## Справочник типов и подтипов жалоб:
+{categories_json}
+
+# Инструкции по классификации:
+
+1. **АНАЛИЗ ТЕКСТА:** Внимательно прочитай текст жалобы и выдели ключевые слова и контекст.
+
+2. **ВЫБОР ПРОДУКТА:**
+   - Выбери ОДИН наиболее релевантный продукт из справочника продуктов
+   - Если продукт неясен, используй "НЕОПРЕДЕЛЕН"
+   - Ориентируйся на ключевые слова из описания продукта
+
+3. **ВЫБОР ТИПА И ПОДТИПА ЖАЛОБЫ:**
+   - Сначала определи тип жалобы
+   - Затем выбери наиболее подходящий подтип
+   - Используй ключевые слова из typical_keywords для точного сопоставления
+
+4. **ПРИНЦИПЫ ВЫБОРА:**
+   - Выбирай наиболее специфичный подтип, который точно описывает проблему
+   - Если нет точного соответствия, выбери ближайший подтип
+   - Если жалоба не подходит ни под одну категорию, используй "ДРУГОЕ"
+
+# Формат ответа:
+Верни ответ ТОЛЬКО в формате JSON:
+{{
+  "product": "название_продукта",
+  "complaint_type": "тип_жалобы", 
+  "complaint_subtype": "подтип_жалобы",
+  "confidence": "высокая/средняя/низкая",
+  "explanation": "краткое обоснование выбора"
+}}
+
+# Примеры классификации:
+
+Жалоба: "Не могу получить обещанный бонус за приглашение друга по реферальной программе"
+Ответ:
+{{
+  "product": "Программа лояльности/Акции",
+  "complaint_type": "Акции для Клиентов",
+  "complaint_subtype": "Не получил бонусы в рамках Акции",
+  "confidence": "высокая",
+  "explanation": "Жалоба напрямую связана с неполучением бонусов по реферальной программе"
+}}
+
+Жалоба: "Не приходит смс с кодом для входа в мобильное приложение"
+Ответ:
+{{
+  "product": "Мобильный банк",
+  "complaint_type": "Технические сбои",
+  "complaint_subtype": "Не приходит смс с паролем",
+  "confidence": "высокая", 
+  "explanation": "Проблема с получением смс для авторизации в мобильном приложении"
+}}
+
+# Жалоба для классификации:
+"{complaint_text}"
+
+# Твой анализ:
+"""
+
+    return prompt_template.format(
+        products_json=json.dumps(products_kb, ensure_ascii=False, indent=2),
+        categories_json=json.dumps(categories_kb, ensure_ascii=False, indent=2),
+        complaint_text=complaint_text
+    )
+
+# Основная функция для пакетной обработки с автосохранением
+def process_complaints_with_autosave(complaints_list, batch_size=100, start_from=0, output_dir="classification_results"):
+    """
+    Обрабатывает список жалоб с автоматическим сохранением каждые batch_size жалоб
+    """
+    # Загрузка баз знаний
+    products_kb, categories_kb = load_knowledge_bases()
+    
+    # Загрузка предыдущих результатов (если продолжаем)
+    previous_results, total_processed = load_previous_results(output_dir)
+    if start_from > 0:
+        total_processed = start_from
+    
+    results = []
+    batch_number = 1
+    
+    print(f"🚀 Начало обработки {len(complaints_list)} жалоб")
+    print(f"📦 Размер batch: {batch_size}")
+    print(f"⏩ Начинаем с жалобы №{total_processed + 1}")
+    
+    for i, complaint in enumerate(complaints_list[total_processed:], start=total_processed + 1):
+        print(f"\n--- Обработка жалобы {i}/{len(complaints_list)} ---")
+        
+        # Очистка текста
+        cleaned_text = clean_complaint_text(complaint)
+        print(f"Оригинальный текст: {complaint[:100]}...")
+        print(f"Очищенный текст: {cleaned_text}")
+        
+        # Формируем промпт
+        individual_prompt = create_prompt(products_kb, categories_kb, cleaned_text)
+        
+        # Здесь будет вызов к API LLM
+        # classification_result = call_llm_api(individual_prompt)
+        
+        result_item = {
+            'id': i,
+            'original_text': complaint,
+            'cleaned_text': cleaned_text,
+            'prompt': individual_prompt,
+            'classification': None,  # здесь будет результат от LLM
+            'processed_at': datetime.now().isoformat()
+        }
+        
+        results.append(result_item)
+        
+        # Автосохранение каждые batch_size жалоб
+        if i % batch_size == 0:
+            batch_number = i // batch_size
+            save_results(results, batch_number, i, output_dir)
+            results = []  # Очищаем результаты для следующего batch
+            print(f"💾 Batch {batch_number} сохранен, продолжаем...")
+        
+        # Прогресс
+        if i % 10 == 0:
+            print(f"📊 Прогресс: {i}/{len(complaints_list)} ({i/len(complaints_list)*100:.1f}%)")
+    
+    # Сохранение оставшихся результатов
+    if results:
+        batch_number += 1
+        save_results(results, batch_number, len(complaints_list), output_dir)
+    
+    print(f"\n✅ Обработка завершена! Всего обработано: {len(complaints_list)} жалоб")
+    
+    # Создаем файл с общей статистикой
+    create_summary_file(complaints_list, output_dir)
+
+def create_summary_file(complaints_list, output_dir):
+    """Создает файл с общей статистикой обработки"""
+    summary = {
+        "total_complaints": len(complaints_list),
+        "processed_at": datetime.now().isoformat(),
+        "output_directory": output_dir,
+        "batches": len([f for f in os.listdir(output_dir) if f.startswith('batch_')])
+    }
+    
+    summary_file = f"{output_dir}/processing_summary.json"
+    with open(summary_file, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2, default=str)
+    
+    print(f"📊 Сводка сохранена в {summary_file}")
+
+# Функция для объединения всех batch'ей
+def merge_all_results(output_dir="classification_results"):
+    """Объединяет все batch файлы в один"""
+    if not os.path.exists(output_dir):
+        print("❌ Директория с результатами не найдена")
+        return
+    
+    all_results = []
+    batch_files = [f for f in os.listdir(output_dir) if f.startswith('batch_') and f.endswith('.json')]
+    
+    for batch_file in sorted(batch_files):
+        batch_path = os.path.join(output_dir, batch_file)
+        with open(batch_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            all_results.extend(data['results'])
+    
+    merged_file = f"{output_dir}/all_results_merged.json"
+    with open(merged_file, 'w', encoding='utf-8') as f:
+        json.dump(all_results, f, ensure_ascii=False, indent=2, default=str)
+    
+    print(f"✅ Все результаты объединены в {merged_file}")
+    print(f"📁 Всего записей: {len(all_results)}")
+    
+    return all_results
+
+# Пример использования
+if __name__ == "__main__":
+    # Пример списка жалоб
+    complaints = [
+        "Мне не одобрили ипотеку под 8% годовых, хотя кредитная история идеальная",
+        "Со счета списали 500 рублей непонятной комиссии, о которой меня не предупреждали",
+        "Не приходит смс с кодом подтверждения для входа в приложение",
+        "Звонят моим родственникам и сообщают о моей задолженности по кредитной карте 1234-5678-9012-3456"
+    ] * 25  # Умножаем для тестирования batch обработки
+    
+    # Запуск обработки с автосохранением каждые 100 жалоб
+    process_complaints_with_autosave(
+        complaints_list=complaints,
+        batch_size=100,
+        start_from=0,  # Начать с начала (0) или продолжить с определенной позиции
+        output_dir="classification_results"
+    )
+    
+    # Объединение результатов после обработки
+    merge_all_results("classification_results")
