@@ -1,56 +1,208 @@
-def create_classification_prompt(complaint_text, types_file_content, products_file_content):
+import pandas as pd
+import json
+from joblib import Parallel, delayed
+import time
+from datetime import datetime
+
+# Функция для обработки одной жалобы
+def process_single_complaint(complaint_data, products_kb, categories_kb, index):
     """
-    Создает промпт для классификации банковских жалоб
-    
-    Args:
-        complaint_text (str): Текст жалобы для классификации
-        types_file_content (str): JSON с типами жалоб
-        products_file_content (str): JSON с продуктами
-    
-    Returns:
-        str: Готовый промпт для отправки в модель
+    Обрабатывает одну жалобу: очистка, эмбеддинг, классификация
     """
+    try:
+        complaint_text = complaint_data['text']  # предположим, что текст в колонке 'text'
+        
+        # Очистка текста
+        cleaned_text = clean_complaint_text(complaint_text)
+        
+        # Получение эмбеддинга
+        embedding = get_embedding(cleaned_text)
+        
+        # Формирование промпта
+        individual_prompt = create_prompt(products_kb, categories_kb, cleaned_text)
+        
+        # Классификация
+        classification_result = call_llm_api(individual_prompt)
+        
+        # Парсинг результата
+        try:
+            if hasattr(classification_result, 'content'):
+                classification_data = json.loads(classification_result.content)
+            else:
+                classification_data = json.loads(classification_result)
+        except:
+            classification_data = {
+                "product": "НЕОПРЕДЕЛЕН",
+                "complaint_type": "ДРУГОЕ", 
+                "complaint_subtype": "ДРУГОЕ",
+                "confidence": "низкая",
+                "explanation": "Ошибка парсинга ответа"
+            }
+        
+        result = {
+            'id': index + 1,
+            'original_text': complaint_text,
+            'cleaned_text': cleaned_text,
+            'embedding': embedding,
+            'embedding_dimension': len(embedding) if embedding else 0,
+            'prompt': individual_prompt,
+            'classification': classification_data,
+            'processed_at': datetime.now().isoformat(),
+            'batch_index': index
+        }
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Ошибка обработки жалобы {index}: {e}")
+        return {
+            'id': index + 1,
+            'original_text': complaint_data.get('text', ''),
+            'cleaned_text': '',
+            'embedding': None,
+            'embedding_dimension': 0,
+            'prompt': '',
+            'classification': {
+                "product": "НЕОПРЕДЕЛЕН",
+                "complaint_type": "ДРУГОЕ", 
+                "complaint_subtype": "ДРУГОЕ",
+                "confidence": "низкая",
+                "explanation": f"Ошибка обработки: {str(e)}"
+            },
+            'processed_at': datetime.now().isoformat(),
+            'batch_index': index
+        }
+
+# Основная функция для параллельной обработки
+def process_complaints_parallel(complaints_df, batch_size=100, n_jobs=-1, output_dir="classification_results"):
+    """
+    Параллельная обработка жалоб с автосохранением
+    """
+    # Загрузка баз знаний
+    products_kb, categories_kb = load_knowledge_bases()
     
-    prompt = f"""
-Промпт для классификации банковских жалоб
-
-Задача: Проанализируй текст банковской жалобы и классифицируй ее по двум параметрам: Тип и Продукт. Используй предоставленные справочники для точной классификации.
-
-Справочники для классификации:
-{types_file_content}
-{products_file_content}
-
-Инструкции по классификации:
-1. Анализ текста жалобы: Внимательно прочитай жалобу и выдели ключевые слова, фразы и суть проблемы.
-2. Определение Продукта: Сопоставь содержание жалобы с определениями и ключевыми словами из products.json. Выбери наиболее подходящий продукт из списка. Если жалоба затрагивает несколько продуктов, выбери основной.
-3. Определение Типа: Используй types_products_short.json для поиска подходящего типа. Учитывай связь между типом и продуктом - тип должен быть связан с выбранным продуктом. Сопоставь ключевые слова из жалобы с type_tags и type_description.
-
-Важные ограничения:
-- Используй ТОЛЬКО названия типов и продуктов из предоставленных справочников
-- Не придумывай новые названия или категории
-- Если нет точного соответствия, выбери наиболее близкий вариант из существующих в справочниках
-- Названия типов и продуктов должны точно соответствовать справочникам
-
-Формат ответа:
-{{
-  "classification": {{
-    "type": "название выбранного типа",
-    "product": "название выбранного продукта",
-    "confidence_level": "высокий/средний/низкий",
-    "explanation": "краткое обоснование выбора на основе ключевых слов из текста"
-  }}
-}}
-
-Текст жалобы для классификации:
-{complaint_text}
-"""
+    # Подготовка данных
+    complaints_list = complaints_df.to_dict('records')
+    total_complaints = len(complaints_list)
     
-    return prompt
+    print(f"🚀 Начало параллельной обработки {total_complaints} жалоб")
+    print(f"🔧 Количество ядер: {n_jobs if n_jobs != -1 else 'все доступные'}")
+    print(f"📦 Размер batch: {batch_size}")
+    print("─" * 50)
+    
+    start_time = time.time()
+    all_results = []
+    batch_number = 1
+    
+    # Обрабатываем батчами для экономии памяти
+    for batch_start in range(0, total_complaints, batch_size):
+        batch_end = min(batch_start + batch_size, total_complaints)
+        batch_complaints = complaints_list[batch_start:batch_end]
+        batch_indices = list(range(batch_start, batch_end))
+        
+        print(f"🔄 Обработка batch {batch_number}: {batch_start}-{batch_end-1}")
+        
+        # Параллельная обработка батча
+        batch_results = Parallel(n_jobs=n_jobs, verbose=10)(
+            delayed(process_single_complaint)(
+                complaint, products_kb, categories_kb, idx
+            ) for complaint, idx in zip(batch_complaints, batch_indices)
+        )
+        
+        all_results.extend(batch_results)
+        
+        # Автосохранение после каждого батча
+        save_results(batch_results, batch_number, batch_end, output_dir)
+        
+        # Прогресс
+        elapsed_time = time.time() - start_time
+        estimated_total = (elapsed_time / batch_end) * total_complaints
+        remaining_time = estimated_total - elapsed_time
+        
+        print(f"✅ Batch {batch_number} завершен: {batch_end}/{total_complaints}")
+        print(f"⏱️  Прошло: {elapsed_time/60:.1f} мин | Осталось: ~{remaining_time/60:.1f} мин")
+        print("─" * 50)
+        
+        batch_number += 1
+    
+    total_time = time.time() - start_time
+    print(f"🎉 Обработка завершена за {total_time/60:.1f} минут")
+    print(f"📊 Средняя скорость: {total_complaints/(total_time/60):.1f} жалоб/мин")
+    
+    # Объединяем все результаты
+    merge_all_results(output_dir)
+    
+    return all_results
 
-# Пример использования:
-# types_content = '{"classification_dictionary": [...]}'  # содержимое types_products_short.json
-# products_content = '{"products": [...]}'  # содержимое products.json
-# complaint = "Мне навязали страховку при оформлении кредитной карты"
-# 
-# prompt = create_classification_prompt(complaint, types_content, products_content)
-# print(prompt)
+# Функция для обработки с ограничением скорости (если есть лимиты API)
+def process_complaints_with_rate_limit(complaints_df, batch_size=100, n_jobs=2, requests_per_minute=60, output_dir="classification_results"):
+    """
+    Параллельная обработка с ограничением скорости запросов
+    """
+    import time
+    from joblib import Parallel, delayed
+    
+    products_kb, categories_kb = load_knowledge_bases()
+    complaints_list = complaints_df.to_dict('records')
+    total_complaints = len(complaints_list)
+    
+    print(f"🚀 Параллельная обработка с ограничением скорости")
+    print(f"🔧 {n_jobs} параллельных потока")
+    print(f"📊 Лимит: {requests_per_minute} запросов/мин")
+    
+    # Рассчитываем задержку между батчами
+    delay_between_batches = (60 / requests_per_minute) * (batch_size / n_jobs)
+    
+    all_results = []
+    batch_number = 1
+    
+    for batch_start in range(0, total_complaints, batch_size):
+        batch_end = min(batch_start + batch_size, total_complaints)
+        batch_complaints = complaints_list[batch_start:batch_end]
+        batch_indices = list(range(batch_start, batch_end))
+        
+        print(f"🔄 Batch {batch_number}: {batch_start}-{batch_end-1}")
+        
+        # Обработка батча
+        batch_results = Parallel(n_jobs=n_jobs)(
+            delayed(process_single_complaint)(
+                complaint, products_kb, categories_kb, idx
+            ) for complaint, idx in zip(batch_complaints, batch_indices)
+        )
+        
+        all_results.extend(batch_results)
+        save_results(batch_results, batch_number, batch_end, output_dir)
+        
+        # Задержка для соблюдения лимита API
+        if batch_end < total_complaints:
+            print(f"⏳ Задержка {delay_between_batches:.1f} сек...")
+            time.sleep(delay_between_batches)
+        
+        batch_number += 1
+    
+    merge_all_results(output_dir)
+    return all_results
+
+# Пример использования
+if __name__ == "__main__":
+    # Загрузка данных
+    # complaints_df = pd.read_csv('your_complaints.csv')
+    
+    # Вариант 1: Максимальная скорость (использует все ядра)
+    print("=== ВАРИАНТ 1: МАКСИМАЛЬНАЯ СКОРОСТЬ ===")
+    results1 = process_complaints_parallel(
+        complaints_df=complaints_df,
+        batch_size=50,           # Размер батча
+        n_jobs=-1,               # Использовать все ядра
+        output_dir="parallel_results"
+    )
+    
+    # Вариант 2: С ограничением скорости (если есть лимиты API)
+    print("\n=== ВАРИАНТ 2: С ОГРАНИЧЕНИЕМ СКОРОСТИ ===")
+    results2 = process_complaints_with_rate_limit(
+        complaints_df=complaints_df,
+        batch_size=30,           # Меньший батч
+        n_jobs=2,                # Меньше параллельных потоков
+        requests_per_minute=30,  # Лимит запросов в минуту
+        output_dir="rate_limited_results"
+    )
