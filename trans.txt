@@ -40,11 +40,7 @@ def create_prompt(products_kb, categories_kb, complaint_text):
     
     # Формируем списки доступных значений
     available_products = [product['name'] for product in products_kb['products']]
-    
-    type_subtype_pairs = []
-    for category in categories_kb['complaint_categories']:
-        for subtype in category['subtypes']:
-            type_subtype_pairs.append(f"{category['type']} -> {subtype['subtype']}")
+    available_types = list(set([category['type'] for category in categories_kb['complaint_categories']]))
     
     prompt_template = """
 # Роль
@@ -58,16 +54,17 @@ def create_prompt(products_kb, categories_kb, complaint_text):
 # ДОСТУПНЫЕ ПРОДУКТЫ (выбери ОДИН):
 {available_products}
 
-# ДОСТУПНЫЕ КАТЕГОРИИ (выбери ОДНУ пару):
-{available_categories}
+# ДОСТУПНЫЕ ТИПЫ ЖАЛОБ (выбери ОДИН):
+{available_types}
 
 # ФОРМАТ ОТВЕТА (JSON):
 {{
-  "product": "выбранный_продукт_из_списка",
-  "complaint_type": "выбранный_тип_из_списка",
-  "complaint_subtype": "выбранный_подтип_из_списка",
-  "confidence": "высокая/средняя/низкая",
-  "explanation": "краткое обоснование"
+  "classification": {{
+    "type": "выбранный_тип_из_списка",
+    "product": "выбранный_продукт_из_списка", 
+    "confidence_level": "высокий/средний/низкий",
+    "explanation": "краткое обоснование выбора на основе ключевых слов из текста"
+  }}
 }}
 
 Жалоба: "{complaint_text}"
@@ -77,7 +74,7 @@ def create_prompt(products_kb, categories_kb, complaint_text):
     
     return prompt_template.format(
         available_products=", ".join(available_products),
-        available_categories="; ".join(type_subtype_pairs),
+        available_types=", ".join(available_types),
         complaint_text=complaint_text
     )
 
@@ -100,19 +97,23 @@ def process_single_complaint(complaint_data, products_kb, categories_kb, index, 
         # Классификация (ЗАМЕНИТЕ НА ВАШ API ВЫЗОВ)
         classification_result = call_llm_api(individual_prompt)  # Ваша функция
         
-        # Парсинг результата
+        # Парсинг результата с новым форматом
         try:
             if hasattr(classification_result, 'content'):
-                classification_data = json.loads(classification_result.content)
+                response_data = json.loads(classification_result.content)
             else:
-                classification_data = json.loads(classification_result)
-        except:
+                response_data = json.loads(classification_result)
+            
+            # Извлекаем данные из нового формата
+            classification_data = response_data.get('classification', {})
+            
+        except Exception as e:
+            print(f"❌ Ошибка парсинга для жалобы {index}: {e}")
             classification_data = {
-                "product": "НЕОПРЕДЕЛЕН",
-                "complaint_type": "ДРУГОЕ", 
-                "complaint_subtype": "ДРУГОЕ",
-                "confidence": "низкая",
-                "explanation": "Ошибка парсинга ответа"
+                "type": "ДРУГОЕ",
+                "product": "НЕОПРЕДЕЛЕН", 
+                "confidence_level": "низкий",
+                "explanation": f"Ошибка парсинга: {str(e)}"
             }
         
         result = {
@@ -122,7 +123,7 @@ def process_single_complaint(complaint_data, products_kb, categories_kb, index, 
             'embedding': embedding,
             'embedding_dimension': len(embedding) if embedding else 0,
             'prompt': individual_prompt,
-            'classification': classification_data,
+            'classification': classification_data,  # Теперь это словарь с новыми полями
             'processed_at': datetime.now().isoformat(),
             'batch_index': index
         }
@@ -139,10 +140,9 @@ def process_single_complaint(complaint_data, products_kb, categories_kb, index, 
             'embedding_dimension': 0,
             'prompt': '',
             'classification': {
-                "product": "НЕОПРЕДЕЛЕН",
-                "complaint_type": "ДРУГОЕ", 
-                "complaint_subtype": "ДРУГОЕ",
-                "confidence": "низкая",
+                "type": "ДРУГОЕ",
+                "product": "НЕОПРЕДЕЛЕН", 
+                "confidence_level": "низкий",
                 "explanation": f"Ошибка обработки: {str(e)}"
             },
             'processed_at': datetime.now().isoformat(),
@@ -265,7 +265,7 @@ def process_complaints_parallel(complaints_df, batch_size=100, n_jobs=-1, output
 # ========== ФУНКЦИЯ ДЛЯ СОЗДАНИЯ ИТОГОВОГО ДАТАФРЕЙМА ==========
 
 def create_comparison_dataframe(merged_results_file, original_df):
-    """Создает датафрейм для сравнения результатов"""
+    """Создает датафрейм для сравнения результатов с новым форматом"""
     
     with open(merged_results_file, 'r', encoding='utf-8') as f:
         classification_results = json.load(f)
@@ -278,7 +278,11 @@ def create_comparison_dataframe(merged_results_file, original_df):
         # Обрабатываем разные форматы classification
         if isinstance(classification, str):
             try:
+                # Пробуем распарсить как JSON
                 classification = json.loads(classification)
+                # Если это новый формат, извлекаем classification
+                if 'classification' in classification:
+                    classification = classification['classification']
             except:
                 classification = {}
         elif not isinstance(classification, dict):
@@ -287,9 +291,8 @@ def create_comparison_dataframe(merged_results_file, original_df):
         model_data.append({
             'index': result['id'] - 1,
             'модель_продукт': classification.get('product', 'НЕОПРЕДЕЛЕН'),
-            'модель_тип_жалобы': classification.get('complaint_type', 'ДРУГОЕ'),
-            'модель_подтип_жалобы': classification.get('complaint_subtype', 'ДРУГОЕ'),
-            'модель_уверенность': classification.get('confidence', 'низкая'),
+            'модель_тип_жалобы': classification.get('type', 'ДРУГОЕ'),  # теперь 'type' вместо 'complaint_type'
+            'модель_уверенность': classification.get('confidence_level', 'низкий'),  # теперь 'confidence_level'
             'модель_обоснование': classification.get('explanation', ''),
             'исходный_текст_жалобы': result.get('original_text', '')
         })
@@ -301,8 +304,7 @@ def create_comparison_dataframe(merged_results_file, original_df):
     comparison_df = original_df.copy()
     
     # Добавляем колонки с результатами модели
-    for col in ['модель_продукт', 'модель_тип_жалобы', 'модель_подтип_жалобы', 
-                'модель_уверенность', 'модель_обоснование', 'исходный_текст_жалобы_модель']:
+    for col in ['модель_продукт', 'модель_тип_жалобы', 'модель_уверенность', 'модель_обоснование', 'исходный_текст_жалобы_модель']:
         comparison_df[col] = model_df[col]
     
     return comparison_df
@@ -316,10 +318,10 @@ if __name__ == "__main__":
     # Параллельная обработка
     results = process_complaints_parallel(
         complaints_df=complaints_df,
-        batch_size=100,           # Размер батча
-        n_jobs=-1,                # Использовать все ядра
+        batch_size=100,
+        n_jobs=-1,
         output_dir="parallel_results",
-        text_column='text'        # Название колонки с текстом жалоб
+        text_column='text'
     )
     
     # Создание итогового датафрейма
@@ -331,3 +333,7 @@ if __name__ == "__main__":
     # Сохранение результатов
     comparison_df.to_csv('final_classified_complaints.csv', index=False, encoding='utf-8-sig')
     print("✅ Итоговый датафрейм сохранен в final_classified_complaints.csv")
+    
+    # Просмотр результатов
+    print("\n=== ПЕРВЫЕ 5 ЗАПИСЕЙ ===")
+    print(comparison_df[['модель_продукт', 'модель_тип_жалобы', 'модель_уверенность']].head())
