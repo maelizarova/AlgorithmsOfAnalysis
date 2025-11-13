@@ -1,37 +1,62 @@
-# Альтернативная версия если нет ID, но есть порядковый номер
-def create_final_dataframe_by_index(merged_results_file, original_df):
+import pandas as pd
+import json
+
+def create_comparison_dataframe(merged_results_file, original_df):
     """
-    Создает итоговый датафрейм по порядковому номеру
+    Создает датафрейм для сравнения классификации модели с исходными данными
+    
+    Parameters:
+    - merged_results_file: путь к файлу с результатами классификации
+    - original_df: исходный датафрейм с разметкой
     """
     
-    # Загружаем результаты классификации
+    # Загружаем результаты классификации модели
     with open(merged_results_file, 'r', encoding='utf-8') as f:
         classification_results = json.load(f)
     
-    # Создаем датафрейм из результатов классификации
-    results_data = []
+    # Создаем датафрейм из результатов модели
+    model_data = []
     for result in classification_results:
         classification = result.get('classification', {})
-        row_data = {
+        model_data.append({
             'index': result['id'] - 1,  # преобразуем в индекс (начинается с 0)
-            'исходный_текст_жалобы': result['original_text'],
-            'продукт': classification.get('product', 'НЕОПРЕДЕЛЕН'),
-            'тип_жалобы': classification.get('complaint_type', 'ДРУГОЕ'),
-            'подтип_жалобы': classification.get('complaint_subtype', 'ДРУГОЕ'),
-            'уверенность': classification.get('confidence', 'низкая'),
-            'обоснование': classification.get('explanation', '')
-        }
-        results_data.append(row_data)
+            'модель_продукт': classification.get('product', 'НЕОПРЕДЕЛЕН'),
+            'модель_тип_жалобы': classification.get('complaint_type', 'ДРУГОЕ'),
+            'модель_подтип_жалобы': classification.get('complaint_subtype', 'ДРУГОЕ'),
+            'модель_уверенность': classification.get('confidence', 'низкая'),
+            'модель_обоснование': classification.get('explanation', ''),
+            'исходный_текст_жалобы': result['original_text']
+        })
     
-    classification_df = pd.DataFrame(results_data)
-    classification_df = classification_df.set_index('index')
+    model_df = pd.DataFrame(model_data)
+    model_df = model_df.set_index('index')
     
-    # Объединяем с исходным датафреймом по индексу
-    final_df = original_df.copy()
-    for col in ['продукт', 'тип_жалобы', 'подтип_жалобы', 'уверенность', 'обоснование']:
-        final_df[col] = classification_df[col]
+    # Создаем копию исходного датафрейма для сравнения
+    comparison_df = original_df.copy()
     
-    # Добавляем колонку с исходным текстом из классификации для проверки
-    final_df['исходный_текст_жалобы_классификация'] = classification_df['исходный_текст_жалобы']
+    # Добавляем колонки с результатами модели
+    comparison_df['модель_продукт'] = model_df['модель_продукт']
+    comparison_df['модель_тип_жалобы'] = model_df['модель_тип_жалобы']
+    comparison_df['модель_подтип_жалобы'] = model_df['модель_подтип_жалобы']
+    comparison_df['модель_уверенность'] = model_df['модель_уверенность']
+    comparison_df['модель_обоснование'] = model_df['модель_обоснование']
+    comparison_df['исходный_текст_жалобы_модель'] = model_df['исходный_текст_жалобы']
     
-    return final_df
+    return comparison_df
+
+
+
+# Пример использования
+if __name__ == "__main__":
+    # Загружаем исходный датафрейм
+    # original_df = pd.read_csv('your_data.csv')  # ваш файл с исходной разметкой
+    
+    # Создаем датафрейм для сравнения
+    comparison_df = create_comparison_dataframe(
+        merged_results_file='classification_results/all_results_merged.json',
+        original_df=original_df
+    )
+    
+    # Сохраняем результат
+    comparison_df.to_csv('comparison_results.csv', index=False, encoding='utf-8-sig')
+    
