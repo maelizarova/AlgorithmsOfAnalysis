@@ -1,69 +1,37 @@
-# Формирование промпта для LLM
-def create_prompt(products_kb, categories_kb, complaint_text):
+# Альтернативная версия если нет ID, но есть порядковый номер
+def create_final_dataframe_by_index(merged_results_file, original_df):
     """
-    Создает промпт для классификации жалобы
+    Создает итоговый датафрейм по порядковому номеру
     """
     
-    # Собираем все возможные значения для строгой проверки
-    available_products = [product['name'] for product in products_kb['products']]
+    # Загружаем результаты классификации
+    with open(merged_results_file, 'r', encoding='utf-8') as f:
+        classification_results = json.load(f)
     
-    # Собираем структурированную информацию о категориях
-    category_structure = ""
-    for category in categories_kb['complaint_categories']:
-        category_structure += f"\nТИП: {category['type']}\n"
-        category_structure += f"Определение: {category.get('definition', '')}\n"
-        category_structure += "ПОДТИПЫ:\n"
-        for subtype in category['subtypes']:
-            category_structure += f"- {subtype['subtype']}: {subtype.get('definition', '')}\n"
+    # Создаем датафрейм из результатов классификации
+    results_data = []
+    for result in classification_results:
+        classification = result.get('classification', {})
+        row_data = {
+            'index': result['id'] - 1,  # преобразуем в индекс (начинается с 0)
+            'исходный_текст_жалобы': result['original_text'],
+            'продукт': classification.get('product', 'НЕОПРЕДЕЛЕН'),
+            'тип_жалобы': classification.get('complaint_type', 'ДРУГОЕ'),
+            'подтип_жалобы': classification.get('complaint_subtype', 'ДРУГОЕ'),
+            'уверенность': classification.get('confidence', 'низкая'),
+            'обоснование': classification.get('explanation', '')
+        }
+        results_data.append(row_data)
     
-    prompt_template = """
-# Роль
-Ты — классификатор жалоб. Твоя задача — сопоставить жалобу с категориями из строго заданных справочников.
-
-# СТРОГИЕ ПРАВИЛА:
-- Используй ТОЛЬКО готовые категории из справочников ниже
-- НЕ придумывай новые названия
-- НЕ изменяй формулировки
-
-# КАК ВЫБИРАТЬ КАТЕГОРИИ:
-
-## 1. ВЫБОР ПРОДУКТА:
-- Прочитай жалобу и определи, о каком банковском продукте идет речь
-- Выбери ОДИН продукт из списка ниже
-- Если продукт неясен - используй "НЕОПРЕДЕЛЕН"
-
-## 2. ВЫБОР ТИПА И ПОДТИПА ЖАЛОБЫ:
-- Сначала определи ОБЩУЮ КАТЕГОРИЮ проблемы (тип)
-- Затем найди КОНКРЕТНУЮ ПРОБЛЕМУ в рамках этого типа (подтип)
-- Читай определения типов и подтипов - они помогут выбрать правильную категорию
-- Выбери ОДНУ пару тип->подтип
-
-## 3. ЕСЛИ НЕТ ТОЧНОГО СООТВЕТСТВИЯ:
-- Выбери наиболее близкую категорию ИЗ ДОСТУПНЫХ
-- Не создавай новые категории
-
-# ДОСТУПНЫЕ ПРОДУКТЫ (выбери ОДИН):
-{available_products}
-
-# СТРУКТУРА КАТЕГОРИЙ ЖАЛОБ:
-{category_structure}
-
-# ФОРМАТ ОТВЕТА (JSON):
-{{
-  "product": "выбранный_продукт_из_списка",
-  "complaint_type": "выбранный_тип_из_структуры", 
-  "complaint_subtype": "выбранный_подтип_из_структуры",
-  "confidence": "высокая/средняя/низкая",
-  "explanation": "краткое обоснование почему выбран именно этот тип и подтип"
-}}
-
-Жалоба: "{complaint_text}"
-
-Ответ:
-"""
+    classification_df = pd.DataFrame(results_data)
+    classification_df = classification_df.set_index('index')
     
-    return prompt_template.format(
-        available_products=", ".join(available_products),
-        category_structure=category_structure,
-        complaint_text=complaint_text
-    )
+    # Объединяем с исходным датафреймом по индексу
+    final_df = original_df.copy()
+    for col in ['продукт', 'тип_жалобы', 'подтип_жалобы', 'уверенность', 'обоснование']:
+        final_df[col] = classification_df[col]
+    
+    # Добавляем колонку с исходным текстом из классификации для проверки
+    final_df['исходный_текст_жалобы_классификация'] = classification_df['исходный_текст_жалобы']
+    
+    return final_df
