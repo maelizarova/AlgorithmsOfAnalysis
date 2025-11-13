@@ -1,339 +1,43 @@
-import re
-import json
-import os
-import numpy as np
-import pandas as pd
-from datetime import datetime
-from joblib import Parallel, delayed
-import time
+import logging
+import sys
 
-# ========== БАЗОВЫЕ ФУНКЦИИ ==========
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
-def clean_complaint_text(text):
-    """Очистка текста от чисел"""
-    cleaned_text = re.sub(r'\d+', '', text)
-    cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
-    return cleaned_text
-
-def get_embedding(text, model="embedding-model"):
-    """Получение эмбеддинга (замените на ваш API вызов)"""
+def call_llm_api(prompt):
+    """
+    Заглушка для вызова LLM API
+    """
     try:
-        # ЗАМЕНИТЕ НА ВАШ РЕАЛЬНЫЙ ВЫЗОВ API
-        # response = call_gpt_oss_embedding(text)
-        # embedding = response.embedding
-        embedding = np.random.randn(512).tolist()
-        return embedding
-    except Exception as e:
-        print(f"❌ Ошибка получения эмбеддинга: {e}")
-        return None
-
-def load_knowledge_bases():
-    """Загрузка баз знаний"""
-    with open('products_knowledge_base.json', 'r', encoding='utf-8') as f:
-        products_kb = json.load(f)
-    with open('complaint_categories_knowledge_base.json', 'r', encoding='utf-8') as f:
-        complaint_categories_kb = json.load(f)
-    return products_kb, complaint_categories_kb
-
-def create_prompt(products_kb, categories_kb, complaint_text):
-    """Создание промпта для классификации"""
-    
-    # Формируем списки доступных значений
-    available_products = [product['name'] for product in products_kb['products']]
-    available_types = list(set([category['type'] for category in categories_kb['complaint_categories']]))
-    
-    prompt_template = """
-# Роль
-Ты — классификатор жалоб. Сопоставь жалобу с категориями из справочников.
-
-# СТРОГИЕ ПРАВИЛА:
-- Используй ТОЛЬКО готовые категории из справочников
-- НЕ придумывай новые названия
-- НЕ изменяй формулировки
-
-# ДОСТУПНЫЕ ПРОДУКТЫ (выбери ОДИН):
-{available_products}
-
-# ДОСТУПНЫЕ ТИПЫ ЖАЛОБ (выбери ОДИН):
-{available_types}
-
-# ФОРМАТ ОТВЕТА (JSON):
-{{
-  "classification": {{
-    "type": "выбранный_тип_из_списка",
-    "product": "выбранный_продукт_из_списка", 
-    "confidence_level": "высокий/средний/низкий",
-    "explanation": "краткое обоснование выбора на основе ключевых слов из текста"
-  }}
-}}
-
-Жалоба: "{complaint_text}"
-
-Ответ:
-"""
-    
-    return prompt_template.format(
-        available_products=", ".join(available_products),
-        available_types=", ".join(available_types),
-        complaint_text=complaint_text
-    )
-
-# ========== ФУНКЦИИ ДЛЯ РАСПАРАЛЛЕЛИВАНИЯ ==========
-
-def process_single_complaint(complaint_data, products_kb, categories_kb, index, text_column='text'):
-    """Обработка одной жалобы"""
-    try:
-        complaint_text = complaint_data[text_column]
+        # Логируем входные данные
+        logging.info(f"📨 Вызов LLM API с промптом длиной {len(prompt)} символов")
         
-        # Очистка текста
-        cleaned_text = clean_complaint_text(complaint_text)
+        # Ваш реальный вызов API здесь
+        # response = your_llm_client.complete(prompt)
         
-        # Получение эмбеддинга
-        embedding = get_embedding(cleaned_text)
-        
-        # Формирование промпта
-        individual_prompt = create_prompt(products_kb, categories_kb, cleaned_text)
-        
-        # Классификация (ЗАМЕНИТЕ НА ВАШ API ВЫЗОВ)
-        classification_result = call_llm_api(individual_prompt)  # Ваша функция
-        
-        # Парсинг результата с новым форматом
-        try:
-            if hasattr(classification_result, 'content'):
-                response_data = json.loads(classification_result.content)
-            else:
-                response_data = json.loads(classification_result)
-            
-            # Извлекаем данные из нового формата
-            classification_data = response_data.get('classification', {})
-            
-        except Exception as e:
-            print(f"❌ Ошибка парсинга для жалобы {index}: {e}")
-            classification_data = {
-                "type": "ДРУГОЕ",
-                "product": "НЕОПРЕДЕЛЕН", 
-                "confidence_level": "низкий",
-                "explanation": f"Ошибка парсинга: {str(e)}"
+        # Временная заглушка
+        mock_response = {
+            "classification": {
+                "type": "ОФОРМЛЕНИЕ_КРЕДИТА", 
+                "product": "КРЕДИТНАЯ КАРТА",
+                "confidence_level": "средний",
+                "explanation": "Текст содержит ключевые слова: кредит, карта, одобрили"
             }
-        
-        result = {
-            'id': index + 1,
-            'original_text': complaint_text,
-            'cleaned_text': cleaned_text,
-            'embedding': embedding,
-            'embedding_dimension': len(embedding) if embedding else 0,
-            'prompt': individual_prompt,
-            'classification': classification_data,  # Теперь это словарь с новыми полями
-            'processed_at': datetime.now().isoformat(),
-            'batch_index': index
         }
+        
+        class MockResponse:
+            def __init__(self, data):
+                self.content = json.dumps(data, ensure_ascii=False)
+        
+        result = MockResponse(mock_response)
+        logging.info(f"✅ LLM API вернул результат: {mock_response['classification']}")
         
         return result
         
     except Exception as e:
-        print(f"❌ Ошибка обработки жалобы {index}: {e}")
-        return {
-            'id': index + 1,
-            'original_text': complaint_data.get(text_column, ''),
-            'cleaned_text': '',
-            'embedding': None,
-            'embedding_dimension': 0,
-            'prompt': '',
-            'classification': {
-                "type": "ДРУГОЕ",
-                "product": "НЕОПРЕДЕЛЕН", 
-                "confidence_level": "низкий",
-                "explanation": f"Ошибка обработки: {str(e)}"
-            },
-            'processed_at': datetime.now().isoformat(),
-            'batch_index': index
-        }
-
-# ========== ФУНКЦИИ СОХРАНЕНИЯ ==========
-
-def save_results(results, batch_number, total_processed, output_dir="classification_results"):
-    """Сохранение результатов"""
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{output_dir}/batch_{batch_number}_{timestamp}.json"
-    
-    results_data = {
-        "metadata": {
-            "batch_number": batch_number,
-            "total_processed": total_processed,
-            "timestamp": timestamp,
-            "saved_at": datetime.now().isoformat(),
-            "embedding_dimension": len(results[0]['embedding']) if results and 'embedding' in results[0] else 0
-        },
-        "results": results
-    }
-    
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(results_data, f, ensure_ascii=False, indent=2, default=str)
-    
-    print(f"✓ Batch {batch_number} сохранен: {filename} ({total_processed} жалоб)")
-    return filename
-
-def merge_all_results(output_dir="classification_results"):
-    """Объединение всех batch'ей"""
-    if not os.path.exists(output_dir):
-        print("❌ Директория с результатами не найдена")
-        return
-    
-    all_results = []
-    batch_files = [f for f in os.listdir(output_dir) if f.startswith('batch_') and f.endswith('.json')]
-    
-    for batch_file in sorted(batch_files):
-        batch_path = os.path.join(output_dir, batch_file)
-        with open(batch_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            all_results.extend(data['results'])
-    
-    merged_file = f"{output_dir}/all_results_merged.json"
-    with open(merged_file, 'w', encoding='utf-8') as f:
-        json.dump(all_results, f, ensure_ascii=False, indent=2, default=str)
-    
-    print(f"✅ Все результаты объединены: {merged_file}")
-    print(f"📁 Всего записей: {len(all_results)}")
-    
-    return all_results
-
-# ========== ОСНОВНАЯ ФУНКЦИЯ РАСПАРАЛЛЕЛИВАНИЯ ==========
-
-def process_complaints_parallel(complaints_df, batch_size=100, n_jobs=-1, output_dir="classification_results", text_column='text'):
-    """
-    Параллельная обработка жалоб
-    """
-    # Загрузка баз знаний
-    products_kb, categories_kb = load_knowledge_bases()
-    
-    # Подготовка данных
-    complaints_list = complaints_df.to_dict('records')
-    total_complaints = len(complaints_list)
-    
-    print(f"🚀 Начало параллельной обработки {total_complaints} жалоб")
-    print(f"🔧 Количество ядер: {n_jobs if n_jobs != -1 else 'все доступные'}")
-    print(f"📦 Размер batch: {batch_size}")
-    print("─" * 50)
-    
-    start_time = time.time()
-    all_results = []
-    batch_number = 1
-    
-    # Обрабатываем батчами
-    for batch_start in range(0, total_complaints, batch_size):
-        batch_end = min(batch_start + batch_size, total_complaints)
-        batch_complaints = complaints_list[batch_start:batch_end]
-        batch_indices = list(range(batch_start, batch_end))
-        
-        print(f"🔄 Обработка batch {batch_number}: {batch_start}-{batch_end-1}")
-        
-        # Параллельная обработка батча
-        batch_results = Parallel(n_jobs=n_jobs, verbose=10)(
-            delayed(process_single_complaint)(
-                complaint, products_kb, categories_kb, idx, text_column
-            ) for complaint, idx in zip(batch_complaints, batch_indices)
-        )
-        
-        all_results.extend(batch_results)
-        
-        # Автосохранение
-        save_results(batch_results, batch_number, batch_end, output_dir)
-        
-        # Прогресс
-        elapsed_time = time.time() - start_time
-        estimated_total = (elapsed_time / batch_end) * total_complaints
-        remaining_time = estimated_total - elapsed_time
-        
-        print(f"✅ Batch {batch_number} завершен: {batch_end}/{total_complaints}")
-        print(f"⏱️  Прошло: {elapsed_time/60:.1f} мин | Осталось: ~{remaining_time/60:.1f} мин")
-        print("─" * 50)
-        
-        batch_number += 1
-    
-    total_time = time.time() - start_time
-    print(f"🎉 Обработка завершена за {total_time/60:.1f} минут")
-    print(f"📊 Средняя скорость: {total_complaints/(total_time/60):.1f} жалоб/мин")
-    
-    # Объединяем все результаты
-    merge_all_results(output_dir)
-    
-    return all_results
-
-# ========== ФУНКЦИЯ ДЛЯ СОЗДАНИЯ ИТОГОВОГО ДАТАФРЕЙМА ==========
-
-def create_comparison_dataframe(merged_results_file, original_df):
-    """Создает датафрейм для сравнения результатов с новым форматом"""
-    
-    with open(merged_results_file, 'r', encoding='utf-8') as f:
-        classification_results = json.load(f)
-    
-    model_data = []
-    
-    for result in classification_results:
-        classification = result.get('classification', {})
-        
-        # Обрабатываем разные форматы classification
-        if isinstance(classification, str):
-            try:
-                # Пробуем распарсить как JSON
-                classification = json.loads(classification)
-                # Если это новый формат, извлекаем classification
-                if 'classification' in classification:
-                    classification = classification['classification']
-            except:
-                classification = {}
-        elif not isinstance(classification, dict):
-            classification = {}
-        
-        model_data.append({
-            'index': result['id'] - 1,
-            'модель_продукт': classification.get('product', 'НЕОПРЕДЕЛЕН'),
-            'модель_тип_жалобы': classification.get('type', 'ДРУГОЕ'),  # теперь 'type' вместо 'complaint_type'
-            'модель_уверенность': classification.get('confidence_level', 'низкий'),  # теперь 'confidence_level'
-            'модель_обоснование': classification.get('explanation', ''),
-            'исходный_текст_жалобы': result.get('original_text', '')
-        })
-    
-    model_df = pd.DataFrame(model_data)
-    model_df = model_df.set_index('index')
-    
-    # Создаем копию исходного датафрейма для сравнения
-    comparison_df = original_df.copy()
-    
-    # Добавляем колонки с результатами модели
-    for col in ['модель_продукт', 'модель_тип_жалобы', 'модель_уверенность', 'модель_обоснование', 'исходный_текст_жалобы_модель']:
-        comparison_df[col] = model_df[col]
-    
-    return comparison_df
-
-# ========== ПРИМЕР ИСПОЛЬЗОВАНИЯ ==========
-
-if __name__ == "__main__":
-    # Загрузка данных (замените на ваш способ загрузки)
-    # complaints_df = pd.read_csv('your_complaints.csv')
-    
-    # Параллельная обработка
-    results = process_complaints_parallel(
-        complaints_df=complaints_df,
-        batch_size=100,
-        n_jobs=-1,
-        output_dir="parallel_results",
-        text_column='text'
-    )
-    
-    # Создание итогового датафрейма
-    comparison_df = create_comparison_dataframe(
-        merged_results_file='parallel_results/all_results_merged.json',
-        original_df=complaints_df
-    )
-    
-    # Сохранение результатов
-    comparison_df.to_csv('final_classified_complaints.csv', index=False, encoding='utf-8-sig')
-    print("✅ Итоговый датафрейм сохранен в final_classified_complaints.csv")
-    
-    # Просмотр результатов
-    print("\n=== ПЕРВЫЕ 5 ЗАПИСЕЙ ===")
-    print(comparison_df[['модель_продукт', 'модель_тип_жалобы', 'модель_уверенность']].head())
+        logging.error(f"❌ Ошибка вызова LLM API: {e}")
+        return None
