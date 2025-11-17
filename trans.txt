@@ -1,28 +1,75 @@
-def load_embedding_results(output_dir="embedding_results"):
-    all_vectors = []
-    all_meta = []
-    if not os.path.exists(output_dir):
-        logging.warning(f"Директория {output_dir} не найдена")
-        return all_vectors, all_meta
+# ========== АНАЛИТИКА ЭМБЕДДИНГОВ ==========
 
-    for filename in sorted(os.listdir(output_dir)):
-        if not filename.endswith('.json'):
+def prepare_embedding_matrix(output_dir="embedding_results"):
+    """Загружает все эмбеддинги, возвращает исходную и нормализованную матрицы"""
+    vectors, meta = load_embedding_results(output_dir)
+    if not vectors:
+        raise ValueError(f"Не найдены эмбеддинги в директории {output_dir}")
+
+    X = np.array(vectors, dtype=float)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    meta_df = pd.DataFrame(meta)
+    return X, X_scaled, meta_df, scaler
+
+
+def project_embeddings_umap(X, n_neighbors=30, min_dist=0.1, n_components=2, metric='cosine', random_state=42):
+    reducer = umap.UMAP(
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        n_components=n_components,
+        metric=metric,
+        random_state=random_state
+    )
+    coords = reducer.fit_transform(X)
+    return coords, reducer
+
+
+def evaluate_k_values(X, k_values, use_minibatch=True, random_state=42):
+    """Подбор количества кластеров по силуэту"""
+    scores = []
+    for k in k_values:
+        if k < 2:
             continue
-        file_path = os.path.join(output_dir, filename)
-        with open(file_path, 'r', encoding='utf-8') as f:
-            payload = json.load(f)
+        if use_minibatch:
+            model = MiniBatchKMeans(n_clusters=k, random_state=random_state, batch_size=1024)
+        else:
+            model = KMeans(n_clusters=k, random_state=random_state, n_init='auto')
+        labels = model.fit_predict(X)
+        if len(set(labels)) < 2:
+            continue
+        score = silhouette_score(X, labels)
+        scores.append({"k": k, "silhouette": score})
+    return pd.DataFrame(scores)
 
-        for row in payload.get('results', []):
-            embedding = row.get('embedding')
-            if embedding:
-                all_vectors.append(embedding)
-                all_meta.append({
-                    "id": row.get('id'),
-                    "original_text": row.get('original_text'),
-                    "cleaned_text": row.get('cleaned_text'),
-                    "embedding_dimension": row.get('embedding_dimension'),
-                    "processed_at": row.get('processed_at'),
-                    "source_file": filename
-                })
 
-    return all_vectors, all_meta
+def cluster_embeddings(X, n_clusters, use_minibatch=True, random_state=42):
+    if use_minibatch:
+        model = MiniBatchKMeans(n_clusters=n_clusters, random_state=random_state, batch_size=1024)
+    else:
+        model = KMeans(n_clusters=n_clusters, random_state=random_state, n_init='auto')
+    labels = model.fit_predict(X)
+    return labels, model
+
+
+def visualize_clusters(coords, labels, meta_df=None, title="Карта жалоб"):
+    df_plot = pd.DataFrame(coords, columns=[f"dim_{i+1}" for i in range(coords.shape[1])])
+    df_plot['cluster'] = labels.astype(str)
+    if meta_df is not None:
+        df_plot = pd.concat([df_plot, meta_df.reset_index(drop=True)], axis=1)
+
+    hover_cols = ['original_text', 'cleaned_text', 'cluster']
+    hover_data = {col: True for col in hover_cols if col in df_plot.columns}
+
+    fig = px.scatter(
+        df_plot,
+        x='dim_1',
+        y='dim_2',
+        color='cluster',
+        hover_data=hover_data,
+        title=title,
+        height=650
+    )
+    fig.update_layout(legend_title_text='Кластер')
+    fig.show()
+    return df_plot
