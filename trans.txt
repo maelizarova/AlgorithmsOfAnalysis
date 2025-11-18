@@ -1,43 +1,31 @@
-# === Пример полного пайплайна: подбор k, кластеризация, визуализация ===
-
-OUTPUT_DIR = "embedding_results"
-
-# 1. Загружаем готовые эмбеддинги
-X_raw, X_scaled, meta_df, scaler = prepare_embedding_matrix(OUTPUT_DIR)
-print(f"Загружено {X_raw.shape[0]} эмбеддингов размерности {X_raw.shape[1]}")
-
-# 2. Проекция UMAP в 2D (удобно и для визуализации, и для кластеризации)
-coords_2d, umap_model = project_embeddings_umap(
-    X_scaled,
-    n_neighbors=40,
-    min_dist=0.05,
-    n_components=2,
-    metric='cosine'
-)
-print("UMAP готов:", coords_2d.shape)
-
-# 3. Перебор количества кластеров. Можно поменять диапазон k_values
-k_values = range(5, 31, 5)
-score_df = evaluate_k_values(coords_2d, k_values)
-display(score_df.sort_values('silhouette', ascending=False))
-
-best_k = int(score_df.loc[score_df['silhouette'].idxmax(), 'k']) if not score_df.empty else 5
-print(f"Выбранное k: {best_k}")
-
-# 4. Кластеризация (MiniBatchKMeans по UMAP координатам)
-cluster_labels, cluster_model = cluster_embeddings(coords_2d, n_clusters=best_k)
-print("Кластеризация завершена. Всего кластеров:", len(np.unique(cluster_labels)))
-
-# 5. Визуализация и выгрузка таблицы с координатами
-cluster_map_df, cluster_fig = visualize_clusters(
-    coords_2d,
-    cluster_labels,
-    meta_df=meta_df,
-    title=f"UMAP + KMeans (k={best_k})",
-    save_path=os.path.join(OUTPUT_DIR, f"cluster_map_k{best_k}.html"),
-    show=False  # чтобы ноутбук не пух при автосохранении
-)
-
-cluster_fig.show()
-cluster_map_df.head()
-
+     k	silhouette
+0	50	0.508926
+8	90	0.478631
+7	85	0.474123
+17	135	0.472048
+3	65	0.469490
+16	130	0.469193
+11	105	0.468868
+9	95	0.467306
+14	120	0.467243
+12	110	0.467077
+10	100	0.466955
+6	80	0.466233
+15	125	0.463436
+5	75	0.461335
+18	140	0.457285
+2	60	0.456980
+13	115	0.454768
+4	70	0.451063
+19	145	0.450720
+22	160	0.447952
+21	155	0.446142
+1	55	0.443959
+20	150	0.442104
+28	190	0.437936
+23	165	0.437778
+24	170	0.436603
+25	175	0.436125
+29	195	0.433213
+26	180	0.432865
+27	185	0.427922
