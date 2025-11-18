@@ -1,82 +1,43 @@
-# ========== АНАЛИТИКА ЭМБЕДДИНГОВ ==========
+# === Пример полного пайплайна: подбор k, кластеризация, визуализация ===
 
-def prepare_embedding_matrix(output_dir="embedding_results"):
-    """Загружает все эмбеддинги, возвращает исходную и нормализованную матрицы"""
-    vectors, meta = load_embedding_results(output_dir)
-    if not vectors:
-        raise ValueError(f"Не найдены эмбеддинги в директории {output_dir}")
+OUTPUT_DIR = "embedding_results"
 
-    X = np.array(vectors, dtype=float)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    meta_df = pd.DataFrame(meta)
-    return X, X_scaled, meta_df, scaler
+# 1. Загружаем готовые эмбеддинги
+X_raw, X_scaled, meta_df, scaler = prepare_embedding_matrix(OUTPUT_DIR)
+print(f"Загружено {X_raw.shape[0]} эмбеддингов размерности {X_raw.shape[1]}")
 
+# 2. Проекция UMAP в 2D (удобно и для визуализации, и для кластеризации)
+coords_2d, umap_model = project_embeddings_umap(
+    X_scaled,
+    n_neighbors=40,
+    min_dist=0.05,
+    n_components=2,
+    metric='cosine'
+)
+print("UMAP готов:", coords_2d.shape)
 
-def project_embeddings_umap(X, n_neighbors=30, min_dist=0.1, n_components=2, metric='cosine', random_state=42):
-    reducer = umap.UMAP(
-        n_neighbors=n_neighbors,
-        min_dist=min_dist,
-        n_components=n_components,
-        metric=metric,
-        random_state=random_state
-    )
-    coords = reducer.fit_transform(X)
-    return coords, reducer
+# 3. Перебор количества кластеров. Можно поменять диапазон k_values
+k_values = range(5, 31, 5)
+score_df = evaluate_k_values(coords_2d, k_values)
+display(score_df.sort_values('silhouette', ascending=False))
 
+best_k = int(score_df.loc[score_df['silhouette'].idxmax(), 'k']) if not score_df.empty else 5
+print(f"Выбранное k: {best_k}")
 
-def evaluate_k_values(X, k_values, use_minibatch=True, random_state=42):
-    """Подбор количества кластеров по силуэту"""
-    scores = []
-    for k in k_values:
-        if k < 2:
-            continue
-        if use_minibatch:
-            model = MiniBatchKMeans(n_clusters=k, random_state=random_state, batch_size=1024)
-        else:
-            model = KMeans(n_clusters=k, random_state=random_state, n_init='auto')
-        labels = model.fit_predict(X)
-        if len(set(labels)) < 2:
-            continue
-        score = silhouette_score(X, labels)
-        scores.append({"k": k, "silhouette": score})
-    return pd.DataFrame(scores)
+# 4. Кластеризация (MiniBatchKMeans по UMAP координатам)
+cluster_labels, cluster_model = cluster_embeddings(coords_2d, n_clusters=best_k)
+print("Кластеризация завершена. Всего кластеров:", len(np.unique(cluster_labels)))
 
+# 5. Визуализация и выгрузка таблицы с координатами
+cluster_map_df, cluster_fig = visualize_clusters(
+    coords_2d,
+    cluster_labels,
+    meta_df=meta_df,
+    title=f"UMAP + KMeans (k={best_k})",
+    save_path=os.path.join(OUTPUT_DIR, f"cluster_map_k{best_k}.html"),
+    show=False  # чтобы ноутбук не пух при автосохранении
+)
 
-def cluster_embeddings(X, n_clusters, use_minibatch=True, random_state=42):
-    if use_minibatch:
-        model = MiniBatchKMeans(n_clusters=n_clusters, random_state=random_state, batch_size=1024)
-    else:
-        model = KMeans(n_clusters=n_clusters, random_state=random_state, n_init='auto')
-    labels = model.fit_predict(X)
-    return labels, model
+cluster_fig.show()
+cluster_map_df.head()
 
-
-def visualize_clusters(coords, labels, meta_df=None, title="Карта жалоб", save_path=None, show=True):
-    df_plot = pd.DataFrame(coords, columns=[f"dim_{i+1}" for i in range(coords.shape[1])])
-    df_plot['cluster'] = labels.astype(str)
-    if meta_df is not None:
-        df_plot = pd.concat([df_plot, meta_df.reset_index(drop=True)], axis=1)
-
-    hover_cols = ['original_text', 'cleaned_text', 'cluster']
-    hover_data = {col: True for col in hover_cols if col in df_plot.columns}
-
-    fig = px.scatter(
-        df_plot,
-        x='dim_1',
-        y='dim_2',
-        color='cluster',
-        hover_data=hover_data,
-        title=title,
-        height=650
-    )
-    fig.update_layout(legend_title_text='Кластер')
-
-    if save_path:
-        fig.write_html(save_path, include_plotlyjs='cdn')
-        logging.info(f"Интерактивный график сохранён: {save_path}")
-
-    if show:
-        fig.show()
-
-    return df_plot, fig
