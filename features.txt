@@ -1,9 +1,12 @@
-fig = px.scatter(
-        x=df_plot['dim_1'],
-        y=df_plot['dim_2'],
-        color=df_plot['cluster'],
+if 'silhouette_point' not in df_plot.columns:
+        df_plot['silhouette_point'] = np.nan
+
+    fig = px.scatter(
+        df_plot,
+        x='dim_1',
+        y='dim_2',
+        color='cluster',
         title=title,
         height=650,
-        custom_data=custom_data,
-        labels={'x': 'dim_1', 'y': 'dim_2', 'color': 'cluster'}
+        custom_data=['cluster', 'silhouette_point', 'hover_text']
     )
