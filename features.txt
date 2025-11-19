@@ -1,165 +1,39 @@
-def build_cluster_prompt(cluster_id, samples):
-    """Собирает промпт для LLM на основе очищенных (как для эмбеддингов) примеров."""
-    formatted_samples = []
-    for idx, sample in enumerate(samples, start=1):
-        formatted_samples.append(f"{idx}. {sample}")
-    samples_block = "\n".join(formatted_samples)
+# === Сбор финального датафрейма для выгрузки ===
+required_source_cols = ["Описание претензии", "Тип", "Подтип", "Претензия по продукту"]
 
-    prompt = f"""
-Ты — аналитик клиентских обращений банка. Тебе дают несколько сообщений из одного кластера.
-Определи тип обращения (жалоба, благодарность, запрос, предложение и т.д.) и связанный продукт банка.
-Ответь строго в формате JSON:
-{{
-  "title": "<краткое название кластера>",
-  "type": "<тип обращения>",
-  "product": "<продукт или процесс банка>",
-  "summary": "<одно предложение с сутью обращений>"
-}}
-Если данных недостаточно, укажи это в поле summary.
+base_df = df[required_source_cols].copy().reset_index(drop=True)
+base_df['id'] = base_df.index + 1
 
-Кластер: {cluster_id}
-Примеры сообщений:
-{samples_block}
-""".strip()
-    return prompt
+cluster_info = cluster_map_df[['id', 'cluster']].copy()
+cluster_titles_short = cluster_titles_df[['cluster', 'title', 'type', 'product', 'summary']].copy()
+cluster_titles_short = cluster_titles_short.rename(columns={
+    'title': 'cluster_title',
+    'type': 'cluster_type',
+    'product': 'cluster_product',
+    'summary': 'cluster_summary'
+})
 
+final_df = (
+    cluster_info
+    .merge(cluster_titles_short, on='cluster', how='left')
+    .merge(base_df, on='id', how='left')
+)
 
-def _normalize_llm_response_text(text):
-    """Удаляет кодовые блоки и префиксы вроде 'json' перед парсингом ответа."""
-    if not isinstance(text, str):
-        return text
-    cleaned = text.strip()
-    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'```$', '', cleaned).strip()
-    cleaned = re.sub(r'^json\s*:?', '', cleaned, flags=re.IGNORECASE).strip()
-    return cleaned
+final_df = final_df.drop(columns=['id'])
+final_df = final_df[
+    [
+        'cluster',
+        'cluster_title',
+        'cluster_type',
+        'cluster_product',
+        'cluster_summary',
+        'Описание претензии',
+        'Тип',
+        'Подтип',
+        'Претензия по продукту'
+    ]
+]
 
+print(f"Финальный датафрейм сформирован: {len(final_df)} строк")
+display(final_df.head())
 
-def parse_cluster_response(response):
-    """Приводит ответ модели к строковому названию и структуре."""
-    if response is None:
-        return {
-            "title": "Название не получено",
-            "type": "N/A",
-            "product": "N/A",
-            "summary": "LLM вернул пустой ответ"
-        }
-
-    if isinstance(response, dict):
-        return {
-            "title": response.get("title") or response.get("name") or json.dumps(response, ensure_ascii=False),
-            "type": response.get("type", "N/A"),
-            "product": response.get("product", "N/A"),
-            "summary": response.get("summary", json.dumps(response, ensure_ascii=False))
-        }
-
-    if isinstance(response, (list, tuple)):
-        try:
-            return json.loads(response[0]) if response else parse_cluster_response(None)
-        except (TypeError, json.JSONDecodeError):
-            return {
-                "title": "Не удалось распарсить ответ",
-                "type": "N/A",
-                "product": "N/A",
-                "summary": str(response)
-            }
-
-    if isinstance(response, str):
-        normalized = _normalize_llm_response_text(response)
-        try:
-            parsed = json.loads(normalized)
-            if isinstance(parsed, dict):
-                return parse_cluster_response(parsed)
-        except json.JSONDecodeError:
-            pass
-        return {
-            "title": normalized,
-            "type": "N/A",
-            "product": "N/A",
-            "summary": normalized
-        }
-
-    return {
-        "title": str(response),
-        "type": "N/A",
-        "product": "N/A",
-        "summary": str(response)
-    }
-
-
-def suggest_cluster_titles(
-    cluster_df,
-    text_column="original_text",
-    cluster_column="cluster",
-    sample_size=10,
-    random_state=42,
-    model="bge-m3:latest"
-):
-    """Вызывает LLM для именования кластеров на основе очищенных примеров."""
-    if cluster_column not in cluster_df.columns:
-        raise ValueError(f"В переданном DataFrame нет столбца '{cluster_column}'")
-    if text_column not in cluster_df.columns:
-        raise ValueError(f"В переданном DataFrame нет столбца '{text_column}'")
-
-    rng = np.random.default_rng(random_state)
-    cluster_summaries = []
-
-    for cluster_id in sorted(cluster_df[cluster_column].unique(), key=lambda x: (str(x))):
-        subset = cluster_df[cluster_df[cluster_column] == cluster_id].copy()
-        subset = subset.dropna(subset=[text_column])
-        if subset.empty:
-            cluster_summaries.append({
-                "cluster": cluster_id,
-                "title": "Нет текстов",
-                "type": "N/A",
-                "product": "N/A",
-                "summary": "В кластере отсутствуют тексты",
-                "examples_used": [],
-                "examples_used_cleaned": []
-            })
-            continue
-
-        if len(subset) > sample_size:
-            rand_seed = int(rng.integers(0, 1_000_000_000))
-            sampled_subset = subset.sample(n=sample_size, random_state=rand_seed, replace=False)
-        else:
-            sampled_subset = subset
-
-        examples_original = sampled_subset[text_column].astype(str).tolist()
-        if "cleaned_text" in sampled_subset.columns:
-            cleaned_series = sampled_subset["cleaned_text"].fillna(
-                sampled_subset[text_column].apply(clean_complaint_text)
-            )
-        else:
-            cleaned_series = sampled_subset[text_column].apply(clean_complaint_text)
-        examples_cleaned = cleaned_series.tolist()
-
-        prompt = build_cluster_prompt(cluster_id, examples_cleaned)
-        try:
-            response = call_gpt_oss_embedding(prompt, model=model)
-        except Exception as exc:
-            logging.error(f"Не удалось получить название для кластера {cluster_id}: {exc}")
-            cluster_summaries.append({
-                "cluster": cluster_id,
-                "title": "Ошибка LLM",
-                "type": "N/A",
-                "product": "N/A",
-                "summary": str(exc),
-                "examples_used": examples_original,
-                "examples_used_cleaned": examples_cleaned
-            })
-            continue
-
-        parsed = parse_cluster_response(response)
-        cluster_summaries.append({
-            "cluster": cluster_id,
-            "title": parsed.get("title"),
-            "type": parsed.get("type"),
-            "product": parsed.get("product"),
-            "summary": parsed.get("summary"),
-            "raw_response": response,
-            "examples_used": examples_original,
-            "examples_used_cleaned": examples_cleaned
-        })
-
-    return pd.DataFrame(cluster_summaries)
