@@ -1,170 +1,94 @@
-ef build_cluster_prompt(cluster_id, samples):
-    """Собирает промпт для LLM на основе очищенных (как для эмбеддингов) примеров."""
-    formatted_samples = []
-    for idx, sample in enumerate(samples, start=1):
-        formatted_samples.append(f"{idx}. {sample}")
-    samples_block = "\n".join(formatted_samples)
-
-    prompt = f"""
-Ты — аналитик клиентских обращений банка. Тебе дают несколько сообщений из одного кластера.
-Определи тип обращения (жалоба, благодарность, запрос, предложение и т.д.) и связанный продукт банка.
-Ответь строго в формате JSON:
-{{
-  "title": "<краткое название кластера>",
-  "type": "<тип обращения>",
-  "product": "<продукт или процесс банка>",
-  "summary": "<одно предложение с сутью обращений>"
-}}
-Если данных недостаточно, укажи это в поле summary.
-
-Кластер: {cluster_id}
-Примеры сообщений:
-{samples_block}
-""".strip()
-    return prompt
-
-
-def parse_cluster_response(response):
-    """Приводит ответ модели к строковому названию и структуре."""
-    if response is None:
-        return {
-            "title": "Название не получено",
-            "type": "N/A",
-            "product": "N/A",
-            "summary": "LLM вернул пустой ответ"
-        }
-
-    if isinstance(response, dict):
-        return {
-            "title": response.get("title") or response.get("name") or json.dumps(response, ensure_ascii=False),
-            "type": response.get("type", "N/A"),
-            "product": response.get("product", "N/A"),
-            "summary": response.get("summary", json.dumps(response, ensure_ascii=False))
-        }
-
-    if isinstance(response, (list, tuple)):
-        try:
-            return json.loads(response[0]) if response else parse_cluster_response(None)
-        except (TypeError, json.JSONDecodeError):
-            return {
-                "title": "Не удалось распарсить ответ",
-                "type": "N/A",
-                "product": "N/A",
-                "summary": str(response)
-            }
-
-    if isinstance(response, str):
-        try:
-            parsed = json.loads(response)
-            if isinstance(parsed, dict):
-                return parse_cluster_response(parsed)
-        except json.JSONDecodeError:
-            pass
-        return {
-            "title": response,
-            "type": "N/A",
-            "product": "N/A",
-            "summary": response
-        }
-
-    return {
-        "title": str(response),
-        "type": "N/A",
-        "product": "N/A",
-        "summary": str(response)
-    }
-
-
-def suggest_cluster_titles(
+def visualize_clusters_with_titles(
     cluster_df,
-    text_column="original_text",
-    cluster_column="cluster",
-    sample_size=10,
-    random_state=42,
-    model="bge-m3:latest"
+    cluster_titles_df,
+    title="Карта жалоб с названиями кластеров",
+    save_path=None,
+    show=True
 ):
-    """Вызывает LLM для именования кластеров на основе очищенных примеров."""
-    if cluster_column not in cluster_df.columns:
-        raise ValueError(f"В переданном DataFrame нет столбца '{cluster_column}'")
-    if text_column not in cluster_df.columns:
-        raise ValueError(f"В переданном DataFrame нет столбца '{text_column}'")
+    """Строит scatter-проекцию с подробным описанием кластеров при наведении."""
+    required_cols = {"dim_1", "dim_2", "cluster"}
+    missing = required_cols - set(cluster_df.columns)
+    if missing:
+        raise ValueError(f"В cluster_df отсутствуют столбцы: {missing}")
 
-    rng = np.random.default_rng(random_state)
-    cluster_summaries = []
+    title_cols = {"cluster", "title", "type", "product", "summary"}
+    missing_titles = title_cols - set(cluster_titles_df.columns)
+    if missing_titles:
+        raise ValueError(f"В cluster_titles_df отсутствуют столбцы: {missing_titles}")
 
-    for cluster_id in sorted(cluster_df[cluster_column].unique(), key=lambda x: (str(x))):
-        subset = cluster_df[cluster_df[cluster_column] == cluster_id].copy()
-        subset = subset.dropna(subset=[text_column])
-        if subset.empty:
-            cluster_summaries.append({
-                "cluster": cluster_id,
-                "title": "Нет текстов",
-                "type": "N/A",
-                "product": "N/A",
-                "summary": "В кластере отсутствуют тексты",
-                "examples_used": [],
-                "examples_used_cleaned": []
-            })
-            continue
+    df_plot = cluster_df.copy().reset_index(drop=True)
+    df_plot['cluster'] = df_plot['cluster'].astype(str)
 
-        if len(subset) > sample_size:
-            rand_seed = int(rng.integers(0, 1_000_000_000))
-            sampled_subset = subset.sample(n=sample_size, random_state=rand_seed, replace=False)
-        else:
-            sampled_subset = subset
+    title_info = cluster_titles_df.copy()
+    title_info['cluster'] = title_info['cluster'].astype(str)
+    title_info = title_info["cluster title type product summary".split()].fillna("—")
 
-        examples_original = sampled_subset[text_column].astype(str).tolist()
-        if "cleaned_text" in sampled_subset.columns:
-            cleaned_series = sampled_subset["cleaned_text"].fillna(
-                sampled_subset[text_column].apply(clean_complaint_text)
-            )
-        else:
-            cleaned_series = sampled_subset[text_column].apply(clean_complaint_text)
-        examples_cleaned = cleaned_series.tolist()
+    df_plot = df_plot.merge(title_info, on='cluster', how='left', suffixes=('', '_title'))
+    for col in ["title", "type", "product", "summary"]:
+        df_plot[col] = df_plot[col].fillna("Нет данных")
 
-        prompt = build_cluster_prompt(cluster_id, examples_cleaned)
-        try:
-            response = call_gpt_oss_embedding(prompt, model=model)
-        except Exception as exc:
-            logging.error(f"Не удалось получить название для кластера {cluster_id}: {exc}")
-            cluster_summaries.append({
-                "cluster": cluster_id,
-                "title": "Ошибка LLM",
-                "type": "N/A",
-                "product": "N/A",
-                "summary": str(exc),
-                "examples_used": examples_original,
-                "examples_used_cleaned": examples_cleaned
-            })
-            continue
+    if 'hover_text' not in df_plot.columns:
+        text_source = df_plot.get('original_text', df_plot.get('cleaned_text', ''))
+        df_plot['hover_text'] = text_source.apply(wrap_text_for_hover)
 
-        parsed = parse_cluster_response(response)
-        cluster_summaries.append({
-            "cluster": cluster_id,
-            "title": parsed.get("title"),
-            "type": parsed.get("type"),
-            "product": parsed.get("product"),
-            "summary": parsed.get("summary"),
-            "raw_response": response,
-            "examples_used": examples_original,
-            "examples_used_cleaned": examples_cleaned
-        })
+    if 'silhouette_point' not in df_plot.columns:
+        df_plot['silhouette_point'] = np.nan
 
-    return pd.DataFrame(cluster_summaries)
+    fig = px.scatter(
+        df_plot,
+        x='dim_1',
+        y='dim_2',
+        color='cluster',
+        title=title,
+        height=650,
+        custom_data=['cluster', 'title', 'type', 'product', 'summary', 'silhouette_point', 'hover_text']
+    )
 
+    fig.update_traces(
+        hovertemplate=(
+            "Кластер: %{customdata[0]}<br>"
+            "Название: %{customdata[1]}<br>"
+            "Тип: %{customdata[2]}<br>"
+            "Продукт: %{customdata[3]}<br>"
+            "Описание: %{customdata[4]}<br>"
+            "Silhouette: %{customdata[5]:.3f}<br>"
+            "%{customdata[6]}<extra></extra>"
+        )
+    )
 
-# === Назначение названий кластерам через LLM ===
-if 'cluster_map_df' not in globals():
-    raise ValueError("Сначала сформируйте DataFrame с кластерами (cluster_map_df)")
+    fig.update_layout(
+        legend_title_text='Кластер',
+        hoverlabel=dict(
+            bgcolor='white',
+            font_color='black',
+            bordercolor='rgba(0,0,0,0.4)',
+            align='left'
+        )
+    )
 
-cluster_titles_df = suggest_cluster_titles(
+    if save_path:
+        fig.write_html(save_path, include_plotlyjs='inline')
+        logging.info(f"Интерактивный график сохранён: {save_path}")
+
+    if show:
+        fig.show()
+
+    return df_plot, fig
+
+# === Визуализация кластеров с названиями из LLM ===
+if 'cluster_map_df' not in globals() or 'cluster_titles_df' not in globals():
+    raise ValueError("Не найдены cluster_map_df/cluster_titles_df. Сначала запустите предыдущие шаги.")
+
+if 'OUTPUT_DIR' not in globals():
+    OUTPUT_DIR = "embedding_results"
+
+cluster_map_with_titles_df, cluster_titles_fig = visualize_clusters_with_titles(
     cluster_map_df,
-    text_column="original_text",
-    cluster_column="cluster",
-    sample_size=10,
-    random_state=42,
-    model="bge-m3:latest"
+    cluster_titles_df,
+    title="UMAP + названия кластеров",
+    save_path=os.path.join(OUTPUT_DIR, "cluster_map_with_titles.html"),
+    show=False
 )
 
-print(f"Получено описаний кластеров: {len(cluster_titles_df)}")
-display(cluster_titles_df.head())
+cluster_titles_fig.show()
+cluster_map_with_titles_df.head()
