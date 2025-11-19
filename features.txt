@@ -1,8 +1,9 @@
-cluster_array = df_plot['cluster'].to_numpy(dtype=str)
-    silhouette_series = df_plot.get('silhouette_point')
-    if silhouette_series is None:
-        silhouette_array = np.full(len(df_plot), np.nan)
-    else:
-        silhouette_array = silhouette_series.to_numpy(dtype=float)
-    hover_array = df_plot['hover_text'].to_numpy(dtype=object)
-    custom_data = np.column_stack([cluster_array, silhouette_array, hover_array])
+fig = px.scatter(
+        x=df_plot['dim_1'],
+        y=df_plot['dim_2'],
+        color=df_plot['cluster'],
+        title=title,
+        height=650,
+        custom_data=custom_data,
+        labels={'x': 'dim_1', 'y': 'dim_2', 'color': 'cluster'}
+    )
