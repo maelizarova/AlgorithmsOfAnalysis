@@ -1,35 +1,3 @@
-# === Восстановление переменных после перезапуска ядра ===
-artifacts = load_clustering_artifacts(output_dir=OUTPUT_DIR)
-
-cluster_titles_df = artifacts["cluster_titles_df"].copy()
-cluster_map_with_titles_df = artifacts["cluster_map_with_titles_df"].copy()
-final_df = artifacts["final_df"].copy()
-
-coords_2d = cluster_map_with_titles_df[["dim_1", "dim_2"]].to_numpy()
-cluster_labels = cluster_map_with_titles_df["cluster"].astype(str).to_numpy()
-
-meta_exclude = {
-    "dim_1",
-    "dim_2",
-    "cluster",
-    "title",
-    "type",
-    "product",
-    "summary",
-    "hover_text",
-    "silhouette_point"
-}
-meta_cols = [col for col in cluster_map_with_titles_df.columns if col not in meta_exclude]
-meta_df = cluster_map_with_titles_df[meta_cols].copy()
-
-print("Переменные восстановлены:")
-print(f"  cluster_titles_df: {cluster_titles_df.shape}")
-print(f"  cluster_map_with_titles_df: {cluster_map_with_titles_df.shape}")
-print(f"  final_df: {final_df.shape}")
-print(f"  coords_2d shape: {coords_2d.shape}")
-print(f"  clusters: {len(np.unique(cluster_labels))}")
-
-
 # === Визуализация с помощью datamapplot ===
 
 def mask_numbers_in_text(text):
@@ -85,35 +53,27 @@ def create_datamapplot_visualization(
     # Маскировка персональных данных в тексте жалоб
     df_viz['masked_text'] = df_viz['original_text'].apply(mask_numbers_in_text)
     
-    # Подготовка hover данных
-    hover_data = {
-        'Название': df_viz['title'].values,
-        'Тип': df_viz['type'].values,
-        'Продукт': df_viz['product'].values,
-        'Текст жалобы': df_viz['masked_text'].values
-    }
+    # Формирование текста для hover
+    hover_text = []
+    for idx, row in df_viz.iterrows():
+        hover_info = f"Название: {row['title']}\nТип: {row['type']}\nПродукт: {row['product']}\n\nТекст жалобы:\n{row['masked_text']}"
+        hover_text.append(hover_info)
     
-    # Получение названий кластеров для отображения на карте
-    label_names = df_viz['title'].values
-    
-    # Создание визуализации
-    fig = datamapplot.create_interactive_plot(
+    # Создание интерактивной визуализации
+    # Согласно документации: create_interactive_plot(data_map, *label_layers, hover_text=None, ...)
+    plot = datamapplot.create_interactive_plot(
         coords,
         cluster_labels,
-        label_over_points=label_names,
-        hover_data=hover_data,
-        title=title,
-        point_size=3,
-        font_size=12,
-        alpha=0.7
+        hover_text=hover_text,
+        title=title
     )
     
     # Сохранение, если указан путь
     if output_path:
-        fig.write_html(output_path)
+        plot.save(output_path)
         print(f"Визуализация datamapplot сохранена: {output_path}")
     
-    return fig
+    return plot
 
 
 # Создание визуализации с datamapplot
@@ -126,7 +86,6 @@ if 'coords_2d' in globals() and 'cluster_labels' in globals() and 'cluster_title
         output_path=os.path.join(OUTPUT_DIR, "datamapplot_clusters.html"),
         title="Кластеризация банковских жалоб"
     )
-    datamapplot_fig.show()
+    datamapplot_fig
 else:
     print("Сначала выполните предыдущие шаги для создания кластеризации")
-
