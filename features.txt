@@ -1,56 +1,132 @@
-# === Сохранение и последующая загрузка артефактов кластеризации ===
-def save_clustering_artifacts(
-    cluster_titles,
-    cluster_map_with_titles,
-    final_df,
-    fig=None,
-    output_dir="embedding_results"
-):
-    os.makedirs(output_dir, exist_ok=True)
+# === Восстановление переменных после перезапуска ядра ===
+artifacts = load_clustering_artifacts(output_dir=OUTPUT_DIR)
 
-    paths = {
-        "cluster_titles_parquet": os.path.join(output_dir, "cluster_titles.parquet"),
-        "cluster_titles_excel": os.path.join(output_dir, "cluster_titles.xlsx"),
-        "cluster_map_parquet": os.path.join(output_dir, "cluster_map_with_titles.parquet"),
-        "final_parquet": os.path.join(output_dir, "final_clusters.parquet"),
-        "final_excel": os.path.join(output_dir, "final_clusters.xlsx"),
-        "figure_html": os.path.join(output_dir, "cluster_map_with_titles.html")
-    }
+cluster_titles_df = artifacts["cluster_titles_df"].copy()
+cluster_map_with_titles_df = artifacts["cluster_map_with_titles_df"].copy()
+final_df = artifacts["final_df"].copy()
 
-    cluster_titles.to_parquet(paths["cluster_titles_parquet"], index=False)
-    cluster_titles.to_excel(paths["cluster_titles_excel"], index=False)
-    cluster_map_with_titles.to_parquet(paths["cluster_map_parquet"], index=False)
-    final_df.to_parquet(paths["final_parquet"], index=False)
-    final_df.to_excel(paths["final_excel"], index=False)
+coords_2d = cluster_map_with_titles_df[["dim_1", "dim_2"]].to_numpy()
+cluster_labels = cluster_map_with_titles_df["cluster"].astype(str).to_numpy()
 
-    if fig is not None:
-        fig.write_html(paths["figure_html"], include_plotlyjs='inline')
+meta_exclude = {
+    "dim_1",
+    "dim_2",
+    "cluster",
+    "title",
+    "type",
+    "product",
+    "summary",
+    "hover_text",
+    "silhouette_point"
+}
+meta_cols = [col for col in cluster_map_with_titles_df.columns if col not in meta_exclude]
+meta_df = cluster_map_with_titles_df[meta_cols].copy()
 
-    print("Артефакты сохранены:")
-    for name, path in paths.items():
-        print(f"  {name}: {path}")
-
-    return paths
+print("Переменные восстановлены:")
+print(f"  cluster_titles_df: {cluster_titles_df.shape}")
+print(f"  cluster_map_with_titles_df: {cluster_map_with_titles_df.shape}")
+print(f"  final_df: {final_df.shape}")
+print(f"  coords_2d shape: {coords_2d.shape}")
+print(f"  clusters: {len(np.unique(cluster_labels))}")
 
 
-def load_clustering_artifacts(output_dir="embedding_results"):
-    artifacts = {}
-    titles_path = os.path.join(output_dir, "cluster_titles.parquet")
-    map_path = os.path.join(output_dir, "cluster_map_with_titles.parquet")
-    final_path = os.path.join(output_dir, "final_clusters.parquet")
+# === Визуализация с помощью datamapplot ===
 
-    artifacts["cluster_titles_df"] = pd.read_parquet(titles_path)
-    artifacts["cluster_map_with_titles_df"] = pd.read_parquet(map_path)
-    artifacts["final_df"] = pd.read_parquet(final_path)
-
-    return artifacts
+def mask_numbers_in_text(text):
+    """Заменяет все цифры на X для защиты персональных данных"""
+    if not isinstance(text, str):
+        text = str(text)
+    return re.sub(r'\d', 'X', text)
 
 
-artifact_paths = save_clustering_artifacts(
+def create_datamapplot_visualization(
+    coords,
+    cluster_labels,
     cluster_titles_df,
-    cluster_map_with_titles_df,
-    final_df,
-    fig=cluster_titles_fig,
-    output_dir=OUTPUT_DIR
-)
+    meta_df,
+    output_path=None,
+    title="Карта кластеров жалоб"
+):
+    """
+    Создает интерактивную визуализацию с помощью datamapplot.
+    
+    Parameters:
+    -----------
+    coords : np.ndarray
+        2D координаты точек (UMAP проекция)
+    cluster_labels : np.ndarray
+        Метки кластеров для каждой точки
+    cluster_titles_df : pd.DataFrame
+        DataFrame с информацией о кластерах (cluster, title, type, product)
+    meta_df : pd.DataFrame
+        DataFrame с метаданными (original_text)
+    output_path : str, optional
+        Путь для сохранения HTML файла
+    title : str
+        Заголовок визуализации
+    """
+    
+    # Подготовка данных
+    df_viz = pd.DataFrame(coords, columns=['x', 'y'])
+    df_viz['cluster'] = cluster_labels
+    df_viz = pd.concat([df_viz, meta_df.reset_index(drop=True)], axis=1)
+    
+    # Добавление информации о кластерах
+    cluster_info = cluster_titles_df[['cluster', 'title', 'type', 'product']].copy()
+    cluster_info['cluster'] = cluster_info['cluster'].astype(str) if cluster_info['cluster'].dtype != str else cluster_info['cluster']
+    df_viz['cluster'] = df_viz['cluster'].astype(str)
+    df_viz = df_viz.merge(cluster_info, on='cluster', how='left')
+    
+    # Заполнение пропусков
+    df_viz['title'] = df_viz['title'].fillna('Без названия')
+    df_viz['type'] = df_viz['type'].fillna('N/A')
+    df_viz['product'] = df_viz['product'].fillna('N/A')
+    
+    # Маскировка персональных данных в тексте жалоб
+    df_viz['masked_text'] = df_viz['original_text'].apply(mask_numbers_in_text)
+    
+    # Подготовка hover данных
+    hover_data = {
+        'Название': df_viz['title'].values,
+        'Тип': df_viz['type'].values,
+        'Продукт': df_viz['product'].values,
+        'Текст жалобы': df_viz['masked_text'].values
+    }
+    
+    # Получение названий кластеров для отображения на карте
+    label_names = df_viz['title'].values
+    
+    # Создание визуализации
+    fig = datamapplot.create_interactive_plot(
+        coords,
+        cluster_labels,
+        label_over_points=label_names,
+        hover_data=hover_data,
+        title=title,
+        point_size=3,
+        font_size=12,
+        alpha=0.7
+    )
+    
+    # Сохранение, если указан путь
+    if output_path:
+        fig.write_html(output_path)
+        print(f"Визуализация datamapplot сохранена: {output_path}")
+    
+    return fig
+
+
+# Создание визуализации с datamapplot
+if 'coords_2d' in globals() and 'cluster_labels' in globals() and 'cluster_titles_df' in globals():
+    datamapplot_fig = create_datamapplot_visualization(
+        coords_2d,
+        cluster_labels,
+        cluster_titles_df,
+        meta_df,
+        output_path=os.path.join(OUTPUT_DIR, "datamapplot_clusters.html"),
+        title="Кластеризация банковских жалоб"
+    )
+    datamapplot_fig.show()
+else:
+    print("Сначала выполните предыдущие шаги для создания кластеризации")
 
