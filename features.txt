@@ -1,39 +1,56 @@
-# === Сбор финального датафрейма для выгрузки ===
-required_source_cols = ["Описание претензии", "Тип", "Подтип", "Претензия по продукту"]
+# === Сохранение и последующая загрузка артефактов кластеризации ===
+def save_clustering_artifacts(
+    cluster_titles,
+    cluster_map_with_titles,
+    final_df,
+    fig=None,
+    output_dir="embedding_results"
+):
+    os.makedirs(output_dir, exist_ok=True)
 
-base_df = df[required_source_cols].copy().reset_index(drop=True)
-base_df['id'] = base_df.index + 1
+    paths = {
+        "cluster_titles_parquet": os.path.join(output_dir, "cluster_titles.parquet"),
+        "cluster_titles_excel": os.path.join(output_dir, "cluster_titles.xlsx"),
+        "cluster_map_parquet": os.path.join(output_dir, "cluster_map_with_titles.parquet"),
+        "final_parquet": os.path.join(output_dir, "final_clusters.parquet"),
+        "final_excel": os.path.join(output_dir, "final_clusters.xlsx"),
+        "figure_html": os.path.join(output_dir, "cluster_map_with_titles.html")
+    }
 
-cluster_info = cluster_map_df[['id', 'cluster']].copy()
-cluster_titles_short = cluster_titles_df[['cluster', 'title', 'type', 'product', 'summary']].copy()
-cluster_titles_short = cluster_titles_short.rename(columns={
-    'title': 'cluster_title',
-    'type': 'cluster_type',
-    'product': 'cluster_product',
-    'summary': 'cluster_summary'
-})
+    cluster_titles.to_parquet(paths["cluster_titles_parquet"], index=False)
+    cluster_titles.to_excel(paths["cluster_titles_excel"], index=False)
+    cluster_map_with_titles.to_parquet(paths["cluster_map_parquet"], index=False)
+    final_df.to_parquet(paths["final_parquet"], index=False)
+    final_df.to_excel(paths["final_excel"], index=False)
 
-final_df = (
-    cluster_info
-    .merge(cluster_titles_short, on='cluster', how='left')
-    .merge(base_df, on='id', how='left')
+    if fig is not None:
+        fig.write_html(paths["figure_html"], include_plotlyjs='inline')
+
+    print("Артефакты сохранены:")
+    for name, path in paths.items():
+        print(f"  {name}: {path}")
+
+    return paths
+
+
+def load_clustering_artifacts(output_dir="embedding_results"):
+    artifacts = {}
+    titles_path = os.path.join(output_dir, "cluster_titles.parquet")
+    map_path = os.path.join(output_dir, "cluster_map_with_titles.parquet")
+    final_path = os.path.join(output_dir, "final_clusters.parquet")
+
+    artifacts["cluster_titles_df"] = pd.read_parquet(titles_path)
+    artifacts["cluster_map_with_titles_df"] = pd.read_parquet(map_path)
+    artifacts["final_df"] = pd.read_parquet(final_path)
+
+    return artifacts
+
+
+artifact_paths = save_clustering_artifacts(
+    cluster_titles_df,
+    cluster_map_with_titles_df,
+    final_df,
+    fig=cluster_titles_fig,
+    output_dir=OUTPUT_DIR
 )
-
-final_df = final_df.drop(columns=['id'])
-final_df = final_df[
-    [
-        'cluster',
-        'cluster_title',
-        'cluster_type',
-        'cluster_product',
-        'cluster_summary',
-        'Описание претензии',
-        'Тип',
-        'Подтип',
-        'Претензия по продукту'
-    ]
-]
-
-print(f"Финальный датафрейм сформирован: {len(final_df)} строк")
-display(final_df.head())
 
