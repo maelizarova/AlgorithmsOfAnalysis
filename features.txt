@@ -1,91 +1,197 @@
-# === Визуализация с помощью datamapplot ===
-
-def mask_numbers_in_text(text):
-    """Заменяет все цифры на X для защиты персональных данных"""
-    if not isinstance(text, str):
-        text = str(text)
-    return re.sub(r'\d', 'X', text)
-
-
-def create_datamapplot_visualization(
-    coords,
-    cluster_labels,
-    cluster_titles_df,
-    meta_df,
-    output_path=None,
-    title="Карта кластеров жалоб"
+# === Построение "супер-кластеров" поверх существующих ===
+def build_super_clusters(
+    cluster_map_with_titles,
+    n_superclusters=12,
+    random_state=42
 ):
-    """
-    Создает интерактивную визуализацию с помощью datamapplot.
-    
-    Parameters:
-    -----------
-    coords : np.ndarray
-        2D координаты точек (UMAP проекция)
-    cluster_labels : np.ndarray
-        Метки кластеров для каждой точки
-    cluster_titles_df : pd.DataFrame
-        DataFrame с информацией о кластерах (cluster, title, type, product)
-    meta_df : pd.DataFrame
-        DataFrame с метаданными (original_text)
-    output_path : str, optional
-        Путь для сохранения HTML файла
-    title : str
-        Заголовок визуализации
-    """
-    
-    # Подготовка данных
-    df_viz = pd.DataFrame(coords, columns=['x', 'y'])
-    df_viz['cluster'] = cluster_labels
-    df_viz = pd.concat([df_viz, meta_df.reset_index(drop=True)], axis=1)
-    
-    # Добавление информации о кластерах
-    cluster_info = cluster_titles_df[['cluster', 'title', 'type', 'product']].copy()
-    cluster_info['cluster'] = cluster_info['cluster'].astype(str) if cluster_info['cluster'].dtype != str else cluster_info['cluster']
-    df_viz['cluster'] = df_viz['cluster'].astype(str)
-    df_viz = df_viz.merge(cluster_info, on='cluster', how='left')
-    
-    # Заполнение пропусков
-    df_viz['title'] = df_viz['title'].fillna('Без названия')
-    df_viz['type'] = df_viz['type'].fillna('N/A')
-    df_viz['product'] = df_viz['product'].fillna('N/A')
-    
-    # Маскировка персональных данных в тексте жалоб
-    df_viz['masked_text'] = df_viz['original_text'].apply(mask_numbers_in_text)
-    
-    # Формирование текста для hover
-    hover_text = []
-    for idx, row in df_viz.iterrows():
-        hover_info = f"Название: {row['title']}\nТип: {row['type']}\nПродукт: {row['product']}\n\nТекст жалобы:\n{row['masked_text']}"
-        hover_text.append(hover_info)
-    
-    # Создание интерактивной визуализации
-    # Согласно документации: create_interactive_plot(data_map, *label_layers, hover_text=None, ...)
-    plot = datamapplot.create_interactive_plot(
-        coords,
-        cluster_labels,
-        hover_text=hover_text,
-        title=title
+    """Кластеризует центроиды исходных кластеров, чтобы получить более крупные группы."""
+    centroids = (
+        cluster_map_with_titles
+        .groupby('cluster')[['dim_1', 'dim_2']]
+        .mean()
+        .reset_index()
     )
-    
-    # Сохранение, если указан путь
-    if output_path:
-        plot.save(output_path)
-        print(f"Визуализация datamapplot сохранена: {output_path}")
-    
-    return plot
+    centroids['cluster'] = centroids['cluster'].astype(str)
+
+    centroid_coords = centroids[['dim_1', 'dim_2']].to_numpy()
+    super_model = KMeans(n_clusters=n_superclusters, random_state=random_state, n_init='auto')
+    centroids['super_cluster'] = super_model.fit_predict(centroid_coords).astype(str)
+
+    cluster_to_super = centroids.set_index('cluster')['super_cluster']
+    enriched_df = cluster_map_with_titles.copy()
+    enriched_df['cluster'] = enriched_df['cluster'].astype(str)
+    enriched_df['super_cluster'] = enriched_df['cluster'].map(cluster_to_super)
+
+    def _mode(series):
+        series = series.dropna()
+        if series.empty:
+            return 'N/A'
+        return series.value_counts().idxmax()
+
+    summary_df = (
+        enriched_df.groupby('super_cluster')
+        .agg(
+            clusters_count=('cluster', pd.Series.nunique),
+            points_count=('cluster', 'size'),
+            dominant_type=('type', _mode),
+            dominant_title=('title', _mode)
+        )
+        .reset_index()
+    )
+    summary_df['clusters_list'] = (
+        enriched_df.groupby('super_cluster')['cluster']
+        .unique()
+        .apply(lambda arr: sorted(arr, key=lambda x: (len(x), x)))
+        .values
+    )
+
+    return enriched_df, summary_df, super_model
 
 
-# Создание визуализации с datamapplot
-if 'coords_2d' in globals() and 'cluster_labels' in globals() and 'cluster_titles_df' in globals():
-    datamapplot_fig = create_datamapplot_visualization(
-        coords_2d,
-        cluster_labels,
-        cluster_titles_df,
-        meta_df,
-        output_path=os.path.join(OUTPUT_DIR, "datamapplot_clusters.html"),
-        title="Кластеризация банковских жалоб"
+# === Кластеры второго уровня (меньшее число групп) ===
+SUPER_CLUSTER_K = 12  # можно подбирать вручную
+
+cluster_map_super_df, super_cluster_info_df, super_cluster_model = build_super_clusters(
+    cluster_map_with_titles_df,
+    n_superclusters=SUPER_CLUSTER_K,
+    random_state=42
+)
+
+print(f"Сформировано супер-кластеров: {len(super_cluster_info_df)}")
+display(super_cluster_info_df)
+
+
+def build_super_cluster_prompt(super_id, base_clusters_block, samples):
+    formatted_samples = []
+    for idx, sample in enumerate(samples, start=1):
+        formatted_samples.append(f"{idx}. {sample}")
+    samples_block = "\n".join(formatted_samples)
+
+    prompt = f"""
+Ты работаешь аналитиком клиентских обращений. У тебя есть супер-кластер (группа из нескольких более мелких кластеров жалоб).
+На основе описания вложенных кластеров и примеров обращений определи основную тему и характер жалоб.
+Ответь в JSON:
+{{
+  "title": "<краткое название темы>",
+  "type": "<тип обращения: жалобы, запросы, благодарности и т.д.>",
+  "summary": "<одно предложение, описывающее ядро темы>",
+  "included_clusters": "<кратко перечисли или сгруппируй вложенные кластеры>"
+}}
+Если данных недостаточно, явно укажи это в summary.
+
+Супер-кластер: {super_id}
+Вложенные кластеры:
+{base_clusters_block}
+
+Примеры сообщений:
+{samples_block}
+""".strip()
+    return prompt
+
+
+def suggest_super_cluster_titles(
+    cluster_map_super_df,
+    cluster_titles_df,
+    super_column="super_cluster",
+    base_cluster_column="cluster",
+    text_column="original_text",
+    sample_size=25,
+    random_state=21,
+    model="bge-m3:latest"
+):
+    rng = np.random.default_rng(random_state)
+    cluster_titles_map = (
+        cluster_titles_df
+        .set_index('cluster')[['title', 'type', 'product']]
+        .to_dict('index')
     )
-    datamapplot_fig
-else:
-    print("Сначала выполните предыдущие шаги для создания кластеризации")
+
+    summaries = []
+    for super_id in sorted(cluster_map_super_df[super_column].dropna().astype(str).unique(), key=lambda x: (len(x), x)):
+        subset = cluster_map_super_df[cluster_map_super_df[super_column].astype(str) == super_id]
+        if subset.empty:
+            continue
+
+        base_clusters = sorted(subset[base_cluster_column].astype(str).unique(), key=lambda x: (len(x), x))
+        base_lines = []
+        for base_id in base_clusters:
+            info = cluster_titles_map.get(base_id, {})
+            base_title = info.get('title', 'Без названия') if info else 'Без названия'
+            base_type = info.get('type', 'N/A') if info else 'N/A'
+            base_lines.append(f"- Кластер {base_id}: {base_title} (тип: {base_type})")
+        base_clusters_block = "\n".join(base_lines) if base_lines else "Нет описаний вложенных кластеров"
+
+        subset_valid = subset.dropna(subset=[text_column]).copy()
+        if subset_valid.empty:
+            summaries.append({
+                "super_cluster": super_id,
+                "title": "Нет данных",
+                "type": "N/A",
+                "summary": "Нет текстов для анализа",
+                "included_clusters": base_clusters_block,
+                "examples_used": []
+            })
+            continue
+
+        if len(subset_valid) > sample_size:
+            sampled = subset_valid.sample(n=sample_size, random_state=int(rng.integers(0, 1_000_000_000)))
+        else:
+            sampled = subset_valid
+        examples = sampled[text_column].astype(str).tolist()
+        if "cleaned_text" in sampled.columns:
+            cleaned = sampled["cleaned_text"].fillna(sampled[text_column].apply(clean_complaint_text))
+        else:
+            cleaned = sampled[text_column].apply(clean_complaint_text)
+        cleaned_examples = cleaned.tolist()
+
+        prompt = build_super_cluster_prompt(super_id, base_clusters_block, cleaned_examples)
+        try:
+            response = call_gpt_oss_embedding(prompt, model=model)
+        except Exception as exc:
+            logging.error(f"LLM не ответил для супер-кластера {super_id}: {exc}")
+            summaries.append({
+                "super_cluster": super_id,
+                "title": "Ошибка LLM",
+                "type": "N/A",
+                "summary": str(exc),
+                "included_clusters": base_clusters_block,
+                "examples_used": examples
+            })
+            continue
+
+        parsed = parse_cluster_response(response)
+        summaries.append({
+            "super_cluster": super_id,
+            "title": parsed.get('title'),
+            "type": parsed.get('type'),
+            "summary": parsed.get('summary'),
+            "included_clusters": parsed.get('included_clusters', base_clusters_block),
+            "raw_response": response,
+            "examples_used": examples,
+            "included_clusters_prompt": base_clusters_block
+        })
+
+    return pd.DataFrame(summaries)
+
+
+# === Названия супер-кластеров через LLM ===
+super_cluster_titles_df = suggest_super_cluster_titles(
+    cluster_map_super_df,
+    cluster_titles_df,
+    super_column="super_cluster",
+    base_cluster_column="cluster",
+    text_column="original_text",
+    sample_size=25,
+    random_state=21,
+    model="bge-m3:latest"
+)
+
+print(f"Получено описаний супер-кластеров: {len(super_cluster_titles_df)}")
+display(super_cluster_titles_df.head())
+
+
+
+
+
+
+
