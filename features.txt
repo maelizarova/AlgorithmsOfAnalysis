@@ -47,7 +47,6 @@ def build_super_clusters(
 
     return enriched_df, summary_df, super_model
 
-
 # === Кластеры второго уровня (меньшее число групп) ===
 SUPER_CLUSTER_K = 12  # можно подбирать вручную
 
@@ -102,7 +101,7 @@ def suggest_super_cluster_titles(
     rng = np.random.default_rng(random_state)
     cluster_titles_map = (
         cluster_titles_df
-        .set_index('cluster')[['title', 'type', 'product']]
+        .set_index('cluster')[['title', 'type', 'summary']]
         .to_dict('index')
     )
 
@@ -120,6 +119,21 @@ def suggest_super_cluster_titles(
             base_type = info.get('type', 'N/A') if info else 'N/A'
             base_lines.append(f"- Кластер {base_id}: {base_title} (тип: {base_type})")
         base_clusters_block = "\n".join(base_lines) if base_lines else "Нет описаний вложенных кластеров"
+
+        if len(base_clusters) == 1:
+            only_cluster_id = base_clusters[0]
+            info = cluster_titles_map.get(only_cluster_id, {}) or {}
+            summaries.append({
+                "super_cluster": super_id,
+                "title": info.get('title', 'Без названия'),
+                "type": info.get('type', 'N/A'),
+                "summary": info.get('summary', 'Супер-кластер совпадает с базовым кластером'),
+                "included_clusters": base_clusters_block,
+                "examples_used": [],
+                "raw_response": None,
+                "included_clusters_prompt": base_clusters_block
+            })
+            continue
 
         subset_valid = subset.dropna(subset=[text_column]).copy()
         if subset_valid.empty:
@@ -188,10 +202,4 @@ super_cluster_titles_df = suggest_super_cluster_titles(
 
 print(f"Получено описаний супер-кластеров: {len(super_cluster_titles_df)}")
 display(super_cluster_titles_df.head())
-
-
-
-
-
-
 
