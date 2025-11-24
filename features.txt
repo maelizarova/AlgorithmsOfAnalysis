@@ -12,34 +12,42 @@ def create_datamapplot_visualization(
     cluster_labels,
     cluster_titles_df,
     meta_df,
+    super_cluster_labels=None,
+    super_cluster_titles_df=None,
     output_path=None,
     title="Карта кластеров жалоб"
 ):
     """
     Создает интерактивную визуализацию с помощью datamapplot.
+    Поддерживает один или два уровня кластеризации.
     
     Parameters:
     -----------
     coords : np.ndarray
         2D координаты точек (UMAP проекция)
     cluster_labels : np.ndarray
-        Метки кластеров для каждой точки
+        Метки кластеров для каждой точки (детальный уровень)
     cluster_titles_df : pd.DataFrame
         DataFrame с информацией о кластерах (cluster, title, type, product)
     meta_df : pd.DataFrame
         DataFrame с метаданными (original_text)
+    super_cluster_labels : np.ndarray, optional
+        Метки суперкластеров для каждой точки (верхний уровень)
+        Если указано - создается двухуровневая визуализация
+    super_cluster_titles_df : pd.DataFrame, optional
+        DataFrame с информацией о суперкластерах (super_cluster, title, type, summary)
     output_path : str, optional
         Путь для сохранения HTML файла
     title : str
         Заголовок визуализации
     """
     
-    # Подготовка данных
+    # Подготовка данных для детального уровня
     df_viz = pd.DataFrame(coords, columns=['x', 'y'])
     df_viz['cluster'] = cluster_labels
     df_viz = pd.concat([df_viz, meta_df.reset_index(drop=True)], axis=1)
     
-    # Добавление информации о кластерах
+    # Добавление информации о детальных кластерах
     cluster_info = cluster_titles_df[['cluster', 'title', 'type', 'product']].copy()
     cluster_info['cluster'] = cluster_info['cluster'].astype(str) if cluster_info['cluster'].dtype != str else cluster_info['cluster']
     df_viz['cluster'] = df_viz['cluster'].astype(str)
@@ -59,17 +67,43 @@ def create_datamapplot_visualization(
         hover_info = f"Название: {row['title']}\nТип: {row['type']}\nПродукт: {row['product']}\n\nТекст жалобы:\n{row['masked_text']}"
         hover_text.append(hover_info)
     
-    # Создаем массив с названиями кластеров для каждой точки
-    # Вместо числовых меток используем названия из title
+    # Создаем массив с названиями детальных кластеров
     cluster_title_labels = df_viz['title'].values
     
-    # Создание интерактивной визуализации с названиями кластеров
-    plot = datamapplot.create_interactive_plot(
-        coords,
-        cluster_title_labels,  # Передаем названия вместо номеров
-        hover_text=hover_text,
-        title=title
-    )
+    # Создание визуализации
+    if super_cluster_labels is not None and super_cluster_titles_df is not None:
+        # Двухуровневая визуализация
+        print("Создание двухуровневой визуализации...")
+        
+        # Подготовка названий суперкластеров
+        df_super = pd.DataFrame({'super_cluster': super_cluster_labels})
+        super_info = super_cluster_titles_df[['super_cluster', 'title']].copy()
+        super_info['super_cluster'] = super_info['super_cluster'].astype(str)
+        df_super['super_cluster'] = df_super['super_cluster'].astype(str)
+        df_super = df_super.merge(super_info, on='super_cluster', how='left')
+        df_super['title'] = df_super['title'].fillna('Без названия')
+        
+        super_cluster_title_labels = df_super['title'].values
+        
+        # Создаем визуализацию с двумя уровнями
+        plot = datamapplot.create_interactive_plot(
+            coords,
+            super_cluster_title_labels,  # Верхний уровень - суперкластеры
+            cluster_title_labels,         # Детальный уровень - обычные кластеры
+            hover_text=hover_text,
+            title=title
+        )
+        print("  Уровень 1 (при отдалении): суперкластеры")
+        print("  Уровень 2 (при приближении): детальные кластеры")
+    else:
+        # Одноуровневая визуализация
+        print("Создание одноуровневой визуализации...")
+        plot = datamapplot.create_interactive_plot(
+            coords,
+            cluster_title_labels,
+            hover_text=hover_text,
+            title=title
+        )
     
     # Сохранение, если указан путь
     if output_path:
@@ -79,16 +113,34 @@ def create_datamapplot_visualization(
     return plot
 
 
-# Создание визуализации с datamapplot
-if 'coords_2d' in globals() and 'cluster_labels' in globals() and 'cluster_titles_df' in globals():
-    datamapplot_fig = create_datamapplot_visualization(
-        coords_2d,
-        cluster_labels,
-        cluster_titles_df,
-        meta_df,
-        output_path=os.path.join(OUTPUT_DIR, "datamapplot_clusters.html"),
-        title="Кластеризация банковских жалоб"
-    )
-    datamapplot_fig
-else:
-    print("Сначала выполните предыдущие шаги для создания кластеризации")
+# === Одноуровневая визуализация ===
+
+datamapplot_fig = create_datamapplot_visualization(
+    coords_2d,
+    cluster_labels,
+    cluster_titles_df,
+    meta_df,
+    output_path=os.path.join(OUTPUT_DIR, "datamapplot_clusters.html"),
+    title="Кластеризация банковских жалоб"
+)
+datamapplot_fig
+
+
+# === Двухуровневая визуализация (с суперкластерами) ===
+
+# Получаем метки суперкластеров для каждой точки
+super_labels = cluster_map_super_df['super_cluster'].values
+
+datamapplot_fig_2levels = create_datamapplot_visualization(
+    coords_2d,
+    cluster_labels,
+    cluster_titles_df,
+    meta_df,
+    super_cluster_labels=super_labels,
+    super_cluster_titles_df=super_cluster_titles_df,
+    output_path=os.path.join(OUTPUT_DIR, "datamapplot_clusters_2levels.html"),
+    title="Кластеризация банковских жалоб (2 уровня)"
+)
+datamapplot_fig_2levels
+
+
