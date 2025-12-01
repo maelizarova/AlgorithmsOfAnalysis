@@ -1,167 +1,25 @@
----------------------------------------------------------------------------
--- выбираем все договоры,
--- открытые клиентами на указанные даты (базовый набор договоров).
----------------------------------------------------------------------------
-create table ema_scoped_contracts as
-select ip.client_did,
-       ip.report_date,
-       c.CONTRACT_UID,
-       c.ACCOUNT_UID,
-       c.PRODUCT_CATEGORY_NM,
-       c.OPEN_DT,
-       c.FACT_CLOSE_DT
-from input_clients ip
-join DM_MRK_CONTRACT c
-  on c.CLIENT_DID = ip.client_did
-  and c.OPEN_DT <= ip.report_date
-  and ip.report_date between effective_from_dt and effective_to_dt
-  and contract_type = 'D'
-  -- убираем досрочно закрытые договоры, закрытые в течение 5 дней до открытия вклада
-  and not (c.FACT_CLOSE_DT < c.PLAN_CLOSE_DT and c.FACT_CLOSE_DT between ip.report_date - 4 and ip.report_date)
---  and c.PRODUCT_CATEGORY_NM like '%накоп%'
-;
+Предложение "Новые деньги" доступно при открытии срочного вклада вида «Доход» (далее - Вклад) 
+в офисе Банка.
 
----------------------------------------------------------------------------
--- подбираем счета этих договоров и исключаем счета эскроу
--- с помощью справочника analytics.che_deposit_segmentation.
----------------------------------------------------------------------------
-create table ema_scoped_accounts as
-select sc.client_did,
-       sc.report_date,
-       sc.CONTRACT_UID,
-       sc.PRODUCT_CATEGORY_NM,
-       sc.OPEN_DT,
-       sc.FACT_CLOSE_DT,
-       acc.ACC_UID,
-       acc.ACC_CURR_CS,
-       acc.ACC_NUM
-from ema_scoped_contracts sc
-join DM_MRK_ACCOUNT acc
-  on acc.ACC_UID = sc.ACCOUNT_UID
-left join analytics.che_deposit_segmentation de_1
-  on de_1.DEPOSIT_NAME = acc.DEP_SHORT_NM 
-left join analytics.che_deposit_segmentation de_2
-  on de_1.DEPOSIT_NAME is null
- and de_2.DEPOSIT_NAME = acc.DEP_NAME
-where coalesce(de_1.DEPOSIT_SEGMENT, de_2.DEPOSIT_SEGMENT, '') <> 'счета эскроу'
-;
+Новые деньги определяются как разница между исходящим остатком по всем счетам 
+клиента - ФЛ, открытым в Банке на момент открытия срочного вклада 
+вида «Доход» (далее - Вклад) и максимальным остатком по всем счетам клиента 
+за каждый день из периода, равного 60 (шестидесяти) календарным дням, 
+предшествующим 5 (пяти) календарным дням до даты открытия 
+Вклада (включая дату открытия Вклада).*
 
----------------------------------------------------------------------------
--- дневные остатки и обороты по счетам вкладов
--- за 65-дневное окно до даты открытия (используются для всех последующих шагов).
----------------------------------------------------------------------------
-create table ema_balance_scope as
-select sa.client_did,
-       sa.report_date,
-       b.ACC_BAL_OPER_DT,
-       sum(b.ACC_BAL_CLOSE_BAL_RUB_AMT) as balance_rub,
-       sum(b.ACC_BAL_CR_RUB_AMT)       as credit_turnover_rub,
-       sum(b.ACC_BAL_DB_RUB_AMT)       as debit_turnover_rub
-from ema_scoped_accounts sa
-join DM_RRB_AU_ACCOUNT_BALANCE b
-  on b.ACC_BAL_ACC_UID = sa.ACC_UID
- and b.ACC_BAL_OPER_DT between sa.report_date - 64 and sa.report_date
-group by sa.client_did, sa.report_date, b.ACC_BAL_OPER_DT
-;
+Сумма Новых денег размещаемых во Вклад уменьшается на сумму выплаченных и 
+капитализированных процентов по счетам и вкладам, а также сумму денежных 
+средств, зачисленных во Вклад, и сумму выданных кредитов, в течение 5 (пяти) 
+календарных дней, предшествующих дате открытия Вклада (вкл. дату открытия Вклада).
 
----------------------------------------------------------------------------
--- исходящий остаток клиента на дату открытия вклада.
----------------------------------------------------------------------------
-create table ema_current_balance as
-select client_did,
-       report_date,
-       balance_rub as current_balance_rub
-from ema_balance_scope
-where ACC_BAL_OPER_DT = report_date
-;
+При досрочном расторжени срочных вкладов в Банке в течение 5 (пяти) календарных дней, 
+предшествующих дате открытия Вклада (вкл. дату открытия Вклада), процентная ставка 
+за размещение во Вклад Новых денег не устанавливается, к договору вклада применяется 
+процентная ставка для вкладов с суммой Новых денег до 20%.
 
----------------------------------------------------------------------------
--- максимальный исходящий остаток за период T-65 .. T-5.
----------------------------------------------------------------------------
-create table ema_historical_max as
-select client_did,
-       report_date,
-       max(balance_rub) as historical_max_rub
-from ema_balance_scope
-where ACC_BAL_OPER_DT between report_date - 64 and report_date - 5
-group by client_did, report_date
-;
+*не анализируются остатки на счетах эскроу. Остаток по валютным 
+счетам (в т.ч, счетам в драгоценных металлах) конвертируется в рубли РФ 
+по курсу ЦБ на дату открытия вклада.
 
----------------------------------------------------------------------------
--- суммы начисленных/выплаченных процентов за последние 5 дней.
----------------------------------------------------------------------------
-create table ema_interest_adjustment as
-select sa.client_did,
-       sa.report_date,
-       --сколько дней из периода C_DATE_BEG,C_DATE_END попадает в 5-дневное окно до открытия вклада
-       C_SUMMA_PRC/C_DAYS* greatest(0, least(sa.report_date, b.C_DATE_END) - greatest(sa.report_date - 4, b.C_DATE_BEG) + 1) as interest_rub
-from ema_scoped_accounts sa
-inner join ods.ods_rtl_depn a on sa.ACC_SRC_ID=a.C_ACCOUNT
-inner join ods.ODS_RTL_STRING_CALC_PRC b on b.COLLECTION_ID = a.C_JOUR_CALC_PRC
- and b.C_DATE_BEG < sa.report_date and b.C_DATE_END >= sa.report_date
-
-;
-
----------------------------------------------------------------------------
--- притоки на счета вкладов (для уменьшения «Новых денег»).
----------------------------------------------------------------------------
-create table ema_deposit_topups as
-select client_did,
-       report_date,
-       coalesce(sum(credit_turnover_rub), 0) as topup_rub
-from ema_balance_scope
-where ACC_BAL_OPER_DT between report_date - 4 and report_date
-group by client_did, report_date
-;
-
----------------------------------------------------------------------------
--- суммы выданных кредитов клиенту в этом же 5-дневном окне.
----------------------------------------------------------------------------
-create table ema_loan_issuance as
-select ip.client_did,
-       ip.report_date,
-       coalesce(sum(c.CONTRACT_AMT), 0) as loan_sum_rub
-from input_clients ip
-join DM_MRK_CONTRACT c
-  on c.CLIENT_DID = ip.client_did
-  and c.OPEN_DT between ip.report_date - 4 and ip.report_date
-  and ip.report_date between effective_from_dt and effective_to_dt
-  and contract_type = 'С'
---   and upper(coalesce(c.PRODUCT_CATEGORY_NM, '')) like '%КРЕДИТ%'
-group by ip.client_did, ip.report_date
-;
-
--- итоговый результат с расчётами «Новых денег».
-create table ema_new_money_result as
-select ip.client_did,
-       ip.report_date,
-       cb.current_balance_rub,
-       hm.historical_max_rub,
-       greatest(cb.current_balance_rub - hm.historical_max_rub, 0) as new_money_raw_rub,
-       ia.interest_rub,
-       dt.topup_rub,
-       li.loan_sum_rub,
-       greatest(cb.current_balance_rub - hm.historical_max_rub, 0)
-         - ia.interest_rub
-         - dt.topup_rub
-         - li.loan_sum_rub as new_money_final_rub
-from input_clients ip
-left join ema_current_balance cb
-  on cb.client_did = ip.client_did
- and cb.report_date = ip.report_date
-left join ema_historical_max hm
-  on hm.client_did = ip.client_did
- and hm.report_date = ip.report_date
-left join ema_interest_adjustment ia
-  on ia.client_did = ip.client_did
- and ia.report_date = ip.report_date
-left join ema_deposit_topups dt
-  on dt.client_did = ip.client_did
- and dt.report_date = ip.report_date
-left join ema_loan_issuance li
-  on li.client_did = ip.client_did
- and li.report_date = ip.report_date
-;
-
-select * from ema_new_money_result;
 
