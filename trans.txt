@@ -1,139 +1,51 @@
-def build_reason_only_prompt(cluster_id, samples, product_name="Дебетовая карта"):
-    """Готовит промпт для LLM, чтобы получить только причину обращения для заранее известного продукта."""
-    formatted_samples = []
-    for idx, sample in enumerate(samples, start=1):
-        formatted_samples.append(f"{idx}. {sample}")
-    samples_block = "\n".join(formatted_samples)
+# === Формирование финального датафрейма для выбранного поднабора (без суперкластеров) ===
+# Предполагаем, что уже есть source_df_subset (например, subset = df.query("Тип == 'Жалоба'") )
+# и в нём присутствует колонка embedding_id, как требуется subset_embeddings_by_source_df.
 
-    prompt = f"""
-Ты анализируешь обращения клиентов банка. Все примеры относятся к продукту: {product_name}.
-Определи только причину обращения (без уточнения продуктов или каналов). Используй короткое и понятное описание.
-Ответь в формате JSON:
-{{
-  "reason": "<краткое формулировка причины>",
-  "summary": "<одно предложение с сутью обращений>"
-}}
+subset_required_cols = [
+    "Номер",
+    "Описание претензии",
+    "Тип",
+    "Подтип",
+    "Претензия по продукту",
+    "Дата регистрации",
+]
 
-Кластер: {cluster_id}
-Примеры обращений:
-{samples_block}
-""".strip()
-    return prompt
+subset_base_df = (
+    source_df_subset[subset_required_cols + ['embedding_id']]
+    .copy()
+    .rename(columns={'embedding_id': "id"})
+)
+subset_base_df["id"] = subset_base_df["id"].astype(int)
 
+subset_cluster_info = (
+    cluster_map_with_titles_df[cluster_map_with_titles_df["id"].isin(subset_base_df["id"])]
+    [["id", "cluster"]]
+    .copy()
+)
 
+subset_final_df = (
+    subset_cluster_info
+    .merge(cluster_titles_df[["cluster", "title", "type", "product", "summary"]], on="cluster", how="left")
+    .merge(subset_base_df, on="id", how="left")
+)
 
-def parse_reason_response(response):
-    """Упрощённый парсер ответов с ключами reason/summary."""
-    if response is None:
-        return {
-            "reason": "Причина не получена",
-            "summary": "LLM вернул пустой ответ"
-        }
+subset_final_df = subset_final_df[
+    [
+        "Номер",
+        "Описание претензии",
+        "Тип",
+        "Подтип",
+        "Претензия по продукту",
+        "Дата регистрации",
+        "cluster",
+        "title",
+        "type",
+        "product",
+        "summary",
+    ]
+]
 
-    if isinstance(response, dict):
-        return {
-            "reason": response.get("reason") or response.get("title") or json.dumps(response, ensure_ascii=False),
-            "summary": response.get("summary", json.dumps(response, ensure_ascii=False))
-        }
-
-    if isinstance(response, (list, tuple)):
-        try:
-            return parse_reason_response(json.loads(response[0]))
-        except Exception:
-            return {
-                "reason": "Не удалось распарсить ответ",
-                "summary": str(response)
-            }
-
-    if isinstance(response, str):
-        normalized = _normalize_llm_response_text(response)
-        try:
-            parsed = json.loads(normalized)
-            if isinstance(parsed, dict):
-                return parse_reason_response(parsed)
-        except json.JSONDecodeError:
-            pass
-        return {
-            "reason": normalized,
-            "summary": normalized
-        }
-
-    return {
-        "reason": str(response),
-        "summary": str(response)
-    }
-
-
-def suggest_reason_only_titles(
-    cluster_df,
-    text_column="original_text",
-    cluster_column="cluster",
-    sample_size=10,
-    random_state=42,
-    model="openai/gpt-oss-120b",
-    product_name="Дебетовая карта"
-):
-    """Формирует названия причин обращений, зная продукт заранее."""
-    if cluster_column not in cluster_df.columns:
-        raise ValueError(f"В переданном DataFrame нет столбца '{cluster_column}'")
-    if text_column not in cluster_df.columns:
-        raise ValueError(f"В переданном DataFrame нет столбца '{text_column}'")
-
-    rng = np.random.default_rng(random_state)
-    reason_rows = []
-
-    for cluster_id in sorted(cluster_df[cluster_column].unique(), key=lambda x: str(x)):
-        subset = cluster_df[cluster_df[cluster_column] == cluster_id].copy()
-        subset = subset.dropna(subset=[text_column])
-        if subset.empty:
-            reason_rows.append({
-                "cluster": cluster_id,
-                "reason": "Нет текстов",
-                "summary": "В кластере отсутствуют тексты",
-                "examples_used": [],
-                "examples_used_cleaned": []
-            })
-            continue
-
-        if len(subset) > sample_size:
-            rand_seed = int(rng.integers(0, 1_000_000_000))
-            sampled_subset = subset.sample(n=sample_size, random_state=rand_seed, replace=False)
-        else:
-            sampled_subset = subset
-
-        original_examples = sampled_subset[text_column].astype(str).tolist()
-        if "cleaned_text" in sampled_subset.columns:
-            cleaned_series = sampled_subset["cleaned_text"].fillna(sampled_subset[text_column].apply(clean_complaint_text))
-        else:
-            cleaned_series = sampled_subset[text_column].apply(clean_complaint_text)
-        cleaned_examples = cleaned_series.tolist()
-
-        prompt = build_reason_only_prompt(cluster_id, cleaned_examples, product_name=product_name)
-        try:
-            tokens = []
-            for token in call_vllm_stream(prompt, model=model):
-                tokens.append(token)
-            response = "".join(tokens).strip() or None
-        except Exception as exc:
-            logging.error(f"Не удалось получить причину для кластера {cluster_id}: {exc}")
-            reason_rows.append({
-                "cluster": cluster_id,
-                "reason": "Ошибка LLM",
-                "summary": str(exc),
-                "examples_used": original_examples,
-                "examples_used_cleaned": cleaned_examples
-            })
-            continue
-
-        parsed = parse_reason_response(response)
-        reason_rows.append({
-            "cluster": cluster_id,
-            "reason": parsed.get("reason"),
-            "summary": parsed.get("summary"),
-            "raw_response": response,
-            "examples_used": original_examples,
-            "examples_used_cleaned": cleaned_examples
-        })
-
-    return pd.DataFrame(reason_rows)
+print(f"Финальный датафрейм по подмножеству сформирован: {len(subset_final_df)} строк")
+display(subset_final_df.head())
 
