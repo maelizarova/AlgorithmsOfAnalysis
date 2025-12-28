@@ -70,7 +70,7 @@ def suggest_reason_only_titles(
     cluster_column="cluster",
     sample_size=10,
     random_state=42,
-    model="bge-m3:latest",
+    model="openai/gpt-oss-120b",
     product_name="Дебетовая карта"
 ):
     """Формирует названия причин обращений, зная продукт заранее."""
@@ -110,7 +110,10 @@ def suggest_reason_only_titles(
 
         prompt = build_reason_only_prompt(cluster_id, cleaned_examples, product_name=product_name)
         try:
-            response = call_gpt_oss_embedding(prompt, model=model)
+            tokens = []
+            for token in call_vllm_stream(prompt, model=model):
+                tokens.append(token)
+            response = "".join(tokens).strip() or None
         except Exception as exc:
             logging.error(f"Не удалось получить причину для кластера {cluster_id}: {exc}")
             reason_rows.append({
