@@ -1,37 +1,136 @@
-def subset_embeddings_by_source_df(
-    X_raw,
-    X_scaled,
-    meta_df,
-    source_df_subset,
-    id_column_source='embedding_id'
+def build_reason_only_prompt(cluster_id, samples, product_name="Дебетовая карта"):
+    """Готовит промпт для LLM, чтобы получить только причину обращения для заранее известного продукта."""
+    formatted_samples = []
+    for idx, sample in enumerate(samples, start=1):
+        formatted_samples.append(f"{idx}. {sample}")
+    samples_block = "\n".join(formatted_samples)
+
+    prompt = f"""
+Ты анализируешь обращения клиентов банка. Все примеры относятся к продукту: {product_name}.
+Определи только причину обращения (без уточнения продуктов или каналов). Используй короткое и понятное описание.
+Ответь в формате JSON:
+{{
+  "reason": "<краткое формулировка причины>",
+  "summary": "<одно предложение с сутью обращений>"
+}}
+
+Кластер: {cluster_id}
+Примеры обращений:
+{samples_block}
+""".strip()
+    return prompt
+
+
+
+def parse_reason_response(response):
+    """Упрощённый парсер ответов с ключами reason/summary."""
+    if response is None:
+        return {
+            "reason": "Причина не получена",
+            "summary": "LLM вернул пустой ответ"
+        }
+
+    if isinstance(response, dict):
+        return {
+            "reason": response.get("reason") or response.get("title") or json.dumps(response, ensure_ascii=False),
+            "summary": response.get("summary", json.dumps(response, ensure_ascii=False))
+        }
+
+    if isinstance(response, (list, tuple)):
+        try:
+            return parse_reason_response(json.loads(response[0]))
+        except Exception:
+            return {
+                "reason": "Не удалось распарсить ответ",
+                "summary": str(response)
+            }
+
+    if isinstance(response, str):
+        normalized = _normalize_llm_response_text(response)
+        try:
+            parsed = json.loads(normalized)
+            if isinstance(parsed, dict):
+                return parse_reason_response(parsed)
+        except json.JSONDecodeError:
+            pass
+        return {
+            "reason": normalized,
+            "summary": normalized
+        }
+
+    return {
+        "reason": str(response),
+        "summary": str(response)
+    }
+
+
+def suggest_reason_only_titles(
+    cluster_df,
+    text_column="original_text",
+    cluster_column="cluster",
+    sample_size=10,
+    random_state=42,
+    model="bge-m3:latest",
+    product_name="Дебетовая карта"
 ):
-    """Принимает заранее отфильтрованный DataFrame из complaints.csv и возвращает соответствующие эмбеддинги."""
-    if id_column_source not in source_df_subset.columns:
-        raise ValueError(f"В source_df_subset нет столбца '{id_column_source}'. Добавьте его (df['embedding_id'] = df.index + 1).")
-    if 'id' not in meta_df.columns:
-        raise ValueError("В meta_df отсутствует столбец 'id' — проверьте prepare_embedding_matrix().")
+    """Формирует названия причин обращений, зная продукт заранее."""
+    if cluster_column not in cluster_df.columns:
+        raise ValueError(f"В переданном DataFrame нет столбца '{cluster_column}'")
+    if text_column not in cluster_df.columns:
+        raise ValueError(f"В переданном DataFrame нет столбца '{text_column}'")
 
-    requested_ids = source_df_subset[id_column_source].dropna().astype(int).tolist()
-    if not requested_ids:
-        raise ValueError("В переданном DataFrame нет валидных embedding_id")
+    rng = np.random.default_rng(random_state)
+    reason_rows = []
 
-    id_to_index = pd.Series(meta_df.index, index=meta_df['id'])
-    aligned_idx = id_to_index.reindex(requested_ids).dropna().astype(int)
-    if aligned_idx.empty:
-        raise ValueError("Ни один из embedding_id не найден в meta_df — проверьте соответствие данных")
+    for cluster_id in sorted(cluster_df[cluster_column].unique(), key=lambda x: str(x)):
+        subset = cluster_df[cluster_df[cluster_column] == cluster_id].copy()
+        subset = subset.dropna(subset=[text_column])
+        if subset.empty:
+            reason_rows.append({
+                "cluster": cluster_id,
+                "reason": "Нет текстов",
+                "summary": "В кластере отсутствуют тексты",
+                "examples_used": [],
+                "examples_used_cleaned": []
+            })
+            continue
 
-    X_raw_f = X_raw[aligned_idx.to_numpy()]
-    X_scaled_f = X_scaled[aligned_idx.to_numpy()]
-    meta_filtered = meta_df.loc[aligned_idx.index].reset_index(drop=True)
+        if len(subset) > sample_size:
+            rand_seed = int(rng.integers(0, 1_000_000_000))
+            sampled_subset = subset.sample(n=sample_size, random_state=rand_seed, replace=False)
+        else:
+            sampled_subset = subset
 
-    print(f"Выбрано {len(meta_filtered)} строк из {len(meta_df)} на основе исходного DataFrame")
-    return X_raw_f, X_scaled_f, meta_filtered
+        original_examples = sampled_subset[text_column].astype(str).tolist()
+        if "cleaned_text" in sampled_subset.columns:
+            cleaned_series = sampled_subset["cleaned_text"].fillna(sampled_subset[text_column].apply(clean_complaint_text))
+        else:
+            cleaned_series = sampled_subset[text_column].apply(clean_complaint_text)
+        cleaned_examples = cleaned_series.tolist()
 
-# Пример:
-# subset = df.query("Тип == 'Жалоба'")
-# X_raw_f, X_scaled_f, meta_subset = subset_embeddings_by_source_df(X_raw, X_scaled, meta_df, subset)
+        prompt = build_reason_only_prompt(cluster_id, cleaned_examples, product_name=product_name)
+        try:
+            response = call_gpt_oss_embedding(prompt, model=model)
+        except Exception as exc:
+            logging.error(f"Не удалось получить причину для кластера {cluster_id}: {exc}")
+            reason_rows.append({
+                "cluster": cluster_id,
+                "reason": "Ошибка LLM",
+                "summary": str(exc),
+                "examples_used": original_examples,
+                "examples_used_cleaned": cleaned_examples
+            })
+            continue
 
+        parsed = parse_reason_response(response)
+        reason_rows.append({
+            "cluster": cluster_id,
+            "reason": parsed.get("reason"),
+            "summary": parsed.get("summary"),
+            "raw_response": response,
+            "examples_used": original_examples,
+            "examples_used_cleaned": cleaned_examples
+        })
 
-df = df.reset_index(drop=True)
-df['embedding_id'] = df.index + 1
+    return pd.DataFrame(reason_rows)
 
