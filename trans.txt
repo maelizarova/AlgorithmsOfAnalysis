@@ -31,3 +31,7 @@ def subset_embeddings_by_source_df(
 # subset = df.query("Тип == 'Жалоба'")
 # X_raw_f, X_scaled_f, meta_subset = subset_embeddings_by_source_df(X_raw, X_scaled, meta_df, subset)
 
+
+df = df.reset_index(drop=True)
+df['embedding_id'] = df.index + 1
+
