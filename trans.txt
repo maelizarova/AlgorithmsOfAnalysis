@@ -1,51 +1,29 @@
-# === Формирование финального датафрейма для выбранного поднабора (без суперкластеров) ===
-# Предполагаем, что уже есть source_df_subset (например, subset = df.query("Тип == 'Жалоба'") )
-# и в нём присутствует колонка embedding_id, как требуется subset_embeddings_by_source_df.
+### Топ‑10 наиболее часто встречающихся фич (с учетом смысла названия + описания)
 
-subset_required_cols = [
-    "Номер",
-    "Описание претензии",
-    "Тип",
-    "Подтип",
-    "Претензия по продукту",
-    "Дата регистрации",
-]
+| название фичи (нормализовано) | расшифровка | список моделей где используется |
+|---|---|---|
+| `client_address_address_region_nm` (≈ `a_region_last_1440`) | Регион клиента / регион последней заявки (за последние 48 мес.) | `PTB_CC`, `PTB_NKP`, `PTB_DC`, `PTB_DEP`, `PTB_BROK` |
+| `client_birth_diff_death` (≈ `sd_age`) | Возраст клиента (полных лет на дату заявки/отчета) | `PTB_PIL`, `PTB_NKP`, `PTB_DC`, `PTB_DEP`, `PTB_BROK` |
+| `card_card_exp_dt_diff_report_date_*` (`aggmin/aggavg/aggmax`) | Кол-во дней до *expiry date* по всем незакрытым дебетовым картам (мин/сред/макс) | `PTB_NKP`, `PTB_DC`, `PTB_DEP`, `PTB_BROK` |
+| `card_report_date_diff_card_work_dt_aggmin` | Минимальное кол-во месяцев “стажа” с первой дебетовой карты | `PTB_NKP`, `PTB_DC`, `PTB_BROK` |
+| `dbo_client_authorize_days_from_last_success_auth` | Дней с последней успешной авторизации в ДБО до `report_date` | `PTB_NKP`, `PTB_DEP` |
+| `limit_all_crd_card_sum` | Остаток лимита по картам | `PTB_CC`, `PTB_PIL` |
+| `prod_cc_last_cl_days` | Дней с закрытия последнего договора на кредитную карту | `PTB_CC`, `PTB_PIL` |
+| `client_discharge_diff_accept` | Полных месяцев с даты приема на работу до даты заявки (или увольнения из основной ЗП‑организации) | `PTB_NKP`, `PTB_DC` |
+| `card_package_close_dt_diff_creation_dt_*` (в т.ч. `...by_package_status_wrk...`) | Длительность/давность “пакета” (в днях; в т.ч. по окнам 730/365/180/90) | `PTB_NKP`, `PTB_DC` |
+| `ub_week_opening_balance_rest_*` (`aggavg_d90`, `aggmin_d720`) | Недельный остаток “баллов” на балансе (средний за 90 дней / минимальный на начало периода за 720 дней) | `PTB_DEP`, `PTB_BROK` |
 
-subset_base_df = (
-    source_df_subset[subset_required_cols + ['embedding_id']]
-    .copy()
-    .rename(columns={'embedding_id': "id"})
-)
-subset_base_df["id"] = subset_base_df["id"].astype(int)
 
-subset_cluster_info = (
-    cluster_map_with_titles_df[cluster_map_with_titles_df["id"].isin(subset_base_df["id"])]
-    [["id", "cluster"]]
-    .copy()
-)
 
-subset_final_df = (
-    subset_cluster_info
-    .merge(cluster_titles_df[["cluster", "title", "type", "product", "summary"]], on="cluster", how="left")
-    .merge(subset_base_df, on="id", how="left")
-)
 
-subset_final_df = subset_final_df[
-    [
-        "Номер",
-        "Описание претензии",
-        "Тип",
-        "Подтип",
-        "Претензия по продукту",
-        "Дата регистрации",
-        "cluster",
-        "title",
-        "type",
-        "product",
-        "summary",
-    ]
-]
-
-print(f"Финальный датафрейм по подмножеству сформирован: {len(subset_final_df)} строк")
-display(subset_final_df.head())
-
+название фичи (нормализовано)	расшифровка	список моделей где используется
+client_address_address_region_nm (≈ a_region_last_1440)	Регион клиента / регион последней заявки (за последние 48 мес.)	PTB_CC, PTB_NKP, PTB_DC, PTB_DEP, PTB_BROK
+client_birth_diff_death (≈ sd_age)	Возраст клиента (полных лет на дату заявки/отчета)	PTB_PIL, PTB_NKP, PTB_DC, PTB_DEP, PTB_BROK
+card_card_exp_dt_diff_report_date_* (aggmin/aggavg/aggmax)	Кол-во дней до expiry date по всем незакрытым дебетовым картам (мин/сред/макс)	PTB_NKP, PTB_DC, PTB_DEP, PTB_BROK
+card_report_date_diff_card_work_dt_aggmin	Минимальное кол-во месяцев “стажа” с первой дебетовой карты	PTB_NKP, PTB_DC, PTB_BROK
+dbo_client_authorize_days_from_last_success_auth	Дней с последней успешной авторизации в ДБО до report_date	PTB_NKP, PTB_DEP
+limit_all_crd_card_sum	Остаток лимита по картам	PTB_CC, PTB_PIL
+prod_cc_last_cl_days	Дней с закрытия последнего договора на кредитную карту	PTB_CC, PTB_PIL
+client_discharge_diff_accept	Полных месяцев с даты приема на работу до даты заявки (или увольнения из основной ЗП‑организации)	PTB_NKP, PTB_DC
+card_package_close_dt_diff_creation_dt_* (в т.ч. ...by_package_status_wrk...)	Длительность/давность “пакета” (в днях; в т.ч. по окнам 730/365/180/90)	PTB_NKP, PTB_DC
+ub_week_opening_balance_rest_* (aggavg_d90, aggmin_d720)	Недельный остаток “баллов” на балансе (средний за 90 дней / минимальный на начало периода за 720 дней)	PTB_DEP, PTB_BROK
