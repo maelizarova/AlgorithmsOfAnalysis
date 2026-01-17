@@ -1,29 +1,46 @@
-### Топ‑10 наиболее часто встречающихся фич (с учетом смысла названия + описания)
+-- Шаг 1: Создаем полную таблицу диапазонов
+create table tmp_date_ranges as
+select distinct 
+    report_date,
+    report_date - 64 as start_date,
+    report_date as end_date,
+    -- Дополнительные колонки для статистики
+    count(*) over (partition by report_date) as accounts_count
+from ema_scoped_accounts;
 
-| название фичи (нормализовано) | расшифровка | список моделей где используется |
-|---|---|---|
-| `client_address_address_region_nm` (≈ `a_region_last_1440`) | Регион клиента / регион последней заявки (за последние 48 мес.) | `PTB_CC`, `PTB_NKP`, `PTB_DC`, `PTB_DEP`, `PTB_BROK` |
-| `client_birth_diff_death` (≈ `sd_age`) | Возраст клиента (полных лет на дату заявки/отчета) | `PTB_PIL`, `PTB_NKP`, `PTB_DC`, `PTB_DEP`, `PTB_BROK` |
-| `card_card_exp_dt_diff_report_date_*` (`aggmin/aggavg/aggmax`) | Кол-во дней до *expiry date* по всем незакрытым дебетовым картам (мин/сред/макс) | `PTB_NKP`, `PTB_DC`, `PTB_DEP`, `PTB_BROK` |
-| `card_report_date_diff_card_work_dt_aggmin` | Минимальное кол-во месяцев “стажа” с первой дебетовой карты | `PTB_NKP`, `PTB_DC`, `PTB_BROK` |
-| `dbo_client_authorize_days_from_last_success_auth` | Дней с последней успешной авторизации в ДБО до `report_date` | `PTB_NKP`, `PTB_DEP` |
-| `limit_all_crd_card_sum` | Остаток лимита по картам | `PTB_CC`, `PTB_PIL` |
-| `prod_cc_last_cl_days` | Дней с закрытия последнего договора на кредитную карту | `PTB_CC`, `PTB_PIL` |
-| `client_discharge_diff_accept` | Полных месяцев с даты приема на работу до даты заявки (или увольнения из основной ЗП‑организации) | `PTB_NKP`, `PTB_DC` |
-| `card_package_close_dt_diff_creation_dt_*` (в т.ч. `...by_package_status_wrk...`) | Длительность/давность “пакета” (в днях; в т.ч. по окнам 730/365/180/90) | `PTB_NKP`, `PTB_DC` |
-| `ub_week_opening_balance_rest_*` (`aggavg_d90`, `aggmin_d720`) | Недельный остаток “баллов” на балансе (средний за 90 дней / минимальный на начало периода за 720 дней) | `PTB_DEP`, `PTB_BROK` |
+-- Шаг 2: Индексы
+create index idx_tmp_ranges_dates on tmp_date_ranges(start_date, end_date);
+create index idx_tmp_ranges_report on tmp_date_ranges(report_date);
 
+-- Шаг 3: Анализируем статистику
+begin
+    dbms_stats.gather_table_stats(
+        ownname => USER,
+        tabname => 'TMP_DATE_RANGES',
+        estimate_percent => 100,
+        cascade => true
+    );
+end;
+/
 
+-- Шаг 4: Оптимизированный запрос с подсказками
+drop table ema_balance_scope;
 
+create table ema_balance_scope nologging parallel 4 as 
+select /*+ LEADING(d) USE_NL(b) INDEX(b idx_bal_dt_uid) */
+       sa.client_did,
+       sa.report_date, 
+       b.ACC_BAL_OPER_DT,
+       sum(b.ACC_BAL_CLOSE_BAL_RUB_AMT) as balance_rub, 
+       sum(b.ACC_BAL_CR_RUB_AMT) as credit_turnover_rub,
+       sum(b.ACC_BAL_DB_RUB_AMT) as debit_turnover_rub
+from tmp_date_ranges d
+join dm_rrb.dm_rrb_au_account_balance b
+  on b.ACC_BAL_OPER_DT between d.start_date and d.end_date
+join ema_scoped_accounts sa
+  on sa.ACC_UID = b.ACC_BAL_ACC_UID
+  and sa.report_date = d.report_date
+group by sa.client_did, sa.report_date, b.ACC_BAL_OPER_DT;
 
-название фичи (нормализовано)	расшифровка	список моделей где используется
-client_address_address_region_nm (≈ a_region_last_1440)	Регион клиента / регион последней заявки (за последние 48 мес.)	PTB_CC, PTB_NKP, PTB_DC, PTB_DEP, PTB_BROK
-client_birth_diff_death (≈ sd_age)	Возраст клиента (полных лет на дату заявки/отчета)	PTB_PIL, PTB_NKP, PTB_DC, PTB_DEP, PTB_BROK
-card_card_exp_dt_diff_report_date_* (aggmin/aggavg/aggmax)	Кол-во дней до expiry date по всем незакрытым дебетовым картам (мин/сред/макс)	PTB_NKP, PTB_DC, PTB_DEP, PTB_BROK
-card_report_date_diff_card_work_dt_aggmin	Минимальное кол-во месяцев “стажа” с первой дебетовой карты	PTB_NKP, PTB_DC, PTB_BROK
-dbo_client_authorize_days_from_last_success_auth	Дней с последней успешной авторизации в ДБО до report_date	PTB_NKP, PTB_DEP
-limit_all_crd_card_sum	Остаток лимита по картам	PTB_CC, PTB_PIL
-prod_cc_last_cl_days	Дней с закрытия последнего договора на кредитную карту	PTB_CC, PTB_PIL
-client_discharge_diff_accept	Полных месяцев с даты приема на работу до даты заявки (или увольнения из основной ЗП‑организации)	PTB_NKP, PTB_DC
-card_package_close_dt_diff_creation_dt_* (в т.ч. ...by_package_status_wrk...)	Длительность/давность “пакета” (в днях; в т.ч. по окнам 730/365/180/90)	PTB_NKP, PTB_DC
-ub_week_opening_balance_rest_* (aggavg_d90, aggmin_d720)	Недельный остаток “баллов” на балансе (средний за 90 дней / минимальный на начало периода за 720 дней)	PTB_DEP, PTB_BROK
+-- Шаг 5: Очистка временных объектов
+drop table tmp_date_ranges;
