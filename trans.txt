@@ -1,46 +1,25 @@
--- Шаг 1: Создаем полную таблицу диапазонов
-create table tmp_date_ranges as
-select distinct 
-    report_date,
-    report_date - 64 as start_date,
-    report_date as end_date,
-    -- Дополнительные колонки для статистики
-    count(*) over (partition by report_date) as accounts_count
-from ema_scoped_accounts;
-
--- Шаг 2: Индексы
-create index idx_tmp_ranges_dates on tmp_date_ranges(start_date, end_date);
-create index idx_tmp_ranges_report on tmp_date_ranges(report_date);
-
--- Шаг 3: Анализируем статистику
-begin
-    dbms_stats.gather_table_stats(
-        ownname => USER,
-        tabname => 'TMP_DATE_RANGES',
-        estimate_percent => 100,
-        cascade => true
-    );
-end;
-/
-
--- Шаг 4: Оптимизированный запрос с подсказками
-drop table ema_balance_scope;
-
-create table ema_balance_scope nologging parallel 4 as 
-select /*+ LEADING(d) USE_NL(b) INDEX(b idx_bal_dt_uid) */
-       sa.client_did,
-       sa.report_date, 
-       b.ACC_BAL_OPER_DT,
-       sum(b.ACC_BAL_CLOSE_BAL_RUB_AMT) as balance_rub, 
-       sum(b.ACC_BAL_CR_RUB_AMT) as credit_turnover_rub,
-       sum(b.ACC_BAL_DB_RUB_AMT) as debit_turnover_rub
-from tmp_date_ranges d
-join dm_rrb.dm_rrb_au_account_balance b
-  on b.ACC_BAL_OPER_DT between d.start_date and d.end_date
-join ema_scoped_accounts sa
-  on sa.ACC_UID = b.ACC_BAL_ACC_UID
-  and sa.report_date = d.report_date
-group by sa.client_did, sa.report_date, b.ACC_BAL_OPER_DT;
-
--- Шаг 5: Очистка временных объектов
-drop table tmp_date_ranges;
+SELECT 
+    COALESCE(t1.CLIENT_DID, t2.CLIENT_DID) as CLIENT_DID,
+    COALESCE(t1.REPORT_DATE, t2.REPORT_DATE) as REPORT_DATE,
+    -- Столбцы из первой таблицы с заменой NULL на 0
+    COALESCE(t1.TRANSACTION_SUPERMARKETS_V2_TRANS_FLG_3M, 0) as TRANSACTION_SUPERMARKETS_V2_TRANS_FLG_3M,
+    COALESCE(t1.TRANSACTION_MARKETPLACE_TRANS_FLG_3M, 0) as TRANSACTION_MARKETPLACE_TRANS_FLG_3M,
+    COALESCE(t1.TRANSACTION_SUPERMARKETS_V2_TRANS_CNT_TGT_1M, 0) as TRANSACTION_SUPERMARKETS_V2_TRANS_CNT_TGT_1M,
+    COALESCE(t1.TRANSACTION_SUPERMARKETS_V2_TRANS_SUMTGT_1M, 0) as TRANSACTION_SUPERMARKETS_V2_TRANS_SUMTGT_1M,
+    COALESCE(t1.TRANSACTION_MARKETPLACE_TRANS_CNT_TGT_1M, 0) as TRANSACTION_MARKETPLACE_TRANS_CNT_TGT_1M,
+    COALESCE(t1.TRANSACTION_MARKETPLACE_TRANS_SUMTGT_1M, 0) as TRANSACTION_MARKETPLACE_TRANS_SUMTGT_1M,
+    -- Столбцы из второй таблицы с заменой NULL на 0
+    COALESCE(t2.TRANSACTION_CLOTHES_TRANS_FLG_3M, 0) as TRANSACTION_CLOTHES_TRANS_FLG_3M,
+    COALESCE(t2.TRANSACTION_CAFE_TRANS_FLG_3M, 0) as TRANSACTION_CAFE_TRANS_FLG_3M,
+    COALESCE(t2.TRANSACTION_FASTFOOD_TRANS_FLG_3M, 0) as TRANSACTION_FASTFOOD_TRANS_FLG_3M,
+    COALESCE(t2.TRANSACTION_CLOTHES_TRANS_CNT_TGT_1M, 0) as TRANSACTION_CLOTHES_TRANS_CNT_TGT_1M,
+    COALESCE(t2.TRANSACTION_CLOTHES_TRANS_SUM_TGT_1M, 0) as TRANSACTION_CLOTHES_TRANS_SUM_TGT_1M,
+    COALESCE(t2.TRANSACTION_CAFE_TRANS_CNT_TGT_1M, 0) as TRANSACTION_CAFE_TRANS_CNT_TGT_1M,
+    COALESCE(t2.TRANSACTION_CAFE_TRANS_SUM_TGT_1M, 0) as TRANSACTION_CAFE_TRANS_SUM_TGT_1M,
+    COALESCE(t2.TRANSACTION_FASTFOOD_TRANS_CNT_TGT_1M, 0) as TRANSACTION_FASTFOOD_TRANS_CNT_TGT_1M,
+    COALESCE(t2.TRANSACTION_FASTFOOD_TRANS_SUM_TGT_1M, 0) as TRANSACTION_FASTFOOD_TRANS_SUM_TGT_1M
+FROM table1 t1
+FULL OUTER JOIN table2 t2 
+    ON t1.CLIENT_DID = t2.CLIENT_DID 
+    AND t1.REPORT_DATE = t2.REPORT_DATE
+ORDER BY CLIENT_DID, REPORT_DATE;
