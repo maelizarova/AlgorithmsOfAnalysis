@@ -1,25 +1,87 @@
-SELECT 
-    COALESCE(t1.CLIENT_DID, t2.CLIENT_DID) as CLIENT_DID,
-    COALESCE(t1.REPORT_DATE, t2.REPORT_DATE) as REPORT_DATE,
-    -- Столбцы из первой таблицы с заменой NULL на 0
-    COALESCE(t1.TRANSACTION_SUPERMARKETS_V2_TRANS_FLG_3M, 0) as TRANSACTION_SUPERMARKETS_V2_TRANS_FLG_3M,
-    COALESCE(t1.TRANSACTION_MARKETPLACE_TRANS_FLG_3M, 0) as TRANSACTION_MARKETPLACE_TRANS_FLG_3M,
-    COALESCE(t1.TRANSACTION_SUPERMARKETS_V2_TRANS_CNT_TGT_1M, 0) as TRANSACTION_SUPERMARKETS_V2_TRANS_CNT_TGT_1M,
-    COALESCE(t1.TRANSACTION_SUPERMARKETS_V2_TRANS_SUMTGT_1M, 0) as TRANSACTION_SUPERMARKETS_V2_TRANS_SUMTGT_1M,
-    COALESCE(t1.TRANSACTION_MARKETPLACE_TRANS_CNT_TGT_1M, 0) as TRANSACTION_MARKETPLACE_TRANS_CNT_TGT_1M,
-    COALESCE(t1.TRANSACTION_MARKETPLACE_TRANS_SUMTGT_1M, 0) as TRANSACTION_MARKETPLACE_TRANS_SUMTGT_1M,
-    -- Столбцы из второй таблицы с заменой NULL на 0
-    COALESCE(t2.TRANSACTION_CLOTHES_TRANS_FLG_3M, 0) as TRANSACTION_CLOTHES_TRANS_FLG_3M,
-    COALESCE(t2.TRANSACTION_CAFE_TRANS_FLG_3M, 0) as TRANSACTION_CAFE_TRANS_FLG_3M,
-    COALESCE(t2.TRANSACTION_FASTFOOD_TRANS_FLG_3M, 0) as TRANSACTION_FASTFOOD_TRANS_FLG_3M,
-    COALESCE(t2.TRANSACTION_CLOTHES_TRANS_CNT_TGT_1M, 0) as TRANSACTION_CLOTHES_TRANS_CNT_TGT_1M,
-    COALESCE(t2.TRANSACTION_CLOTHES_TRANS_SUM_TGT_1M, 0) as TRANSACTION_CLOTHES_TRANS_SUM_TGT_1M,
-    COALESCE(t2.TRANSACTION_CAFE_TRANS_CNT_TGT_1M, 0) as TRANSACTION_CAFE_TRANS_CNT_TGT_1M,
-    COALESCE(t2.TRANSACTION_CAFE_TRANS_SUM_TGT_1M, 0) as TRANSACTION_CAFE_TRANS_SUM_TGT_1M,
-    COALESCE(t2.TRANSACTION_FASTFOOD_TRANS_CNT_TGT_1M, 0) as TRANSACTION_FASTFOOD_TRANS_CNT_TGT_1M,
-    COALESCE(t2.TRANSACTION_FASTFOOD_TRANS_SUM_TGT_1M, 0) as TRANSACTION_FASTFOOD_TRANS_SUM_TGT_1M
-FROM table1 t1
-FULL OUTER JOIN table2 t2 
-    ON t1.CLIENT_DID = t2.CLIENT_DID 
-    AND t1.REPORT_DATE = t2.REPORT_DATE
-ORDER BY CLIENT_DID, REPORT_DATE;
+import pandas as pd
+import numpy as np
+from typing import Tuple, Union, Optional
+
+
+from sklearn.model_selection import train_test_split
+
+from .psi import PSIAnalyzer
+
+
+def optimize_dataframe(df, categorical_threshold=0.5, verbose=True):
+    """
+    Оптимизирует DataFrame, уменьшая использование памяти за счёт преобразования типов данных.
+
+    Параметры:
+    - df: Исходный DataFrame
+    - categorical_threshold: Порог (0-1) для преобразования в категориальный тип
+    - verbose: Выводить информацию об оптимизации
+
+    Возвращает:
+    - Оптимизированный DataFrame
+    """
+
+    optimized_df = df.copy()
+    date_cols = []
+
+    for col in optimized_df.columns:
+        col_type = optimized_df[col].dtype
+        col_values = optimized_df[col]
+
+        # Оптимизация целых чисел
+        if pd.api.types.is_integer_dtype(col_type):
+            col_min = col_values.min()
+            col_max = col_values.max()
+
+            if col_min > np.iinfo(np.int8).min and col_max < np.iinfo(np.int8).max:
+                optimized_df[col] = col_values.astype(np.int8)
+            elif col_min > np.iinfo(np.int16).min and col_max < np.iinfo(np.int16).max:
+                optimized_df[col] = col_values.astype(np.int16)
+            elif col_min > np.iinfo(np.int32).min and col_max < np.iinfo(np.int32).max:
+                optimized_df[col] = col_values.astype(np.int32)
+
+        # Оптимизация чисел с плавающей точкой
+        elif pd.api.types.is_float_dtype(col_type):
+            col_min = col_values.min()
+            col_max = col_values.max()
+
+            if (
+                col_min > np.finfo(np.float16).min
+                and col_max < np.finfo(np.float16).max
+            ):
+                optimized_df[col] = col_values.astype(np.float16)
+            elif (
+                col_min > np.finfo(np.float32).min
+                and col_max < np.finfo(np.float32).max
+            ):
+                optimized_df[col] = col_values.astype(np.float32)
+
+        # Преобразование строк в категории
+        elif pd.api.types.is_string_dtype(col_type):
+            num_unique = col_values.nunique()
+            if num_unique / len(col_values) < categorical_threshold:
+                optimized_df[col] = col_values.astype("category")
+
+        # Преобразование в datetime (если уже похоже на datetime)
+        elif pd.api.types.is_datetime64_any_dtype(col_type):
+            try:
+                converted = pd.to_datetime(col_values)
+                optimized_df[col] = converted
+                date_cols.append(col)
+            except Exception:
+                pass
+
+    # Вывод информации
+    if verbose:
+        original_mem = df.memory_usage(deep=True).sum() / 1024**2
+        optimized_mem = optimized_df.memory_usage(deep=True).sum() / 1024**2
+        reduction = (original_mem - optimized_mem) / original_mem * 100
+
+        print("Оптимизация памяти:")
+        print(f"До: {original_mem:.2f} MB")
+        print(f"После: {optimized_mem:.2f} MB")
+        print(f"Экономия: {reduction:.1f}%")
+        if date_cols:
+            print(f"Обнаружены datetime колонки: {date_cols}")
+
+    return optimized_df
