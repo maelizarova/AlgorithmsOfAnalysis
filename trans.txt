@@ -1,87 +1,264 @@
-import pandas as pd
-import numpy as np
-from typing import Tuple, Union, Optional
+--все таблицы в cdw с префиксом ema_sample_es18094 вместо ema_mcc_trans_v2!!!!!!!!!!!!!!!
 
 
-from sklearn.model_selection import train_test_split
+create table ema_mcc_trans_v2_report_dates as 
+select ADD_MONTHS(date'2025-01-20', LEVEL - 1) as report_date
+from dual
+connect by level <= 12;
 
-from .psi import PSIAnalyzer
+select * from ema_mcc_trans_v2_report_dates;
+
+create table ema_mcc_trans_v2_base as
+SELECT
+	rd.report_date,
+	c.client_did
+FROM ema_mcc_trans_v2_report_dates rd
+cross join dm_mrk.DM_MRK_CONTRACT@cdw c 
+WHERE c.IS_ACTIVE_FLG = 1 
+	AND c.OPEN_DT < rd.report_date
+GROUP BY rd.report_date, c.client_did ;
+
+select count(*) from EMA_MCC_TRANS_V2_BASE; --126622822
+
+--транзакции для условия наличия транзакций в нужной категории и таргета
+create table ema_mcc_trans_v2_all as 
+select /*+parallel(16)*/ 
+	a.client_did,
+	a.report_date,
+	trunc(dm.transaction_dtm) as transaction_dtm,
+	dm.amount_rur,
+	dm.direction,
+	c.categ
+from ema_mcc_trans_v2_base a
+join DM_MRK.DM_MRK_TRANSACTION dm
+	on  a.client_did = dm.client_did 
+	and dm.transaction_dtm < ADD_MONTHS(a.report_date, 1) 
+	and dm.transaction_dtm >= ADD_MONTHS(a.report_date, -3)
+    and dm.direction = 'D'
+left join sb_dirkaim.ema_mcc_category c
+	on dm.mcc_code = c.mcc_code
+where c.categ in ('Одежда и обувь', 'Кафе и рестораны', 'Фастфуд')
+;
+
+create table ema_mcc_trans_v2_agg as
+SELECT 
+    /* +parallel(8)+ */
+    d.client_did,
+    d.report_date,
+    COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Одежда и обувь' THEN 1 END) AS transaction_clothes_trans_flg_3m,
+	COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Кафе и рестораны' THEN 1 END) AS transaction_cafe_trans_flg_3m,
+	COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Фастфуд' THEN 1 END) AS transaction_fastfood_trans_flg_3m,
+    
+	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Одежда и обувь' THEN 1 END) AS transaction_clothes_trans_cnt_tgt_1m,
+    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Одежда и обувь' THEN amount_rur ELSE 0 END) AS transaction_clothes_trans_sum_tgt_1m,
+	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Кафе и рестораны' THEN 1 END) AS transaction_cafe_trans_cnt_tgt_1m,
+    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Кафе и рестораны' THEN amount_rur ELSE 0 END) AS transaction_cafe_trans_sum_tgt_1m,
+	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Фастфуд' THEN 1 END) AS transaction_fastfood_trans_cnt_tgt_1m,
+    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Фастфуд' THEN amount_rur ELSE 0 END) AS transaction_fastfood_trans_sum_tgt_1m
+from ema_mcc_trans_v2_base d 
+left join ema_mcc_trans_v2_all t 
+    on d.client_did = t.client_did 
+group by 
+d.client_did
+, d.report_date;
 
 
-def optimize_dataframe(df, categorical_threshold=0.5, verbose=True):
-    """
-    Оптимизирует DataFrame, уменьшая использование памяти за счёт преобразования типов данных.
+--транзакции для условия наличия транзакций в нужной категории и таргета
+create table ema_mcc_trans_v2_all_2 as 
+select /*+parallel(16)*/ 
+	a.client_did,
+	a.report_date,
+	trunc(dm.transaction_dtm) as transaction_dtm,
+	dm.amount_rur,
+	dm.direction,
+	c.categ
+from ema_mcc_trans_v2_base a
+join DM_MRK.DM_MRK_TRANSACTION dm
+	on  a.client_did = dm.client_did 
+	and dm.transaction_dtm < ADD_MONTHS(a.report_date, 1) 
+	and dm.transaction_dtm >= ADD_MONTHS(a.report_date, -3)
+    and dm.direction = 'D'
+left join ema_mcc_category_v2 c
+	on dm.mcc_code = c.mcc_code
+where c.categ in ('Супермаркеты', 'Маркетплейсы')
+;
 
-    Параметры:
-    - df: Исходный DataFrame
-    - categorical_threshold: Порог (0-1) для преобразования в категориальный тип
-    - verbose: Выводить информацию об оптимизации
+create table ema_mcc_trans_v2_agg_2 as
+SELECT 
+    /* +parallel(8)+ */
+    d.client_did,
+    d.report_date,
+    COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Супермаркеты' THEN 1 END) AS transaction_supermarkets_v2_trans_flg_3m,
+	COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Маркетплейсы' THEN 1 END) AS transaction_marketplace_trans_flg_3m,
+    
+	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Супермаркеты' THEN 1 END) AS transaction_supermarkets_v2_trans_cnt_tgt_1m,
+    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Супермаркеты' THEN amount_rur ELSE 0 END) AS transaction_supermarkets_v2_trans_sum_tgt_1m,
+	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Маркетплейсы' THEN 1 END) AS transaction_marketplace_trans_cnt_tgt_1m,
+    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Маркетплейсы' THEN amount_rur ELSE 0 END) AS transaction_marketplace_trans_sum_tgt_1m
+from ema_mcc_trans_v2_base d 
+left join ema_mcc_trans_v2_all_2 t 
+    on d.client_did = t.client_did 
+group by 
+d.client_did
+, d.report_date;
 
-    Возвращает:
-    - Оптимизированный DataFrame
-    """
 
-    optimized_df = df.copy()
-    date_cols = []
 
-    for col in optimized_df.columns:
-        col_type = optimized_df[col].dtype
-        col_values = optimized_df[col]
+drop table ema_mcc_trans_v2_p1;
+create table ema_mcc_trans_v2_p1 as
+select distinct * 
+from ema_mcc_trans_v2_agg
+where transaction_clothes_trans_flg_3m > 0
+	or transaction_cafe_trans_flg_3m > 0
+	or transaction_fastfood_trans_flg_3m > 0;
+    
+drop table ema_mcc_trans_v2_p2;
+create table ema_mcc_trans_v2_p2 as 
+select distinct * 
+from ema_mcc_trans_v2_agg_2 
+where transaction_marketplace_trans_flg_3m > 0 
+    or transaction_supermarkets_v2_trans_flg_3m > 0;
 
-        # Оптимизация целых чисел
-        if pd.api.types.is_integer_dtype(col_type):
-            col_min = col_values.min()
-            col_max = col_values.max()
+select count(*) from ema_mcc_trans_v2_p1; --6089679 
+select count(*) from ema_mcc_trans_v2_p2; --7935348
 
-            if col_min > np.iinfo(np.int8).min and col_max < np.iinfo(np.int8).max:
-                optimized_df[col] = col_values.astype(np.int8)
-            elif col_min > np.iinfo(np.int16).min and col_max < np.iinfo(np.int16).max:
-                optimized_df[col] = col_values.astype(np.int16)
-            elif col_min > np.iinfo(np.int32).min and col_max < np.iinfo(np.int32).max:
-                optimized_df[col] = col_values.astype(np.int32)
 
-        # Оптимизация чисел с плавающей точкой
-        elif pd.api.types.is_float_dtype(col_type):
-            col_min = col_values.min()
-            col_max = col_values.max()
+drop table eam_mcc_trans_v2_p3;
+create table ema_mcc_trans_v2_p3 as
+SELECT 
+    coalesce(t1.client_did, t2.client_did) as client_did,
+    coalesce(t1.report_date, t2.report_date) as report_date,
 
-            if (
-                col_min > np.finfo(np.float16).min
-                and col_max < np.finfo(np.float16).max
-            ):
-                optimized_df[col] = col_values.astype(np.float16)
-            elif (
-                col_min > np.finfo(np.float32).min
-                and col_max < np.finfo(np.float32).max
-            ):
-                optimized_df[col] = col_values.astype(np.float32)
+    coalesce(t1.transaction_supermarkets_v2_trans_flg_3m, 0) as transaction_supermarkets_v2_trans_flg_3m,
+    coalesce(t1.transaction_marketplace_trans_flg_3m, 0) as transaction_marketplace_trans_flg_3m,
+    coalesce(t1.transaction_supermarkets_v2_trans_cnt_tgt_1m, 0) as transaction_supermarkets_v2_trans_cnt_tgt_1m,
+    coalesce(t1.transaction_supermarkets_v2_trans_sum_tgt_1m, 0) as transaction_supermarkets_v2_trans_sum_tgt_1m,
+    coalesce(t1.transaction_marketplace_trans_cnt_tgt_1m, 0) as transaction_marketplace_trans_cnt_tgt_1m,
+    coalesce(t1.transaction_marketplace_trans_sum_tgt_1m, 0) as transaction_marketplace_trans_sum_tgt_1m,
 
-        # Преобразование строк в категории
-        elif pd.api.types.is_string_dtype(col_type):
-            num_unique = col_values.nunique()
-            if num_unique / len(col_values) < categorical_threshold:
-                optimized_df[col] = col_values.astype("category")
+    coalesce(t2.transaction_clothes_trans_flg_3m, 0) as transaction_clothes_trans_flg_3m,
+    coalesce(t2.transaction_cafe_trans_flg_3m, 0) as transaction_cafe_trans_flg_3m,
+    coalesce(t2.transaction_fastfood_trans_flg_3m, 0) as transaction_fastfood_trans_flg_3m,
+    coalesce(t2.transaction_clothes_trans_cnt_tgt_1m, 0) as transaction_clothes_trans_cnt_tgt_1m,
+    coalesce(t2.transaction_clothes_trans_sum_tgt_1m, 0) as transaction_clothes_trans_sum_tgt_1m,
+    coalesce(t2.transaction_cafe_trans_cnt_tgt_1m, 0) as transaction_cafe_trans_cnt_tgt_1m,
+    coalesce(t2.transaction_cafe_trans_sum_tgt_1m, 0) as transaction_cafe_trans_sum_tgt_1m,
+    coalesce(t2.transaction_fastfood_trans_cnt_tgt_1m, 0) as transaction_fastfood_trans_cnt_tgt_1m,
+    coalesce(t2.transaction_fastfood_trans_sum_tgt_1m, 0) as transaction_fastfood_trans_sum_tgt_1m
+FROM ema_mcc_trans_v2_p2 t1
+FULL JOIN ema_mcc_trans_v2_p1 t2 
+    ON t1.CLIENT_DID = t2.CLIENT_DID 
+    AND t1.REPORT_DATE = t2.REPORT_DATE
+;
 
-        # Преобразование в datetime (если уже похоже на datetime)
-        elif pd.api.types.is_datetime64_any_dtype(col_type):
-            try:
-                converted = pd.to_datetime(col_values)
-                optimized_df[col] = converted
-                date_cols.append(col)
-            except Exception:
-                pass
+select count(*) from ema_mcc_trans_v2_p3; --8166639
 
-    # Вывод информации
-    if verbose:
-        original_mem = df.memory_usage(deep=True).sum() / 1024**2
-        optimized_mem = optimized_df.memory_usage(deep=True).sum() / 1024**2
-        reduction = (original_mem - optimized_mem) / original_mem * 100
+select count(*) from ema_mcc_trans_v2_p3 where transaction_clothes_trans_cnt_tgt_1m > 0; --1854263
+select count(*) from ema_mcc_trans_v2_p3 where transaction_cafe_trans_cnt_tgt_1m > 0; --1592011
+select count(*) from ema_mcc_trans_v2_p3 where transaction_fastfood_trans_cnt_tgt_1m > 0; --3038811
+select count(*) from ema_mcc_trans_v2_p3 where transaction_supermarkets_v2_trans_cnt_tgt_1m > 0; -- 4786557
+select count(*) from ema_mcc_trans_v2_p3 where transaction_marketplace_trans_cnt_tgt_1m > 0; -- 1025367
 
-        print("Оптимизация памяти:")
-        print(f"До: {original_mem:.2f} MB")
-        print(f"После: {optimized_mem:.2f} MB")
-        print(f"Экономия: {reduction:.1f}%")
-        if date_cols:
-            print(f"Обнаружены datetime колонки: {date_cols}")
+drop table ema_mcc_trans_v2_sample;
+CREATE TABLE ema_mcc_trans_v2_sample AS
+-- 1854263 строк - 5.39%
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(5.39)
+WHERE transaction_clothes_trans_cnt_tgt_1m > 0
+AND ROWNUM <= 100010
+union all
+-- 1592011 строк - 6.28%
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(6.28)
+WHERE transaction_cafe_trans_cnt_tgt_1m > 0
+AND ROWNUM <= 100010
+union all
+-- 3038811 строк - 3.29%
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(3.29)
+WHERE transaction_fastfood_trans_cnt_tgt_1m > 0
+AND ROWNUM <= 100010
+union all
+-- 4786557 строк - 2.08%
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(2.08)
+WHERE transaction_supermarkets_v2_trans_cnt_tgt_1m > 0
+AND ROWNUM <= 100010
+union all
+-- 1025367 строк - 9.75%
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(9.75)
+WHERE transaction_marketplace_trans_cnt_tgt_1m > 0
+AND ROWNUM <= 100010
+;
 
-    return optimized_df
+
+select * from ema_mcc_trans_v2_sample;
+select count(*) from ema_mcc_trans_v2_sample; --498996
+
+drop table eam_mcc_trans_v2_sample_dist;
+create table ema_mcc_trans_v2_sample_dist as 
+select distinct * from ema_mcc_trans_v2_sample;
+
+select count(*) from ema_mcc_trans_v2_sample_dist; --473463
+
+drop table ema_mcc_trans_v2_feat_sample;
+create table ema_mcc_trans_v2_feat_sample as
+select distinct client_did, report_date from ema_mcc_trans_v2_sample_dist;
+
+select count(*) from ema_mcc_trans_v2_feat_sample;
+
+grant select on ema_mcc_trans_v2_feat_sample to public;
+
+drop table ema_mcc_trans_v2_report_dates;
+drop table ema_mcc_trans_v2_base;
+drop table ema_mcc_trans_v2_all;
+drop table ema_mcc_trans_v2_agg;
+drop table ema_mcc_trans_v2_all_2;
+drop table ema_mcc_trans_v2_agg_2;
+drop table ema_mcc_trans_v2_p1;
+drop table ema_mcc_trans_v2_p2;
+
+drop table ema_mcc_trans_v2_p3;
+drop table ema_mcc_trans_v2_sample;
+drop table ema_mcc_trans_v2_sample_dist;
+
+
+
+drop table ema_mcc_trans_v2_sample;
+CREATE TABLE ema_mcc_trans_v2_sample AS
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(3.21)
+WHERE transaction_clothes_trans_flg_3m > 0
+AND ROWNUM <= 100000
+union all
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(3.68)
+WHERE transaction_cafe_trans_flg_3m > 0
+AND ROWNUM <= 100000
+union all
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(1.84)
+WHERE transaction_fastfood_trans_flg_3m > 0
+AND ROWNUM <= 100000
+union all
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(1.27)
+WHERE transaction_supermarkets_v2_trans_flg_3m > 0
+AND ROWNUM <= 100000
+union all
+SELECT *
+FROM ema_mcc_trans_v2_p3
+SAMPLE(6.51)
+WHERE transaction_marketplace_trans_flg_3m > 0
+AND ROWNUM <= 100000
+;
