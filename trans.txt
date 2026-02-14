@@ -1,264 +1,63 @@
---все таблицы в cdw с префиксом ema_sample_es18094 вместо ema_mcc_trans_v2!!!!!!!!!!!!!!!
+## 1. Таргет по месяцам (аналог уровня таргета в классификации)
+Среднее и медиана целевой переменной по месяцам — видно тренд и сезонность.
 
+def target_by_month(df, date_col, target_cols, agg="mean", figsize=(12, 4)):
+    """График агрегата таргета по месяцам (agg: 'mean' или 'median')."""
+    df = df.copy()
+    df["_month"] = df[date_col].dt.to_period("M")
+    g = df.groupby("_month")[target_cols].agg(agg)
+    g.plot(figsize=figsize, title=f"Таргет по месяцам ({agg})")
+    plt.xticks(rotation=45)
+    plt.ylabel(agg)
+    plt.legend(bbox_to_anchor=(1.02, 1))
+    plt.tight_layout()
+    plt.show()
+    return g
 
-create table ema_mcc_trans_v2_report_dates as 
-select ADD_MONTHS(date'2025-01-20', LEVEL - 1) as report_date
-from dual
-connect by level <= 12;
+# Пример: таргеты по одной категории (cnt и sum)
+target_cols = ["transaction_clothes_trans_cnt_tgt_1m", "transaction_clothes_trans_sum_tgt_1m"]
+target_by_month(df, DATE_COL, target_cols)
 
-select * from ema_mcc_trans_v2_report_dates;
+## 2. Распределение таргета
+Гистограмма и ящик с усами — асимметрия, выбросы, нули.
 
-create table ema_mcc_trans_v2_base as
-SELECT
-	rd.report_date,
-	c.client_did
-FROM ema_mcc_trans_v2_report_dates rd
-cross join dm_mrk.DM_MRK_CONTRACT@cdw c 
-WHERE c.IS_ACTIVE_FLG = 1 
-	AND c.OPEN_DT < rd.report_date
-GROUP BY rd.report_date, c.client_did ;
+def target_distribution(df, target_cols, ncols=2, log_scale=False):
+    """Гистограммы и boxplot по списку таргетов. log_scale — логарифм по оси x для сумм."""
+    n = len(target_cols)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols * 2, figsize=(5 * ncols * 2, 3 * nrows))
+    if nrows == 1:
+        axes = axes.reshape(1, -1)
+    for i, col in enumerate(target_cols):
+        r, c = i // ncols, (i % ncols) * 2
+        x = df[col].dropna()
+        if log_scale and x.max() > 0:
+            x = np.log1p(x)
+        axes[r, c].hist(x, bins=50, edgecolor="black", alpha=0.7)
+        axes[r, c].set_title(col)
+        axes[r, c + 1].boxplot(df[col].dropna(), vert=True)
+        axes[r, c + 1].set_title(col + " (box)")
+    for j in range(len(target_cols) * 2, axes.size):
+        axes.flat[j].set_visible(False)
+    plt.tight_layout()
+    plt.show()
 
-select count(*) from EMA_MCC_TRANS_V2_BASE; --126622822
+target_distribution(df, target_cols, log_scale=True)
 
---транзакции для условия наличия транзакций в нужной категории и таргета
-create table ema_mcc_trans_v2_all as 
-select /*+parallel(16)*/ 
-	a.client_did,
-	a.report_date,
-	trunc(dm.transaction_dtm) as transaction_dtm,
-	dm.amount_rur,
-	dm.direction,
-	c.categ
-from ema_mcc_trans_v2_base a
-join DM_MRK.DM_MRK_TRANSACTION dm
-	on  a.client_did = dm.client_did 
-	and dm.transaction_dtm < ADD_MONTHS(a.report_date, 1) 
-	and dm.transaction_dtm >= ADD_MONTHS(a.report_date, -3)
-    and dm.direction = 'D'
-left join sb_dirkaim.ema_mcc_category c
-	on dm.mcc_code = c.mcc_code
-where c.categ in ('Одежда и обувь', 'Кафе и рестораны', 'Фастфуд')
-;
+## 4. Сводка по таргетам: среднее, медиана, std, доля нулей
+Таблица — общая и при необходимости по месяцам.
 
-create table ema_mcc_trans_v2_agg as
-SELECT 
-    /* +parallel(8)+ */
-    d.client_did,
-    d.report_date,
-    COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Одежда и обувь' THEN 1 END) AS transaction_clothes_trans_flg_3m,
-	COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Кафе и рестораны' THEN 1 END) AS transaction_cafe_trans_flg_3m,
-	COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Фастфуд' THEN 1 END) AS transaction_fastfood_trans_flg_3m,
-    
-	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Одежда и обувь' THEN 1 END) AS transaction_clothes_trans_cnt_tgt_1m,
-    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Одежда и обувь' THEN amount_rur ELSE 0 END) AS transaction_clothes_trans_sum_tgt_1m,
-	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Кафе и рестораны' THEN 1 END) AS transaction_cafe_trans_cnt_tgt_1m,
-    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Кафе и рестораны' THEN amount_rur ELSE 0 END) AS transaction_cafe_trans_sum_tgt_1m,
-	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Фастфуд' THEN 1 END) AS transaction_fastfood_trans_cnt_tgt_1m,
-    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Фастфуд' THEN amount_rur ELSE 0 END) AS transaction_fastfood_trans_sum_tgt_1m
-from ema_mcc_trans_v2_base d 
-left join ema_mcc_trans_v2_all t 
-    on d.client_did = t.client_did 
-group by 
-d.client_did
-, d.report_date;
+def target_summary(df, target_cols, by_month=False, date_col=None):
+    """Таблица: count, mean, median, std, min, max, доля нулей. by_month=True — то же по месяцам."""
+    if by_month and date_col:
+        df = df.copy()
+        df["_month"] = df[date_col].dt.to_period("M")
+        return df.groupby("_month")[target_cols].agg(
+            ["count", "mean", "median", "std", "min", "max"]
+        ).round(2)
+    res = df[target_cols].agg(["count", "mean", "median", "std", "min", "max"]).T
+    res["pct_zero"] = (df[target_cols] == 0).mean() * 100
+    return res.round(2)
 
-
---транзакции для условия наличия транзакций в нужной категории и таргета
-create table ema_mcc_trans_v2_all_2 as 
-select /*+parallel(16)*/ 
-	a.client_did,
-	a.report_date,
-	trunc(dm.transaction_dtm) as transaction_dtm,
-	dm.amount_rur,
-	dm.direction,
-	c.categ
-from ema_mcc_trans_v2_base a
-join DM_MRK.DM_MRK_TRANSACTION dm
-	on  a.client_did = dm.client_did 
-	and dm.transaction_dtm < ADD_MONTHS(a.report_date, 1) 
-	and dm.transaction_dtm >= ADD_MONTHS(a.report_date, -3)
-    and dm.direction = 'D'
-left join ema_mcc_category_v2 c
-	on dm.mcc_code = c.mcc_code
-where c.categ in ('Супермаркеты', 'Маркетплейсы')
-;
-
-create table ema_mcc_trans_v2_agg_2 as
-SELECT 
-    /* +parallel(8)+ */
-    d.client_did,
-    d.report_date,
-    COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Супермаркеты' THEN 1 END) AS transaction_supermarkets_v2_trans_flg_3m,
-	COUNT(CASE WHEN transaction_dtm < d.report_date and categ = 'Маркетплейсы' THEN 1 END) AS transaction_marketplace_trans_flg_3m,
-    
-	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Супермаркеты' THEN 1 END) AS transaction_supermarkets_v2_trans_cnt_tgt_1m,
-    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Супермаркеты' THEN amount_rur ELSE 0 END) AS transaction_supermarkets_v2_trans_sum_tgt_1m,
-	COUNT(CASE WHEN transaction_dtm >= d.report_date and categ = 'Маркетплейсы' THEN 1 END) AS transaction_marketplace_trans_cnt_tgt_1m,
-    SUM(CASE WHEN transaction_dtm >= d.report_date and categ = 'Маркетплейсы' THEN amount_rur ELSE 0 END) AS transaction_marketplace_trans_sum_tgt_1m
-from ema_mcc_trans_v2_base d 
-left join ema_mcc_trans_v2_all_2 t 
-    on d.client_did = t.client_did 
-group by 
-d.client_did
-, d.report_date;
-
-
-
-drop table ema_mcc_trans_v2_p1;
-create table ema_mcc_trans_v2_p1 as
-select distinct * 
-from ema_mcc_trans_v2_agg
-where transaction_clothes_trans_flg_3m > 0
-	or transaction_cafe_trans_flg_3m > 0
-	or transaction_fastfood_trans_flg_3m > 0;
-    
-drop table ema_mcc_trans_v2_p2;
-create table ema_mcc_trans_v2_p2 as 
-select distinct * 
-from ema_mcc_trans_v2_agg_2 
-where transaction_marketplace_trans_flg_3m > 0 
-    or transaction_supermarkets_v2_trans_flg_3m > 0;
-
-select count(*) from ema_mcc_trans_v2_p1; --6089679 
-select count(*) from ema_mcc_trans_v2_p2; --7935348
-
-
-drop table eam_mcc_trans_v2_p3;
-create table ema_mcc_trans_v2_p3 as
-SELECT 
-    coalesce(t1.client_did, t2.client_did) as client_did,
-    coalesce(t1.report_date, t2.report_date) as report_date,
-
-    coalesce(t1.transaction_supermarkets_v2_trans_flg_3m, 0) as transaction_supermarkets_v2_trans_flg_3m,
-    coalesce(t1.transaction_marketplace_trans_flg_3m, 0) as transaction_marketplace_trans_flg_3m,
-    coalesce(t1.transaction_supermarkets_v2_trans_cnt_tgt_1m, 0) as transaction_supermarkets_v2_trans_cnt_tgt_1m,
-    coalesce(t1.transaction_supermarkets_v2_trans_sum_tgt_1m, 0) as transaction_supermarkets_v2_trans_sum_tgt_1m,
-    coalesce(t1.transaction_marketplace_trans_cnt_tgt_1m, 0) as transaction_marketplace_trans_cnt_tgt_1m,
-    coalesce(t1.transaction_marketplace_trans_sum_tgt_1m, 0) as transaction_marketplace_trans_sum_tgt_1m,
-
-    coalesce(t2.transaction_clothes_trans_flg_3m, 0) as transaction_clothes_trans_flg_3m,
-    coalesce(t2.transaction_cafe_trans_flg_3m, 0) as transaction_cafe_trans_flg_3m,
-    coalesce(t2.transaction_fastfood_trans_flg_3m, 0) as transaction_fastfood_trans_flg_3m,
-    coalesce(t2.transaction_clothes_trans_cnt_tgt_1m, 0) as transaction_clothes_trans_cnt_tgt_1m,
-    coalesce(t2.transaction_clothes_trans_sum_tgt_1m, 0) as transaction_clothes_trans_sum_tgt_1m,
-    coalesce(t2.transaction_cafe_trans_cnt_tgt_1m, 0) as transaction_cafe_trans_cnt_tgt_1m,
-    coalesce(t2.transaction_cafe_trans_sum_tgt_1m, 0) as transaction_cafe_trans_sum_tgt_1m,
-    coalesce(t2.transaction_fastfood_trans_cnt_tgt_1m, 0) as transaction_fastfood_trans_cnt_tgt_1m,
-    coalesce(t2.transaction_fastfood_trans_sum_tgt_1m, 0) as transaction_fastfood_trans_sum_tgt_1m
-FROM ema_mcc_trans_v2_p2 t1
-FULL JOIN ema_mcc_trans_v2_p1 t2 
-    ON t1.CLIENT_DID = t2.CLIENT_DID 
-    AND t1.REPORT_DATE = t2.REPORT_DATE
-;
-
-select count(*) from ema_mcc_trans_v2_p3; --8166639
-
-select count(*) from ema_mcc_trans_v2_p3 where transaction_clothes_trans_cnt_tgt_1m > 0; --1854263
-select count(*) from ema_mcc_trans_v2_p3 where transaction_cafe_trans_cnt_tgt_1m > 0; --1592011
-select count(*) from ema_mcc_trans_v2_p3 where transaction_fastfood_trans_cnt_tgt_1m > 0; --3038811
-select count(*) from ema_mcc_trans_v2_p3 where transaction_supermarkets_v2_trans_cnt_tgt_1m > 0; -- 4786557
-select count(*) from ema_mcc_trans_v2_p3 where transaction_marketplace_trans_cnt_tgt_1m > 0; -- 1025367
-
-drop table ema_mcc_trans_v2_sample;
-CREATE TABLE ema_mcc_trans_v2_sample AS
--- 1854263 строк - 5.39%
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(5.39)
-WHERE transaction_clothes_trans_cnt_tgt_1m > 0
-AND ROWNUM <= 100010
-union all
--- 1592011 строк - 6.28%
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(6.28)
-WHERE transaction_cafe_trans_cnt_tgt_1m > 0
-AND ROWNUM <= 100010
-union all
--- 3038811 строк - 3.29%
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(3.29)
-WHERE transaction_fastfood_trans_cnt_tgt_1m > 0
-AND ROWNUM <= 100010
-union all
--- 4786557 строк - 2.08%
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(2.08)
-WHERE transaction_supermarkets_v2_trans_cnt_tgt_1m > 0
-AND ROWNUM <= 100010
-union all
--- 1025367 строк - 9.75%
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(9.75)
-WHERE transaction_marketplace_trans_cnt_tgt_1m > 0
-AND ROWNUM <= 100010
-;
-
-
-select * from ema_mcc_trans_v2_sample;
-select count(*) from ema_mcc_trans_v2_sample; --498996
-
-drop table eam_mcc_trans_v2_sample_dist;
-create table ema_mcc_trans_v2_sample_dist as 
-select distinct * from ema_mcc_trans_v2_sample;
-
-select count(*) from ema_mcc_trans_v2_sample_dist; --473463
-
-drop table ema_mcc_trans_v2_feat_sample;
-create table ema_mcc_trans_v2_feat_sample as
-select distinct client_did, report_date from ema_mcc_trans_v2_sample_dist;
-
-select count(*) from ema_mcc_trans_v2_feat_sample;
-
-grant select on ema_mcc_trans_v2_feat_sample to public;
-
-drop table ema_mcc_trans_v2_report_dates;
-drop table ema_mcc_trans_v2_base;
-drop table ema_mcc_trans_v2_all;
-drop table ema_mcc_trans_v2_agg;
-drop table ema_mcc_trans_v2_all_2;
-drop table ema_mcc_trans_v2_agg_2;
-drop table ema_mcc_trans_v2_p1;
-drop table ema_mcc_trans_v2_p2;
-
-drop table ema_mcc_trans_v2_p3;
-drop table ema_mcc_trans_v2_sample;
-drop table ema_mcc_trans_v2_sample_dist;
-
-
-
-drop table ema_mcc_trans_v2_sample;
-CREATE TABLE ema_mcc_trans_v2_sample AS
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(3.21)
-WHERE transaction_clothes_trans_flg_3m > 0
-AND ROWNUM <= 100000
-union all
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(3.68)
-WHERE transaction_cafe_trans_flg_3m > 0
-AND ROWNUM <= 100000
-union all
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(1.84)
-WHERE transaction_fastfood_trans_flg_3m > 0
-AND ROWNUM <= 100000
-union all
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(1.27)
-WHERE transaction_supermarkets_v2_trans_flg_3m > 0
-AND ROWNUM <= 100000
-union all
-SELECT *
-FROM ema_mcc_trans_v2_p3
-SAMPLE(6.51)
-WHERE transaction_marketplace_trans_flg_3m > 0
-AND ROWNUM <= 100000
-;
+target_summary(df, target_cols)
+# target_summary(df, target_cols, by_month=True, date_col=DATE_COL)
