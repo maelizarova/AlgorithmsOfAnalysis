@@ -1,63 +1,7 @@
-## 1. Таргет по месяцам (аналог уровня таргета в классификации)
-Среднее и медиана целевой переменной по месяцам — видно тренд и сезонность.
-
-def target_by_month(df, date_col, target_cols, agg="mean", figsize=(12, 4)):
-    """График агрегата таргета по месяцам (agg: 'mean' или 'median')."""
-    df = df.copy()
-    df["_month"] = df[date_col].dt.to_period("M")
-    g = df.groupby("_month")[target_cols].agg(agg)
-    g.plot(figsize=figsize, title=f"Таргет по месяцам ({agg})")
-    plt.xticks(rotation=45)
-    plt.ylabel(agg)
-    plt.legend(bbox_to_anchor=(1.02, 1))
-    plt.tight_layout()
-    plt.show()
-    return g
-
-# Пример: таргеты по одной категории (cnt и sum)
-target_cols = ["transaction_clothes_trans_cnt_tgt_1m", "transaction_clothes_trans_sum_tgt_1m"]
-target_by_month(df, DATE_COL, target_cols)
-
-## 2. Распределение таргета
-Гистограмма и ящик с усами — асимметрия, выбросы, нули.
-
-def target_distribution(df, target_cols, ncols=2, log_scale=False):
-    """Гистограммы и boxplot по списку таргетов. log_scale — логарифм по оси x для сумм."""
-    n = len(target_cols)
-    nrows = (n + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols * 2, figsize=(5 * ncols * 2, 3 * nrows))
-    if nrows == 1:
-        axes = axes.reshape(1, -1)
-    for i, col in enumerate(target_cols):
-        r, c = i // ncols, (i % ncols) * 2
-        x = df[col].dropna()
-        if log_scale and x.max() > 0:
-            x = np.log1p(x)
-        axes[r, c].hist(x, bins=50, edgecolor="black", alpha=0.7)
-        axes[r, c].set_title(col)
-        axes[r, c + 1].boxplot(df[col].dropna(), vert=True)
-        axes[r, c + 1].set_title(col + " (box)")
-    for j in range(len(target_cols) * 2, axes.size):
-        axes.flat[j].set_visible(False)
-    plt.tight_layout()
-    plt.show()
-
-target_distribution(df, target_cols, log_scale=True)
-
-## 4. Сводка по таргетам: среднее, медиана, std, доля нулей
-Таблица — общая и при необходимости по месяцам.
-
-def target_summary(df, target_cols, by_month=False, date_col=None):
-    """Таблица: count, mean, median, std, min, max, доля нулей. by_month=True — то же по месяцам."""
-    if by_month and date_col:
-        df = df.copy()
-        df["_month"] = df[date_col].dt.to_period("M")
-        return df.groupby("_month")[target_cols].agg(
-            ["count", "mean", "median", "std", "min", "max"]
-        ).round(2)
-    res = df[target_cols].agg(["count", "mean", "median", "std", "min", "max"]).T
-    res["pct_zero"] = (df[target_cols] == 0).mean() * 100
-    return res.round(2)
-
-target_summary(df, target_cols)
-# target_summary(df, target_cols, by_month=True, date_col=DATE_COL)
+SELECT *
+FROM (
+  SELECT t.*,
+         NTILE(100) OVER (PARTITION BY group_column ORDER BY your_column) AS pct
+  FROM your_table t
+)
+WHERE pct <= 95;
