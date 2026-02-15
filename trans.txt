@@ -79,11 +79,52 @@ def evaluate_model(model, train_df, test_df, oot_df, target_col, type_="cnt", av
     return pd.DataFrame(rows)
 
 
-# --- Пример вызова (сначала важность, потом RFE, затем оценка) ---
-#
-# selected, imp, model = select_by_importance(train_df, target_col="target", eval_data=test_df, max_features=200)
-# selected, selector, names, model = select_by_rfe(train_df[selected + ["target"]], target_col="target", n_features_to_select=100, step=50)
-# X_train_sel = train_df[selected]
-# X_test_sel = test_df[selected]
-# X_oot_sel = oot_df[selected]
-# report = evaluate_model(model, train_df[selected + ["target"]], test_df[selected + ["target"]], oot_df[selected + ["target"]], target_col="target", type_="cnt", avg_3m_col=None)
+def metric_vs_n_features(data, target_col, eval_data, imp, step=30, metric="rmse", random_state=42):
+    """
+    Перебор числа признаков по важности: от 20 с шагом step до n_all. imp — результат select_by_importance (второй возврат).
+    Возвращает (report_df, best_n, selected, model).
+    """
+    MIN_FEATURES = 20
+    n_all = len(imp)
+    start = min(MIN_FEATURES, n_all)
+    n_features_list = list(range(start, n_all + 1, step))
+    if n_all not in n_features_list:
+        n_features_list.append(n_all)
+    n_features_list = sorted(set(n_features_list))
+
+    X_ev = eval_data[imp.index.tolist()]
+    y_ev = eval_data[target_col].values
+    fn = mean_squared_error if metric == "rmse" else mean_absolute_error
+
+    rows = []
+    for n in n_features_list:
+        cols = imp.head(n).index.tolist()
+        X_tr = data[cols]
+        y_tr = data[target_col]
+        m = lgb.LGBMRegressor(random_state=random_state, n_estimators=100, max_depth=4, verbosity=-1)
+        m.fit(X_tr, y_tr, eval_set=[(X_ev[cols], y_ev)])
+        pred = m.predict(X_ev[cols])
+        val = np.sqrt(fn(y_ev, pred)) if metric == "rmse" else fn(y_ev, pred)
+        rows.append({"n_features": n, "metric_value": val})
+
+    report_df = pd.DataFrame(rows)
+    best_n = int(report_df.loc[report_df["metric_value"].idxmin(), "n_features"])
+    selected = imp.head(best_n).index.tolist()
+    model = lgb.LGBMRegressor(random_state=random_state, n_estimators=100, max_depth=4, verbosity=-1)
+    model.fit(data[selected], data[target_col], eval_set=[(eval_data[selected], eval_data[target_col])])
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(report_df["n_features"], report_df["metric_value"], marker="o")
+    plt.axvline(best_n, color="gray", linestyle="--", label=f"best n={best_n}")
+    plt.xlabel("Число признаков")
+    plt.ylabel(metric.upper())
+    plt.title("Метрика на eval от n (топ по важности)")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    return report_df, best_n, selected, model
+
+
+selected, imp, _ = select_by_importance(train_df, target_col="target", eval_data=test_df, max_features=500)
+report_n, best_n, selected, model = metric_vs_n_features(train_df[selected + ["target"]], target_col="target", eval_data=test_df[selected + ["target"]], imp=imp, step=30)
