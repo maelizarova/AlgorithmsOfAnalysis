@@ -1,40 +1,39 @@
-"""
-Отбор признаков для регрессии: важность из дерева и RFECV.
-"""
-
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import lightgbm as lgb
-from sklearn.feature_selection import RFECV
+from sklearn.feature_selection import RFE
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 
-def select_by_importance(X, y, max_features=None, importance_threshold=None, random_state=42):
+def select_by_importance(data, target_col, eval_data, max_features=None, importance_threshold=None, random_state=42):
     """
-    Важность из LGBMRegressor. Оставить топ max_features или выше importance_threshold.
+    Важность из LGBMRegressor.
     """
+    X = data.drop(columns=[target_col])
+    y = data[target_col]
+    eval_set = [(eval_data.drop(columns=[target_col]), eval_data[target_col])]
     X_ = X.select_dtypes(include=[np.number]).copy()
-    X_.fillna(X_.median(), inplace=True)
+    eval_align = [(X_val[X_.columns], y_val) for X_val, y_val in eval_set]
     m = lgb.LGBMRegressor(random_state=random_state, n_estimators=100, max_depth=4, verbosity=-1)
-    m.fit(X_, y)
+    m.fit(X_, y, eval_set=eval_align)
     imp = pd.Series(m.feature_importances_, index=X_.columns).sort_values(ascending=False)
-    if importance_threshold is not None:
-        selected = imp[imp >= importance_threshold].index.tolist()
-    else:
-        selected = imp.index.tolist()
+    selected = imp[imp >= importance_threshold].index.tolist() if importance_threshold is not None else imp.index.tolist()
     if max_features is not None:
         selected = imp.head(max_features).index.tolist()
     return selected, imp
 
 
-def select_by_rfecv(X, y, estimator=None, min_features=10, step=50, cv=3, scoring="neg_mean_squared_error"):
+def select_by_rfe(data, target_col, estimator=None, n_features_to_select=100, step=50):
     """
-    RFECV: рекурсивное удаление с кросс-валидацией. Долго при большом числе фичей.
-    estimator — модель с feature_importances_ или coef_; по умолчанию LGBMRegressor.
+    RFE без кросс-валидации: рекурсивное удаление признаков до n_features_to_select.
+    Возвращает (selected, selector, feature_names): отобранные признаки, обученный RFE, имена колонок (для plot_rfe_ranking).
     """
+    X = data.drop(columns=[target_col])
+    y = data[target_col]
     X_ = X.select_dtypes(include=[np.number]).copy()
-    X_.fillna(X_.median(), inplace=True)
     if estimator is None:
         estimator = lgb.LGBMRegressor(n_estimators=50, max_depth=4, random_state=42, verbosity=-1)
-    selector = RFECV(estimator=estimator, step=step, cv=cv, scoring=scoring, min_features_to_select=min_features)
+    selector = RFE(estimator=estimator, n_features_to_select=n_features_to_select, step=step)
     selector.fit(X_, y)
-    return X_.columns[selector.support_].tolist(), selector
+    return X_.columns[selector.support_].tolist(), selector, X_.columns.tolist()
