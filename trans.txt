@@ -1,3 +1,7 @@
+"""
+Отбор признаков для регрессии: важность из дерева и RFE (без кросс-валидации).
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,7 +12,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 def select_by_importance(data, target_col, eval_data, max_features=None, importance_threshold=None, random_state=42):
     """
-    Важность из LGBMRegressor.
+    Важность из LGBMRegressor. Возвращает (selected, imp, model) — model для evaluate_model.
     """
     X = data.drop(columns=[target_col])
     y = data[target_col]
@@ -21,13 +25,13 @@ def select_by_importance(data, target_col, eval_data, max_features=None, importa
     selected = imp[imp >= importance_threshold].index.tolist() if importance_threshold is not None else imp.index.tolist()
     if max_features is not None:
         selected = imp.head(max_features).index.tolist()
-    return selected, imp
+    return selected, imp, m
 
 
 def select_by_rfe(data, target_col, estimator=None, n_features_to_select=100, step=50):
     """
     RFE без кросс-валидации: рекурсивное удаление признаков до n_features_to_select.
-    Возвращает (selected, selector, feature_names): отобранные признаки, обученный RFE, имена колонок (для plot_rfe_ranking).
+    Возвращает (selected, selector, feature_names, model): model — обученная модель (selector.estimator_) для evaluate_model.
     """
     X = data.drop(columns=[target_col])
     y = data[target_col]
@@ -36,4 +40,50 @@ def select_by_rfe(data, target_col, estimator=None, n_features_to_select=100, st
         estimator = lgb.LGBMRegressor(n_estimators=50, max_depth=4, random_state=42, verbosity=-1)
     selector = RFE(estimator=estimator, n_features_to_select=n_features_to_select, step=step)
     selector.fit(X_, y)
-    return X_.columns[selector.support_].tolist(), selector, X_.columns.tolist()
+    return X_.columns[selector.support_].tolist(), selector, X_.columns.tolist(), selector.estimator_
+
+
+def evaluate_model(model, train_df, test_df, oot_df, target_col, type_="cnt", avg_3m_col=None):
+    """
+    Сводка по модели: Train / Test / OOT. Возвращает DataFrame с колонками:
+    Target, AVG target, AVG pred, AVG 3m, Dataset, MAPE, MAE, MAE 95%, RMSE, TYPE, Non Zero.
+    type_ — 'cnt' или 'sum'. avg_3m_col — имя колонки для «AVG 3m» (среднее по датасету); если None — 0.
+    """
+    feat = getattr(model, "feature_name_", None) or getattr(model, "feature_names_in_", None)
+    if feat is None:
+        feat = [c for c in train_df.columns if c != target_col]
+    rows = []
+    for name, df in [("Train", train_df), ("Test", test_df), ("OOT", oot_df)]:
+        X = df[feat] if all(c in df.columns for c in feat) else df.drop(columns=[target_col])
+        y = df[target_col].values
+        pred = model.predict(X)
+        nz = (y != 0)
+        mape = np.mean(np.abs((y - pred)[nz]) / y[nz]) if nz.sum() > 0 else np.nan
+        mae = np.mean(np.abs(y - pred))
+        mae_95 = np.percentile(np.abs(y - pred), 95)
+        rmse = np.sqrt(np.mean((y - pred) ** 2))
+        avg_3m = df[avg_3m_col].mean() if avg_3m_col and avg_3m_col in df.columns else 0.0
+        rows.append({
+            "Target": target_col,
+            "AVG target": y.mean(),
+            "AVG pred": pred.mean(),
+            "AVG 3m": avg_3m,
+            "Dataset": name,
+            "MAPE": mape,
+            "MAE": mae,
+            "MAE 95%": mae_95,
+            "RMSE": rmse,
+            "TYPE": type_,
+            "Non Zero": int(nz.sum()),
+        })
+    return pd.DataFrame(rows)
+
+
+# --- Пример вызова (сначала важность, потом RFE, затем оценка) ---
+#
+# selected, imp, model = select_by_importance(train_df, target_col="target", eval_data=test_df, max_features=200)
+# selected, selector, names, model = select_by_rfe(train_df[selected + ["target"]], target_col="target", n_features_to_select=100, step=50)
+# X_train_sel = train_df[selected]
+# X_test_sel = test_df[selected]
+# X_oot_sel = oot_df[selected]
+# report = evaluate_model(model, train_df[selected + ["target"]], test_df[selected + ["target"]], oot_df[selected + ["target"]], target_col="target", type_="cnt", avg_3m_col=None)
