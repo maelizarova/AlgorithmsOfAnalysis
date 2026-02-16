@@ -1,10 +1,30 @@
-%%time
-PRESELECTION_TOP_N = 200  # Количество предварительно отобранных фичей
-
-target = TARGETS[0]
-
-selected, imp, _ = select_by_importance(train[features + [target]], target, 
-                                            eval_data=test[features + [target]], max_features=PRESELECTION_TOP_N)
-report_n, best_n, selected, model = metric_vs_n_features(train[selected + [target]], target, 
-                                                         eval_data=test[selected + [target]], imp=imp, step=10)
-evaluate_model(model, train_df, test_df, oot_df, target_col, type_="cnt", avg_3m_col=None)
+def evaluate_model(model, train_df, test_df, oot_df, target_col):
+    """
+    Сводка по модели: Train / Test / OOT. Возвращает DataFrame с колонками:
+    Target, AVG target, AVG pred, Dataset, MAPE, MAE, MAE 95%, RMSE, Non Zero.
+    """
+    feat = getattr(model, "feature_name_", None) or getattr(model, "feature_names_in_", None)
+    if feat is None:
+        feat = [c for c in train_df.columns if c != target_col]
+    rows = []
+    for name, df in [("Train", train_df), ("Test", test_df), ("OOT", oot_df)]:
+        X = df[feat] if all(c in df.columns for c in feat) else df.drop(columns=[target_col])
+        y = df[target_col].values
+        pred = model.predict(X)
+        nz = (y != 0)
+        mape = np.mean(np.abs((y - pred)[nz]) / y[nz]) if nz.sum() > 0 else np.nan
+        mae = np.mean(np.abs(y - pred))
+        mae_95 = np.percentile(np.abs(y - pred), 95)
+        rmse = np.sqrt(np.mean((y - pred) ** 2))
+        rows.append({
+            "Target": target_col,
+            "AVG target": y.mean(),
+            "AVG pred": pred.mean(),
+            "Dataset": name,
+            "MAPE": mape,
+            "MAE": mae,
+            "MAE 95%": mae_95,
+            "RMSE": rmse,
+            "Non Zero": int(nz.sum()),
+        })
+    return pd.DataFrame(rows)
