@@ -2,6 +2,7 @@ def evaluate_model(model, train_df, test_df, oot_df, target_col):
     """
     Сводка по модели: Train / Test / OOT. Возвращает DataFrame с колонками:
     Target, AVG target, AVG pred, Dataset, MAPE, MAE, MAE 95%, RMSE, Non Zero.
+    MAE 95% — MAE по 95% данных без 5% наибольших значений таргета y (выбросы по y).
     """
     feat = getattr(model, "feature_name_", None) or getattr(model, "feature_names_in_", None)
     if feat is None:
@@ -14,7 +15,9 @@ def evaluate_model(model, train_df, test_df, oot_df, target_col):
         nz = (y != 0)
         mape = np.mean(np.abs((y - pred)[nz]) / y[nz]) if nz.sum() > 0 else np.nan
         mae = np.mean(np.abs(y - pred))
-        mae_95 = np.percentile(np.abs(y - pred), 95)
+        thresh_y = np.percentile(y, 95)
+        mask = y <= thresh_y
+        mae_95 = np.mean(np.abs(y[mask] - pred[mask])) if mask.sum() > 0 else np.nan
         rmse = np.sqrt(np.mean((y - pred) ** 2))
         rows.append({
             "Target": target_col,
