@@ -1,52 +1,48 @@
-def metric_vs_n_features(data, target_col, eval_data, imp, step=30, metric="rmse", random_state=42, threshold=0.005):
+def tune_hyperparams(data, target_col, eval_data, max_evals=30, metric="rmse", random_state=42):
     """
-    Перебор числа признаков по важности: от 20 с шагом step до n_all. imp — результат select_by_importance (второй возврат).
-    threshold: порог — берётся наименьшее n, при котором метрика <= минимум * (1 + threshold). Например 0.005 = 0.5%.
-    Если None — просто argmin (как раньше). Возвращает (report_df, best_n, selected, model).
+    Подбор гиперпараметров LGBM через Hyperopt (TPE). Обучает на data, минимизирует метрику на eval_data.
+    Возвращает (best_model, best_params). data и eval_data — датафреймы с признаками и target_col.
     """
-    MIN_FEATURES = 20
-    n_all = len(imp)
-    start = min(MIN_FEATURES, n_all)
-    n_features_list = list(range(start, n_all + 1, step))
-    if n_all not in n_features_list:
-        n_features_list.append(n_all)
-    n_features_list = sorted(set(n_features_list))
-
-    X_ev = eval_data[imp.index.tolist()]
+    X = data.drop(columns=[target_col])
+    y = data[target_col]
+    X_ev = eval_data.drop(columns=[target_col])
     y_ev = eval_data[target_col].values
     fn = mean_squared_error if metric == "rmse" else mean_absolute_error
 
-    rows = []
-    for n in n_features_list:
-        cols = imp.head(n).index.tolist()
-        X_tr = data[cols]
-        y_tr = data[target_col]
-        m = lgb.LGBMRegressor(random_state=random_state, n_estimators=100, max_depth=4, verbosity=-1)
-        m.fit(X_tr, y_tr, eval_set=[(X_ev[cols], y_ev)])
-        pred = m.predict(X_ev[cols])
-        val = np.sqrt(fn(y_ev, pred)) if metric == "rmse" else fn(y_ev, pred)
-        rows.append({"n_features": n, "metric_value": val})
+    space = {
+        "n_estimators": hp.quniform("n_estimators", 50, 300, 25),
+        "max_depth": hp.quniform("max_depth", 3, 10, 1),
+        "learning_rate": hp.loguniform("learning_rate", np.log(0.02), np.log(0.3)),
+        "num_leaves": hp.quniform("num_leaves", 15, 127, 10),
+        "min_child_samples": hp.quniform("min_child_samples", 5, 50, 5),
+    }
 
-    report_df = pd.DataFrame(rows)
-    best_metric = report_df["metric_value"].min()
-    if threshold is not None:
-        metric_limit = best_metric * (1 + threshold)
-        candidates = report_df[report_df["metric_value"] <= metric_limit].sort_values("n_features")
-        best_n = int(candidates.iloc[0]["n_features"]) if len(candidates) > 0 else int(report_df.loc[report_df["metric_value"].idxmin(), "n_features"])
-    else:
-        best_n = int(report_df.loc[report_df["metric_value"].idxmin(), "n_features"])
-    selected = imp.head(best_n).index.tolist()
-    model = lgb.LGBMRegressor(random_state=random_state, n_estimators=100, max_depth=4, verbosity=-1)
-    model.fit(data[selected], data[target_col], eval_set=[(eval_data[selected], eval_data[target_col])])
+    def objective(params):
+        p = {
+            "n_estimators": int(params["n_estimators"]),
+            "max_depth": int(params["max_depth"]),
+            "learning_rate": params["learning_rate"],
+            "num_leaves": int(params["num_leaves"]),
+            "min_child_samples": int(params["min_child_samples"]),
+        }
+        m = lgb.LGBMRegressor(random_state=random_state, verbosity=-1, **p)
+        m.fit(X, y, eval_set=[(X_ev, y_ev)])
+        pred = m.predict(X_ev)
+        score = np.sqrt(fn(y_ev, pred)) if metric == "rmse" else fn(y_ev, pred)
+        return {"loss": score, "status": STATUS_OK}
 
-    plt.figure(figsize=(8, 4))
-    plt.plot(report_df["n_features"], report_df["metric_value"], marker="o")
-    plt.axvline(best_n, color="gray", linestyle="--", label=f"best n={best_n}")
-    plt.xlabel("Число признаков")
-    plt.ylabel(metric.upper())
-    plt.title("Метрика на eval от n (топ по важности)")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
-    return report_df, best_n, selected, model
+    trials = Trials()
+    best = fmin(
+        objective, space, algo=tpe.suggest, max_evals=max_evals, trials=trials,
+        rstate=np.random.default_rng(random_state),
+    )
+    best_params = {
+        "n_estimators": int(best["n_estimators"]),
+        "max_depth": int(best["max_depth"]),
+        "learning_rate": best["learning_rate"],
+        "num_leaves": int(best["num_leaves"]),
+        "min_child_samples": int(best["min_child_samples"]),
+    }
+    best_model = lgb.LGBMRegressor(random_state=random_state, verbosity=-1, **best_params)
+    best_model.fit(X, y, eval_set=[(X_ev, y_ev)])
+    return best_model, best_params
