@@ -1,3 +1,6 @@
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+from hyperopt import fmin, tpe, hp, Trials, STATUS_OK
+
 def tune_hyperparams(data, target_col, eval_data, max_evals=30, metric="rmse", random_state=42):
     """
     Подбор гиперпараметров LGBM через Hyperopt (TPE). Обучает на data, минимизирует метрику на eval_data.
