@@ -1,33 +1,4 @@
-def create_df(df, target, pred_col, y_pred, segment_name):
-    result_df = df[PRIMARY_KEY+[target]].copy()
-    result_df[pred_col] = y_pred
-    result_df['segment'] = segment_name
-
-    return result_df
-
-for target in TARGETS:
-    os.makedirs(f"{PATH_MODELS_DATA}/{target}/", exist_ok=True)
-    best_features = results[target]['selected']
-    train_df = create_df(train, target, f'{target}_pred', results[target]['model'].predict(train[best_features]), 'train')
-    test_df = create_df(test, target, f'{target}_pred', results[target]['model'].predict(test[best_features]), 'test')
-    oot_df = create_df(oot, target, f'{target}_pred', results[target]['model'].predict(oot[best_features]), 'oot')
-    
-    scored_df = pd.concat([train_df, test_df, oot_df], ignore_index=True)
-    
-    # сохраняем train, test, oot выборки после отбора фичей и проскоренную выборку
-    train[PRIMARY_KEY + best_features + [target]].to_parquet(f"{PATH_MODELS_DATA}/{target}/sample_train.parquet")
-    test[PRIMARY_KEY + best_features + [target]].to_parquet(f"{PATH_MODELS_DATA}/{target}/sample_test.parquet")
-    oot[PRIMARY_KEY + best_features + [target]].to_parquet(f"{PATH_MODELS_DATA}/{target}/sample_oot.parquet")
-    scored_df.to_parquet(f"{PATH_MODELS_DATA}/{target}/scored_df.parquet")
-
-    psi_scores = preprocessing.calculate_feat_psi(scored_df[[f'{target}_pred', 'report_date']], [f'{target}_pred'], date_col='report_date')
-    display(psi_scores)
-    psi_result[best_features].T.to_excel(f'{REPORTS_FOLDER}/psi_top20_{target}.xlsx')
-    
-    features_sql = ','.join(f"'{f}'" for f in best_features)
-
-    engine_sb_dirkaim = oracle.create_engine_cdw(USERNAME_SB_DIRKAIM, PASSWORD_SB_DIRKAIM)
-    with engine_sb_dirkaim.connect() as conn:
-        description_df =  pd.read_sql(f"""select * from SB_DIRKAIM.FEATURE_REGISTRY where f_name in ({features_sql})""", conn)
-    description_df = description_df[['f_name', 'f_desc', 'proc']]
-    display(description_df)
+with pd.ExcelWriter("файл.xlsx", engine="openpyxl") as writer:
+    df1.to_excel(writer, sheet_name="Лист1", index=False)
+    df2.to_excel(writer, sheet_name="Лист2", index=False)
+    df3.to_excel(writer, sheet_name="Лист3", index=False)
