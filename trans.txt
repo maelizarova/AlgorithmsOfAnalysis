@@ -1,1072 +1,150 @@
--- Reduced: only variables from list.txt
--- Procedure: EMA_COLLECT_FEAT_DM_MRK_TRANSACTION (reduced)
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
 
-create or replace PROCEDURE            "EMA_COLLECT_FEAT_DM_MRK_TRANSACTION_REDUCED"
-(in_table in VARCHAR2,
-  out_table in VARCHAR2
- )
-AUTHID CURRENT_USER
-IS 
-my_str clob;
-tmp_table_1 VARCHAR2(100);
-tmp_table_2 VARCHAR2(100);
-out_table_1 VARCHAR2(100);
-
-  PROCEDURE drop_table_if_exists(table_name IN VARCHAR2) IS
-  BEGIN
-    EXECUTE IMMEDIATE 'DROP TABLE ' || table_name;
-  EXCEPTION
-    WHEN OTHERS THEN
-      IF SQLCODE = -942 THEN NULL;
-      ELSE RAISE;
-      END IF;
-  END drop_table_if_exists;
-
-BEGIN
-tmp_table_1 := in_table ||'_trans_p1';
-tmp_table_2 := in_table ||'_trans_p2';
-out_table_1 := out_table || '_1';
-
-drop_table_if_exists(tmp_table_1);
-drop_table_if_exists(tmp_table_2);
-drop_table_if_exists(out_table_1);
-
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_0')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_1')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_2')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_4')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_6')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_9')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_10')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_11')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_12')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_18')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_19')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_24')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_35')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_00')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_48')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_49')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_51')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_65')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_70')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_76')));
-
-
-
-execute immediate
-'
-create table '|| tmp_table_1 ||' as 
-select /*+parallel(16)*/ 
-	a.client_did,
-	a.report_date,
-	dm.transaction_dtm,
-	dm.amount_rur,
-	dm.direction,
-	c.categ
-from '||in_table||' a
-join DM_MRK.DM_MRK_TRANSACTION dm
-	on  a.client_did = dm.client_did 
-	and dm.transaction_dtm < a.report_date 
-	and dm.transaction_dtm >= a.report_date - 730
-left join sb_dirkaim.ema_mcc_category c
-	on dm.mcc_code = c.mcc_code
-';
-
-execute immediate
-'
-create table '|| tmp_table_2 ||' as
-select /*+parallel(16)*/ 
-	client_did,
-	report_date,
-	direction,
-	categ,
-	trunc(transaction_dtm) as transaction_dtm,
-	sum(amount_rur) as amount_rur,
-	count(amount_rur) as amount_rur_cnt
-from '|| tmp_table_1 ||'
-group by client_did, report_date, direction, categ, trunc(transaction_dtm)
-';
-
-execute immediate 'create index idx_ema_'|| tmp_table_2 ||' on '|| tmp_table_2 ||'(categ) PARALLEL 16';
-execute immediate 'alter index idx_ema_'|| tmp_table_2 ||' NOPARALLEL';
-
-
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_0 as
-select /*+parallel(8)*/ 
-	client_did, 
-	report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_total_trans_sum_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_2m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) THEN amount_rur ELSE 0 END) AS transaction_total_trans_sum_2m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_total_trans_sum_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -4) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_4m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -4) THEN amount_rur ELSE 0 END) AS transaction_total_trans_sum_4m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_total_trans_sum_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_total_trans_sum_12m,
+	auto_services_trans_max_12m,
+    auto_services_trans_max_1m,
+    transaction_auto_services_trans_max_3m as auto_services_trans_max_3m,
+    transaction_auto_services_trans_max_6m as auto_services_trans_max_6m,
+    transaction_avg_trans_prev_3m as avg_trans_prev_3m,
+    transaction_cafe_trans_cnt_1m_to_total_1m as cafe_trans_count_1m_to_total_1m,
+    transaction_cafe_trans_cnt_3m as cafe_trans_count_3m,
+    transaction_cafe_trans_cnt_3m_to_total_3m as cafe_trans_count_3m_to_total_3m,
+    transaction_cafe_trans_cnt_3m_to_total_6m as cafe_trans_count_3m_to_total_6m,
+    transaction_cafe_trans_cnt_6m_to_total_6m as cafe_trans_count_6m_to_total_6m,
+    transaction_cafe_trans_max_1m as cafe_trans_max_1m,
+    transaction_cafe_trans_sum_12m as cafe_trans_sum_12m,
+    transaction_cafe_trans_sum_1m_to_total_1m as cafe_trans_sum_1m_to_total_1m,
+    transaction_cafe_trans_sum_3m_to_6m as cafe_trans_sum_3m_to_6m,
+    transaction_cafe_trans_sum_6m_to_total_6m as cafe_trans_sum_6m_to_total_6m,
+    transaction_courier_trans_min_6m as courier_trans_min_6m,
+    transaction_days_since_first_trans as days_since_first_trans,
+    transaction_days_since_last_trans as days_since_last_trans,
+    transaction_flowers_trans_max_6m as flowers_trans_max_6m,
+    transaction_fuel_trans_cnt_12m as fuel_trans_count_12m,
+    transaction_fuel_trans_cnt_1m_to_3m as fuel_trans_count_1m_to_3m,
+    transaction_fuel_trans_cnt_1m_to_total_1m as fuel_trans_count_1m_to_total_1m,
+    transaction_fuel_trans_cnt_3m_to_total_6m as fuel_trans_count_3m_to_total_6m,
+    transaction_fuel_trans_cnt_6m as fuel_trans_count_6m,
+    transaction_fuel_trans_cnt_6m_to_total_6m as fuel_trans_count_6m_to_total_6m,
+    transaction_fuel_trans_max_12m as fuel_trans_max_12m,
+    transaction_fuel_trans_sum_12m as fuel_trans_sum_12m,
+    transaction_fuel_trans_sum_1m_to_3m as fuel_trans_sum_1m_to_3m,
+    transaction_fuel_trans_sum_1m_to_total_1m as fuel_trans_sum_1m_to_total_1m,
+    transaction_fuel_trans_sum_3m_to_total_6m as fuel_trans_sum_3m_to_total_6m,
+    transaction_fuel_trans_sum_6m as fuel_trans_sum_6m,
+    transaction_fuel_trans_sum_6m_to_total_6m as fuel_trans_sum_6m_to_total_6m,
+    transaction_hotels_trans_min_12m as hotels_trans_min_12m,
+    CLIENT_SRVC_MODEL_SEGM_is_active_pack_premium_flg_1m_AVG as is_active_pack_premium_flg_1m_mean,
+    transaction_medicine_trans_max_1m as medicine_trans_max_1m,
+    transaction_pharmacies_trans_cnt_1m_to_total_1m as pharmacies_trans_count_1m_to_total_1m,
+    transaction_pharmacies_trans_cnt_3m_to_6m as pharmacies_trans_count_3m_to_6m,
+    transaction_pharmacies_trans_cnt_3m_to_total_6m as pharmacies_trans_count_3m_to_total_6m,
+    transaction_pharmacies_trans_cnt_6m_to_total_6m as pharmacies_trans_count_6m_to_total_6m,
+    transaction_pharmacies_trans_max_12m as pharmacies_trans_max_12m,
+    transaction_pharmacies_trans_sum_1m_to_total_1m as pharmacies_trans_sum_1m_to_total_1m,
+    transaction_pharmacies_trans_sum_3m as pharmacies_trans_sum_3m,
+    transaction_pharmacies_trans_sum_3m_to_total_6m as pharmacies_trans_sum_3m_to_total_6m,
+    transaction_pharmacies_trans_sum_6m_to_total_6m as pharmacies_trans_sum_6m_to_total_6m,
+    CLIENT_SRVC_MODEL_SEGM_acc_passiv_rub_amt_1m_AVG as portf_acc_passiv_rub_amt_1m_mean,
+    sal_avg_12 as sal_avg_12,
+    sd_age as sd_age,
+    sd_gender as sd_gender,
+    transaction_sport_trans_min_12m as sport_trans_min_12m,
+    transaction_supermarkets_trans_cnt_12m_to_total_12m as sup_cnt_s_365,
+    transaction_supermarkets_trans_cnt_1m_to_total_1m as supermarkets_trans_count_1m_to_total_1m,
+    transaction_supermarkets_trans_cnt_3m_to_total_3m as supermarkets_trans_count_3m_to_total_3m,
+    transaction_supermarkets_trans_cnt_3m_to_total_6m as supermarkets_trans_count_3m_to_total_6m,
+    transaction_supermarkets_trans_cnt_6m_to_total_6m as supermarkets_trans_count_6m_to_total_6m,
+    transaction_supermarkets_trans_max_1m as supermarkets_trans_max_1m,
+    transaction_supermarkets_trans_max_3m as supermarkets_trans_max_3m,
+    transaction_supermarkets_trans_min_12m as supermarkets_trans_min_12m,
+    transaction_supermarkets_trans_min_1m as supermarkets_trans_min_1m,
+    transaction_supermarkets_trans_sum_1m as supermarkets_trans_sum_1m,
+    transaction_supermarkets_trans_sum_6m_to_total_6m as supermarkets_trans_sum_6m_to_total_6m,
+    tr_atm_sum_trans_180,
+    tr_cnt_trans_1,
+    tr_cnt_trans_14,
+    tr_cnt_trans_180,
+    tr_cnt_trans_240,
+    tr_cnt_trans_30,
+    tr_cnt_trans_300,
+    tr_cnt_trans_365,
+    tr_cnt_trans_60,
+    tr_cnt_trans_7,
+    tr_cnt_trans_730,
+    tr_cnt_trans_90,
+    tr_pos_cnt_trans_1,
+    tr_pos_cnt_trans_14,
+    tr_pos_cnt_trans_180,
+    tr_pos_cnt_trans_240,
+    tr_pos_cnt_trans_30,
+    tr_pos_cnt_trans_60,
+    tr_pos_cnt_trans_7,
+    tr_pos_cnt_trans_90,
+    tr_pos_sum_trans_1,
+    tr_pos_sum_trans_180,
+    tr_pos_sum_trans_240,
+    tr_pos_sum_trans_30,
+    tr_pos_sum_trans_60,
+    tr_pos_sum_trans_7,
+    tr_pos_sum_trans_90,
+    tr_sum_trans_1,
+    tr_sum_trans_14,
+    tr_sum_trans_180,
+    tr_sum_trans_30,
+    tr_sum_trans_60,
+    tr_sum_trans_7,
+    tr_sum_trans_90,
+    transaction_transport_trans_cnt_12m as transport_trans_count_12m,
+    transaction_transport_trans_cnt_1m as transport_trans_count_1m,
+    transaction_transport_trans_cnt_1m_to_3m as transport_trans_count_1m_to_3m,
+    transaction_transport_trans_cnt_1m_to_total_1m as transport_trans_count_1m_to_total_1m,
+    transaction_transport_trans_cnt_3m as transport_trans_count_3m,
+    transaction_transport_trans_cnt_3m_to_total_3m as transport_trans_count_3m_to_total_3m,
+    transaction_transport_trans_cnt_3m_to_total_6m as transport_trans_count_3m_to_total_6m,
+    transaction_transport_trans_cnt_6m_to_total_6m as transport_trans_count_6m_to_total_6m,
+    transaction_transport_trans_max_1m as transport_trans_max_1m,
+    transaction_transport_trans_max_3m as transport_trans_max_3m,
+    transaction_transport_trans_sum_12m as transport_trans_sum_12m,
+    transaction_transport_trans_sum_1m as transport_trans_sum_1m,
+    transaction_transport_trans_sum_1m_to_total_1m as transport_trans_sum_1m_to_total_1m,
+    transaction_transport_trans_sum_3m as transport_trans_sum_3m,
+    transaction_transport_trans_sum_3m_to_6m as transport_trans_sum_3m_to_6m,
+    transaction_transport_trans_sum_3m_to_total_3m as transport_trans_sum_3m_to_total_3m,
+    transaction_transport_trans_sum_3m_to_total_6m as transport_trans_sum_3m_to_total_6m,
+    transaction_transport_trans_sum_6m as transport_trans_sum_6m,
+    transaction_transport_trans_sum_6m_to_total_6m as transport_trans_sum_6m_to_total_6m,
+    uralsib_age,
 	
-	COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -5) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_5m,
+	transaction_dom_rem_trans_cnt_1m_to_total_1m as dom_rem_trans_count_1m_to_total_1m,
+	transaction_dom_rem_trans_cnt_3m as dom_rem_trans_count_3m,
+	transaction_dom_rem_trans_cnt_3m_to_total_3m as dom_rem_trans_count_3m_to_total_3m,
+	transaction_dom_rem_trans_cnt_6m_to_total_6m as dom_rem_trans_count_6m_to_total_6m,
+	transaction_dom_rem_trans_max_12m as dom_rem_trans_max_12m,
+	transaction_dom_rem_trans_max_1m as dom_rem_trans_max_1m,
+	transaction_dom_rem_trans_min_12m as dom_rem_trans_min_12m,
+	transaction_dom_rem_trans_sum_12m as dom_rem_trans_sum_12m,
+	transaction_dom_rem_trans_sum_1m_to_3m as dom_rem_trans_sum_1m_to_3m,
+	transaction_dom_rem_trans_sum_1m_to_total_1m as dom_rem_trans_sum_1m_to_total_1m,
+	transaction_dom_rem_trans_sum_3m_to_6m as dom_rem_trans_sum_3m_to_6m,
+	transaction_fuel_trans_max_1m as fuel_trans_max_1m,
 
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_total_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) THEN amount_rur ELSE null END) AS transaction_total_trans_avg_sum_2m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_total_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -4) THEN amount_rur ELSE null END) AS transaction_total_trans_avg_sum_4m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_total_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_total_trans_avg_sum_12m,
+	transaction_supermarkets_trans_cnt_3m	as	supermarkets_flg_3m,
+	transaction_transport_trans_cnt_3m	as	transport_flg_3m,
+	transaction_cafe_trans_cnt_3m	as	cafe_flg_3m,
+	transaction_fuel_trans_cnt_3m	as	fuel_flg_3m,
+	transaction_pharmacies_trans_cnt_3m	as	pharmacies_flg_3m
 
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_avg_cnt_2m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -4) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_avg_cnt_4m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_avg_cnt_12m,
-
-    -- Агрегаты за предыдущие 12 месяцев (от 24 до 12 месяцев до отчетной даты)
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -24) AND transaction_dtm < ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_24_12,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -24) AND transaction_dtm < ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_total_trans_sum_24_12,
-	
-	COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -10) AND transaction_dtm < ADD_MONTHS(report_date, -5) THEN amount_rur_cnt ELSE null END) AS transaction_total_trans_cnt_10_5,
-    -- Первая и последняя транзакция
-    MIN(transaction_dtm) AS transaction_first_trans_dt,
-    MAX(transaction_dtm) AS transaction_last_trans_dt,
-
-    -- Максимальные транзакции
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE NULL END) AS transaction_max_trans_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) THEN amount_rur ELSE NULL END) AS transaction_max_trans_2m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE NULL END) AS transaction_max_trans_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -4) THEN amount_rur ELSE NULL END) AS transaction_max_trans_4m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE NULL END) AS transaction_max_trans_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE NULL END) AS transaction_max_trans_12m,
-
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) AND transaction_dtm < ADD_MONTHS(report_date, -1) THEN amount_rur ELSE NULL END) AS transaction_max_trans_prev_1m,  
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) AND transaction_dtm < ADD_MONTHS(report_date, -3) THEN amount_rur ELSE NULL END) AS transaction_max_trans_prev_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) AND transaction_dtm < ADD_MONTHS(report_date, -6) THEN amount_rur ELSE NULL END) AS transaction_max_trans_prev_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -24) AND transaction_dtm < ADD_MONTHS(report_date, -12) THEN amount_rur ELSE NULL END) AS transaction_max_trans_prev_12m,
-
-    -- Минимальные транзакции
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE NULL END) AS transaction_min_trans_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) THEN amount_rur ELSE NULL END) AS transaction_min_trans_2m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE NULL END) AS transaction_min_trans_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -4) THEN amount_rur ELSE NULL END) AS transaction_min_trans_4m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE NULL END) AS transaction_min_trans_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE NULL END) AS transaction_min_trans_12m,
-
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -2) AND transaction_dtm < ADD_MONTHS(report_date, -1) THEN amount_rur ELSE NULL END) AS transaction_min_trans_prev_1m,  
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) AND transaction_dtm < ADD_MONTHS(report_date, -3) THEN amount_rur ELSE NULL END) AS transaction_min_trans_prev_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) AND transaction_dtm < ADD_MONTHS(report_date, -6) THEN amount_rur ELSE NULL END) AS transaction_min_trans_prev_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -24) AND transaction_dtm < ADD_MONTHS(report_date, -12) THEN amount_rur ELSE NULL END) AS transaction_min_trans_prev_12m
-
-from '|| tmp_table_2 ||'  
-where direction = ''D''
-group by client_did, report_date
-';
+from DAILY_SCORING a --EMA_MCC_MODEL_TEST_1807 a 
+left join DAILY_SCORING_OUT_client_srvc_model_segm p4
+	on a.client_did = p4.client_did 
+    -- and a.report_date = p4.report_date
+left join DAILY_SCORING_OUT_mcc_model p5
+    on a.client_did = p5.client_did 
+    -- and a.report_date = p5.report_date
+where transaction_total_trans_cnt_3m > 0
 
 
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_1 as
-select /*+parallel(8)*/ 
-	client_did, 
-	report_date,
-	-- Дом и ремонт
-	COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_cnt_1m,
-	SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_dom_rem_trans_sum_1m,
-	MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_dom_rem_trans_max_1m,
-	MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_dom_rem_trans_min_1m,
-	COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_cnt_3m,
-	SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_dom_rem_trans_sum_3m,
-	MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_dom_rem_trans_max_3m,
-	MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_dom_rem_trans_min_3m,
-	COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_cnt_6m,
-	SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_dom_rem_trans_sum_6m,
-	MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_dom_rem_trans_max_6m,
-	MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_dom_rem_trans_min_6m,
-	COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_cnt_12m,
-	SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_dom_rem_trans_sum_12m,
-	MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_dom_rem_trans_max_12m,
-	MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_dom_rem_trans_min_12m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_dom_rem_trans_avg_sum_1m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_dom_rem_trans_avg_sum_3m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_dom_rem_trans_avg_sum_6m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_dom_rem_trans_avg_sum_12m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_avg_cnt_1m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_avg_cnt_3m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_avg_cnt_6m,
-	AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_dom_rem_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'  
-where categ = ''Дом и ремонт'' and direction = ''D''
-group by client_did, report_date
-';
 
 
--- 2. Кафе и рестораны
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_2 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_cafe_trans_sum_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_cafe_trans_max_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_cafe_trans_min_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_cafe_trans_sum_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_cafe_trans_max_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_cafe_trans_min_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_cafe_trans_sum_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_cafe_trans_max_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_cafe_trans_min_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_cafe_trans_sum_12m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_cafe_trans_max_12m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_cafe_trans_min_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_cafe_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_cafe_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_cafe_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_cafe_trans_avg_sum_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_cafe_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Кафе и рестораны'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 3. Аренда авто (TEMP_4 Транспорт)
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_4 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_transport_trans_sum_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_transport_trans_max_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_transport_trans_min_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_transport_trans_sum_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_transport_trans_max_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_transport_trans_min_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_transport_trans_sum_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_transport_trans_max_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_transport_trans_min_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_transport_trans_sum_12m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_transport_trans_max_12m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_transport_trans_min_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_transport_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_transport_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_transport_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_transport_trans_avg_sum_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_transport_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Транспорт'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 6. Медицина
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_6 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_medicine_trans_sum_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_medicine_trans_max_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_medicine_trans_min_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_medicine_trans_sum_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_medicine_trans_max_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_medicine_trans_min_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_medicine_trans_sum_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_medicine_trans_max_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_medicine_trans_min_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_medicine_trans_sum_12m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_medicine_trans_max_12m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_medicine_trans_min_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_medicine_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_medicine_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_medicine_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_medicine_trans_avg_sum_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_medicine_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Медицина'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 9. Гостиницы
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_9 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_hotels_trans_sum_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_hotels_trans_max_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_hotels_trans_min_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_hotels_trans_sum_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_hotels_trans_max_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_hotels_trans_min_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_hotels_trans_sum_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_hotels_trans_max_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_hotels_trans_min_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_hotels_trans_sum_12m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_hotels_trans_max_12m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_hotels_trans_min_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_hotels_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_hotels_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_hotels_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_hotels_trans_avg_sum_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_hotels_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Гостиницы'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 10. Курьер
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_10 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_courier_trans_sum_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_courier_trans_max_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_courier_trans_min_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_courier_trans_sum_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_courier_trans_max_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_courier_trans_min_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_courier_trans_sum_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_courier_trans_max_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_courier_trans_min_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_courier_trans_sum_12m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_courier_trans_max_12m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_courier_trans_min_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_courier_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_courier_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_courier_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_courier_trans_avg_sum_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_courier_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Услуги курьера'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 11. Топливо (для t11 и TEMP_76)
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_11 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_cnt_1m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_fuel_trans_sum_1m,
-    MAX (CASE WHEN transaction_dtm > ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_fuel_trans_max_1m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_fuel_trans_min_1m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_cnt_3m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_fuel_trans_sum_3m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_fuel_trans_max_3m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_fuel_trans_min_3m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_cnt_6m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_fuel_trans_sum_6m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_fuel_trans_max_6m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_fuel_trans_min_6m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_cnt_12m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_fuel_trans_sum_12m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_fuel_trans_max_12m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_fuel_trans_min_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE null END) AS transaction_fuel_trans_avg_sum_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE null END) AS transaction_fuel_trans_avg_sum_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE null END) AS transaction_fuel_trans_avg_sum_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE null END) AS transaction_fuel_trans_avg_sum_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_avg_cnt_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_avg_cnt_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_avg_cnt_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_fuel_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Топливо'' and direction = ''D'' 
-group by client_did, report_date
-';
-
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_14 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_souvenirs_trans_sum_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_souvenirs_trans_max_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_souvenirs_trans_min_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_souvenirs_trans_sum_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_souvenirs_trans_max_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_souvenirs_trans_min_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_souvenirs_trans_sum_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_souvenirs_trans_max_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_souvenirs_trans_min_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_souvenirs_trans_sum_12m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_souvenirs_trans_max_12m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_souvenirs_trans_min_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_souvenirs_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_souvenirs_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_souvenirs_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_souvenirs_trans_avg_sum_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_souvenirs_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Сувениры'' and direction = ''D'' 
-group by client_did, report_date
-';
-
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_15 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_cnt_1m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_card_transfer_trans_sum_1m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_card_transfer_trans_max_1m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur END) AS transaction_card_transfer_trans_min_1m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_cnt_3m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_card_transfer_trans_sum_3m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_card_transfer_trans_max_3m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur END) AS transaction_card_transfer_trans_min_3m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_cnt_6m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_card_transfer_trans_sum_6m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_card_transfer_trans_max_6m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur END) AS transaction_card_transfer_trans_min_6m,
-    COUNT(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_cnt_12m,
-    SUM(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_card_transfer_trans_sum_12m,
-    MAX(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_card_transfer_trans_max_12m,
-    MIN(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur END) AS transaction_card_transfer_trans_min_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur ELSE null END) AS transaction_card_transfer_trans_avg_sum_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur ELSE null END) AS transaction_card_transfer_trans_avg_sum_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur ELSE null END) AS transaction_card_transfer_trans_avg_sum_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur ELSE null END) AS transaction_card_transfer_trans_avg_sum_12m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_avg_cnt_1m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_avg_cnt_3m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_avg_cnt_6m,
-    AVG(CASE WHEN transaction_dtm >= ADD_MONTHS(report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_card_transfer_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Перевод на карту'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 18. Супермаркеты
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_18 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_cnt_1m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_supermarkets_trans_sum_1m,
-    MAX (CASE WHEN transaction_dtm > ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_supermarkets_trans_max_1m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_supermarkets_trans_min_1m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_cnt_3m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_supermarkets_trans_sum_3m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_supermarkets_trans_max_3m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_supermarkets_trans_min_3m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_cnt_6m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_supermarkets_trans_sum_6m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_supermarkets_trans_max_6m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_supermarkets_trans_min_6m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_cnt_12m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_supermarkets_trans_sum_12m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_supermarkets_trans_max_12m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_supermarkets_trans_min_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE null END) AS transaction_supermarkets_trans_avg_sum_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE null END) AS transaction_supermarkets_trans_avg_sum_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE null END) AS transaction_supermarkets_trans_avg_sum_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE null END) AS transaction_supermarkets_trans_avg_sum_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_avg_cnt_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_avg_cnt_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_avg_cnt_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_supermarkets_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Супермаркеты'' and direction = ''D'' 
-group by client_did, report_date
-';
-
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_19 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_cnt_1m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_sport_trans_sum_1m,
-    MAX (CASE WHEN transaction_dtm > ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_sport_trans_max_1m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_sport_trans_min_1m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_cnt_3m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_sport_trans_sum_3m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_sport_trans_max_3m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_sport_trans_min_3m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_cnt_6m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_sport_trans_sum_6m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_sport_trans_max_6m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_sport_trans_min_6m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_cnt_12m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_sport_trans_sum_12m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_sport_trans_max_12m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_sport_trans_min_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE null END) AS transaction_sport_trans_avg_sum_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE null END) AS transaction_sport_trans_avg_sum_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE null END) AS transaction_sport_trans_avg_sum_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE null END) AS transaction_sport_trans_avg_sum_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_avg_cnt_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_avg_cnt_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_avg_cnt_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_sport_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Спорттовары'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 12. Аптеки
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_12 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_cnt_1m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_pharmacies_trans_sum_1m,
-    MAX (CASE WHEN transaction_dtm > ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_pharmacies_trans_max_1m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_pharmacies_trans_min_1m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_cnt_3m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_pharmacies_trans_sum_3m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_pharmacies_trans_max_3m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_pharmacies_trans_min_3m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_cnt_6m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_pharmacies_trans_sum_6m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_pharmacies_trans_max_6m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_pharmacies_trans_min_6m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_cnt_12m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_pharmacies_trans_sum_12m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_pharmacies_trans_max_12m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_pharmacies_trans_min_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE null END) AS transaction_pharmacies_trans_avg_sum_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE null END) AS transaction_pharmacies_trans_avg_sum_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE null END) AS transaction_pharmacies_trans_avg_sum_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE null END) AS transaction_pharmacies_trans_avg_sum_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_avg_cnt_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_avg_cnt_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_avg_cnt_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_pharmacies_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Аптеки'' and direction = ''D'' 
-group by client_did, report_date
-';
-
--- 24. Цветы
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_24 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_cnt_1m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_flowers_trans_sum_1m,
-    MAX (CASE WHEN transaction_dtm > ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_flowers_trans_max_1m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_flowers_trans_min_1m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_cnt_3m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_flowers_trans_sum_3m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_flowers_trans_max_3m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_flowers_trans_min_3m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_cnt_6m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_flowers_trans_sum_6m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_flowers_trans_max_6m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_flowers_trans_min_6m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_cnt_12m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_flowers_trans_sum_12m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_flowers_trans_max_12m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_flowers_trans_min_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE null END) AS transaction_flowers_trans_avg_sum_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE null END) AS transaction_flowers_trans_avg_sum_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE null END) AS transaction_flowers_trans_avg_sum_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE null END) AS transaction_flowers_trans_avg_sum_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_avg_cnt_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_avg_cnt_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_avg_cnt_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_flowers_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Цветы и растения'' and direction = ''D'' 
-group by client_did, report_date
-';
-
-execute immediate
-'
-create table '||in_table||'_TRANS_TEMP_35 as
-select /*+parallel(8)*/ 
-    client_did,    
-    report_date,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_cnt_1m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE 0 END) AS transaction_auto_services_trans_sum_1m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_auto_services_trans_max_1m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur END) AS transaction_auto_services_trans_min_1m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_cnt_3m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE 0 END) AS transaction_auto_services_trans_sum_3m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_auto_services_trans_max_3m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur END) AS transaction_auto_services_trans_min_3m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_cnt_6m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE 0 END) AS transaction_auto_services_trans_sum_6m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_auto_services_trans_max_6m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur END) AS transaction_auto_services_trans_min_6m,
-    COUNT (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_cnt_12m,
-    SUM (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE 0 END) AS transaction_auto_services_trans_sum_12m,
-    MAX (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_auto_services_trans_max_12m,
-    MIN (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur END) AS transaction_auto_services_trans_min_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur ELSE null END) AS transaction_auto_services_trans_avg_sum_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur ELSE null END) AS transaction_auto_services_trans_avg_sum_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur ELSE null END) AS transaction_auto_services_trans_avg_sum_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur ELSE null END) AS transaction_auto_services_trans_avg_sum_12m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -1) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_avg_cnt_1m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -3) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_avg_cnt_3m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -6) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_avg_cnt_6m,
-    AVG (CASE WHEN transaction_dtm >= ADD_MONTHS (report_date, -12) THEN amount_rur_cnt ELSE null END) AS transaction_auto_services_trans_avg_cnt_12m
-from '|| tmp_table_2 ||'
-where categ = ''Автоуслуги'' and direction = ''D'' 
-group by client_did, report_date
-';
-
-execute immediate 'create index idx_'||in_table||'_1 on '||in_table||'_TRANS_TEMP_1 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_1 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_2 on '||in_table||'_TRANS_TEMP_2 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_2 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_4 on '||in_table||'_TRANS_TEMP_4 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_4 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_6 on '||in_table||'_TRANS_TEMP_6 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_6 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_9 on '||in_table||'_TRANS_TEMP_9 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_9 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_10 on '||in_table||'_TRANS_TEMP_10 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_10 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_11 on '||in_table||'_TRANS_TEMP_11 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_11 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_12 on '||in_table||'_TRANS_TEMP_12 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_12 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_18 on '||in_table||'_TRANS_TEMP_18 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_18 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_19 on '||in_table||'_TRANS_TEMP_19 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_19 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_24 on '||in_table||'_TRANS_TEMP_24 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_24 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_35 on '||in_table||'_TRANS_TEMP_35 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_35 NOPARALLEL';
-
-execute immediate '
-create table '||in_table||'_TRANS_TEMP_00 as
-select /*+parallel(8)*/ 
-	client_did, 
-	report_date,
-    (transaction_total_trans_sum_6m - transaction_total_trans_sum_3m) / NULLIF((transaction_total_trans_cnt_6m - transaction_total_trans_cnt_3m), 0) AS transaction_avg_trans_prev_3m,
-    (report_date - transaction_first_trans_dt) AS transaction_days_since_first_trans,
-    (report_date - transaction_last_trans_dt) AS transaction_days_since_last_trans
-FROM '||in_table||'_TRANS_TEMP_0
-';
-execute immediate '
-create table '||in_table||'_TRANS_TEMP_48 as 
-select /*+parallel (8)*/ 
-    p1.client_did, 
-    p1.report_date,
-    transaction_dom_rem_trans_cnt_1m / NULLIF (transaction_dom_rem_trans_cnt_3m, 0) AS transaction_dom_rem_trans_cnt_1m_to_3m,
-    transaction_dom_rem_trans_sum_1m / NULLIF (transaction_dom_rem_trans_sum_3m, 0) AS transaction_dom_rem_trans_sum_1m_to_3m,
-    transaction_dom_rem_trans_cnt_3m / NULLIF (transaction_dom_rem_trans_cnt_6m, 0) AS transaction_dom_rem_trans_cnt_3m_to_6m,
-    transaction_dom_rem_trans_sum_3m / NULLIF (transaction_dom_rem_trans_sum_6m, 0) AS transaction_dom_rem_trans_sum_3m_to_6m,
-    transaction_dom_rem_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_dom_rem_trans_cnt_1m_to_total_1m, 
-    transaction_dom_rem_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_dom_rem_trans_sum_1m_to_total_1m, 
-    transaction_dom_rem_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_dom_rem_trans_cnt_3m_to_total_3m, 
-    transaction_dom_rem_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_dom_rem_trans_sum_3m_to_total_3m,
-    transaction_dom_rem_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_dom_rem_trans_cnt_3m_to_total_6m, 
-    transaction_dom_rem_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_dom_rem_trans_sum_3m_to_total_6m, 
-    transaction_dom_rem_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_dom_rem_trans_cnt_6m_to_total_6m, 
-    transaction_dom_rem_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_dom_rem_trans_sum_6m_to_total_6m, 
-    transaction_dom_rem_trans_avg_sum_1m / NULLIF (transaction_dom_rem_trans_avg_sum_3m, 0) AS transaction_dom_rem_trans_avg_sum_1m_to_3m, 
-    transaction_dom_rem_trans_avg_cnt_1m / NULLIF (transaction_dom_rem_trans_avg_cnt_3m, 0) AS transaction_dom_rem_trans_avg_cnt_1m_to_3m, 
-    transaction_dom_rem_trans_avg_sum_3m / NULLIF (transaction_dom_rem_trans_avg_sum_6m, 0) AS transaction_dom_rem_trans_avg_sum_3m_to_6m, 
-    transaction_dom_rem_trans_avg_cnt_3m / NULLIF (transaction_dom_rem_trans_avg_cnt_6m, 0) AS transaction_dom_rem_trans_avg_cnt_3m_to_6m, 
-    transaction_dom_rem_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_dom_rem_trans_avg_sum_1m_to_total_1m,
-    transaction_dom_rem_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_dom_rem_trans_avg_cnt_1m_to_total_1m,
-    transaction_dom_rem_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_dom_rem_trans_avg_sum_3m_to_total_3m, 
-    transaction_dom_rem_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_dom_rem_trans_avg_cnt_3m_to_total_3m, 
-    transaction_dom_rem_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_dom_rem_trans_avg_sum_3m_to_total_6m, 
-    transaction_dom_rem_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_dom_rem_trans_avg_cnt_3m_to_total_6m, 
-    transaction_dom_rem_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_dom_rem_trans_avg_sum_6m_to_total_6m, 
-    transaction_dom_rem_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_dom_rem_trans_avg_cnt_6m_to_total_6m
-FROM '||in_table||'_TRANS_TEMP_1 p1 
-left join '||in_table||'_TRANS_TEMP_0 p2
-    on p1.client_did = p2.client_did
-    and p1.report_date = p2.report_date';
-
-execute immediate '
-create table '||in_table||'_TRANS_TEMP_49 as 
-select /*+parallel (8)*/ 
-    p1.client_did, 
-    p1.report_date,
-    transaction_cafe_trans_cnt_1m / NULLIF (transaction_cafe_trans_cnt_3m, 0) AS transaction_cafe_trans_cnt_1m_to_3m,
-    transaction_cafe_trans_sum_1m / NULLIF (transaction_cafe_trans_sum_3m, 0) AS transaction_cafe_trans_sum_1m_to_3m,
-    transaction_cafe_trans_cnt_3m / NULLIF (transaction_cafe_trans_cnt_6m, 0) AS transaction_cafe_trans_cnt_3m_to_6m,
-    transaction_cafe_trans_sum_3m / NULLIF (transaction_cafe_trans_sum_6m, 0) AS transaction_cafe_trans_sum_3m_to_6m,
-    transaction_cafe_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_cafe_trans_cnt_1m_to_total_1m, 
-    transaction_cafe_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_cafe_trans_sum_1m_to_total_1m, 
-    transaction_cafe_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_cafe_trans_cnt_3m_to_total_3m, 
-    transaction_cafe_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_cafe_trans_sum_3m_to_total_3m,
-    transaction_cafe_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cafe_trans_cnt_3m_to_total_6m, 
-    transaction_cafe_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cafe_trans_sum_3m_to_total_6m, 
-    transaction_cafe_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_cafe_trans_cnt_6m_to_total_6m, 
-    transaction_cafe_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_cafe_trans_sum_6m_to_total_6m, 
-    transaction_cafe_trans_avg_sum_1m / NULLIF (transaction_cafe_trans_avg_sum_3m, 0) AS transaction_cafe_trans_avg_sum_1m_to_3m, 
-    transaction_cafe_trans_avg_cnt_1m / NULLIF (transaction_cafe_trans_avg_cnt_3m, 0) AS transaction_cafe_trans_avg_cnt_1m_to_3m, 
-    transaction_cafe_trans_avg_sum_3m / NULLIF (transaction_cafe_trans_avg_sum_6m, 0) AS transaction_cafe_trans_avg_sum_3m_to_6m, 
-    transaction_cafe_trans_avg_cnt_3m / NULLIF (transaction_cafe_trans_avg_cnt_6m, 0) AS transaction_cafe_trans_avg_cnt_3m_to_6m, 
-    transaction_cafe_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_cafe_trans_avg_sum_1m_to_total_1m,
-    transaction_cafe_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_cafe_trans_avg_cnt_1m_to_total_1m,
-    transaction_cafe_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_cafe_trans_avg_sum_3m_to_total_3m, 
-    transaction_cafe_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_cafe_trans_avg_cnt_3m_to_total_3m, 
-    transaction_cafe_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cafe_trans_avg_sum_3m_to_total_6m, 
-    transaction_cafe_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cafe_trans_avg_cnt_3m_to_total_6m, 
-    transaction_cafe_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_cafe_trans_avg_sum_6m_to_total_6m, 
-    transaction_cafe_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_cafe_trans_avg_cnt_6m_to_total_6m
-FROM '||in_table||'_TRANS_TEMP_2 p1 
-left join '||in_table||'_TRANS_TEMP_0 p2
-    on p1.client_did = p2.client_did
-    and p1.report_date = p2.report_date';
-
-execute immediate '
-create table '||in_table||'_TRANS_TEMP_51 as 
-select /*+parallel (8)*/ 
-    p1.client_did, 
-    p1.report_date,
-    transaction_transport_trans_cnt_1m / NULLIF (transaction_transport_trans_cnt_3m, 0) AS transaction_transport_trans_cnt_1m_to_3m,
-    transaction_transport_trans_sum_1m / NULLIF (transaction_transport_trans_sum_3m, 0) AS transaction_transport_trans_sum_1m_to_3m,
-    transaction_transport_trans_cnt_3m / NULLIF (transaction_transport_trans_cnt_6m, 0) AS transaction_transport_trans_cnt_3m_to_6m,
-    transaction_transport_trans_sum_3m / NULLIF (transaction_transport_trans_sum_6m, 0) AS transaction_transport_trans_sum_3m_to_6m,
-    transaction_transport_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_transport_trans_cnt_1m_to_total_1m, 
-    transaction_transport_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_transport_trans_sum_1m_to_total_1m, 
-    transaction_transport_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_transport_trans_cnt_3m_to_total_3m, 
-    transaction_transport_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_transport_trans_sum_3m_to_total_3m,
-    transaction_transport_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_transport_trans_cnt_3m_to_total_6m, 
-    transaction_transport_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_transport_trans_sum_3m_to_total_6m, 
-    transaction_transport_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_transport_trans_cnt_6m_to_total_6m, 
-    transaction_transport_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_transport_trans_sum_6m_to_total_6m, 
-    transaction_transport_trans_avg_sum_1m / NULLIF (transaction_transport_trans_avg_sum_3m, 0) AS transaction_transport_trans_avg_sum_1m_to_3m, 
-    transaction_transport_trans_avg_cnt_1m / NULLIF (transaction_transport_trans_avg_cnt_3m, 0) AS transaction_transport_trans_avg_cnt_1m_to_3m, 
-    transaction_transport_trans_avg_sum_3m / NULLIF (transaction_transport_trans_avg_sum_6m, 0) AS transaction_transport_trans_avg_sum_3m_to_6m, 
-    transaction_transport_trans_avg_cnt_3m / NULLIF (transaction_transport_trans_avg_cnt_6m, 0) AS transaction_transport_trans_avg_cnt_3m_to_6m, 
-    transaction_transport_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_transport_trans_avg_sum_1m_to_total_1m,
-    transaction_transport_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_transport_trans_avg_cnt_1m_to_total_1m,
-    transaction_transport_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_transport_trans_avg_sum_3m_to_total_3m, 
-    transaction_transport_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_transport_trans_avg_cnt_3m_to_total_3m, 
-    transaction_transport_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_transport_trans_avg_sum_3m_to_total_6m, 
-    transaction_transport_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_transport_trans_avg_cnt_3m_to_total_6m, 
-    transaction_transport_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_transport_trans_avg_sum_6m_to_total_6m, 
-    transaction_transport_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_transport_trans_avg_cnt_6m_to_total_6m
-FROM '||in_table||'_TRANS_TEMP_4 p1 
-left join '||in_table||'_TRANS_TEMP_0 p2
-    on p1.client_did = p2.client_did
-    and p1.report_date = p2.report_date';
-
-execute immediate '
-create table '||in_table||'_TRANS_TEMP_65 as 
-select /*+parallel (8)*/ 
-    p1.client_did, 
-    p1.report_date,
-    transaction_supermarkets_trans_cnt_1m / NULLIF (transaction_supermarkets_trans_cnt_3m, 0) AS transaction_supermarkets_trans_cnt_1m_to_3m,
-    transaction_supermarkets_trans_sum_1m / NULLIF (transaction_supermarkets_trans_sum_3m, 0) AS transaction_supermarkets_trans_sum_1m_to_3m,
-    transaction_supermarkets_trans_cnt_3m / NULLIF (transaction_supermarkets_trans_cnt_6m, 0) AS transaction_supermarkets_trans_cnt_3m_to_6m,
-    transaction_supermarkets_trans_sum_3m / NULLIF (transaction_supermarkets_trans_sum_6m, 0) AS transaction_supermarkets_trans_sum_3m_to_6m,
-    transaction_supermarkets_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_supermarkets_trans_cnt_1m_to_total_1m, 
-    transaction_supermarkets_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_supermarkets_trans_sum_1m_to_total_1m, 
-    transaction_supermarkets_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_supermarkets_trans_cnt_3m_to_total_3m, 
-    transaction_supermarkets_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_supermarkets_trans_sum_3m_to_total_3m,
-    transaction_supermarkets_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_supermarkets_trans_cnt_3m_to_total_6m, 
-    transaction_supermarkets_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_supermarkets_trans_sum_3m_to_total_6m, 
-    transaction_supermarkets_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_supermarkets_trans_cnt_6m_to_total_6m, 
-    transaction_supermarkets_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_supermarkets_trans_sum_6m_to_total_6m, 
-    transaction_supermarkets_trans_cnt_12m / NULLIF (transaction_total_trans_cnt_12m, 0) AS transaction_supermarkets_trans_cnt_12m_to_total_12m,
-    transaction_supermarkets_trans_avg_sum_1m / NULLIF (transaction_supermarkets_trans_avg_sum_3m, 0) AS transaction_supermarkets_trans_avg_sum_1m_to_3m, 
-    transaction_supermarkets_trans_avg_cnt_1m / NULLIF (transaction_supermarkets_trans_avg_cnt_3m, 0) AS transaction_supermarkets_trans_avg_cnt_1m_to_3m, 
-    transaction_supermarkets_trans_avg_sum_3m / NULLIF (transaction_supermarkets_trans_avg_sum_6m, 0) AS transaction_supermarkets_trans_avg_sum_3m_to_6m, 
-    transaction_supermarkets_trans_avg_cnt_3m / NULLIF (transaction_supermarkets_trans_avg_cnt_6m, 0) AS transaction_supermarkets_trans_avg_cnt_3m_to_6m, 
-    transaction_supermarkets_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_supermarkets_trans_avg_sum_1m_to_total_1m,
-    transaction_supermarkets_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_supermarkets_trans_avg_cnt_1m_to_total_1m,
-    transaction_supermarkets_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_supermarkets_trans_avg_sum_3m_to_total_3m, 
-    transaction_supermarkets_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_supermarkets_trans_avg_cnt_3m_to_total_3m, 
-    transaction_supermarkets_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_supermarkets_trans_avg_sum_3m_to_total_6m, 
-    transaction_supermarkets_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_supermarkets_trans_avg_cnt_3m_to_total_6m, 
-    transaction_supermarkets_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_supermarkets_trans_avg_sum_6m_to_total_6m, 
-    transaction_supermarkets_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_supermarkets_trans_avg_cnt_6m_to_total_6m
-FROM '||in_table||'_TRANS_TEMP_18 p1 
-left join '||in_table||'_TRANS_TEMP_0 p2
-    on p1.client_did = p2.client_did
-    and p1.report_date = p2.report_date';
-
-execute immediate '
-create table '||in_table||'_TRANS_TEMP_70 as 
-select /*+parallel (8)*/ 
-    p1.client_did, 
-    p1.report_date,
-    transaction_pharmacies_trans_cnt_1m / NULLIF (transaction_pharmacies_trans_cnt_3m, 0) AS transaction_pharmacies_trans_cnt_1m_to_3m,
-    transaction_pharmacies_trans_sum_1m / NULLIF (transaction_pharmacies_trans_sum_3m, 0) AS transaction_pharmacies_trans_sum_1m_to_3m,
-    transaction_pharmacies_trans_cnt_3m / NULLIF (transaction_pharmacies_trans_cnt_6m, 0) AS transaction_pharmacies_trans_cnt_3m_to_6m,
-    transaction_pharmacies_trans_sum_3m / NULLIF (transaction_pharmacies_trans_sum_6m, 0) AS transaction_pharmacies_trans_sum_3m_to_6m,
-    transaction_pharmacies_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_pharmacies_trans_cnt_1m_to_total_1m, 
-    transaction_pharmacies_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_pharmacies_trans_sum_1m_to_total_1m, 
-    transaction_pharmacies_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_pharmacies_trans_cnt_3m_to_total_3m, 
-    transaction_pharmacies_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_pharmacies_trans_sum_3m_to_total_3m,
-    transaction_pharmacies_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_pharmacies_trans_cnt_3m_to_total_6m, 
-    transaction_pharmacies_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_pharmacies_trans_sum_3m_to_total_6m, 
-    transaction_pharmacies_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_pharmacies_trans_cnt_6m_to_total_6m, 
-    transaction_pharmacies_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_pharmacies_trans_sum_6m_to_total_6m, 
-    transaction_pharmacies_trans_avg_sum_1m / NULLIF (transaction_pharmacies_trans_avg_sum_3m, 0) AS transaction_pharmacies_trans_avg_sum_1m_to_3m, 
-    transaction_pharmacies_trans_avg_cnt_1m / NULLIF (transaction_pharmacies_trans_avg_cnt_3m, 0) AS transaction_pharmacies_trans_avg_cnt_1m_to_3m, 
-    transaction_pharmacies_trans_avg_sum_3m / NULLIF (transaction_pharmacies_trans_avg_sum_6m, 0) AS transaction_pharmacies_trans_avg_sum_3m_to_6m, 
-    transaction_pharmacies_trans_avg_cnt_3m / NULLIF (transaction_pharmacies_trans_avg_cnt_6m, 0) AS transaction_pharmacies_trans_avg_cnt_3m_to_6m, 
-    transaction_pharmacies_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_pharmacies_trans_avg_sum_1m_to_total_1m,
-    transaction_pharmacies_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_pharmacies_trans_avg_cnt_1m_to_total_1m,
-    transaction_pharmacies_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_pharmacies_trans_avg_sum_3m_to_total_3m, 
-    transaction_pharmacies_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_pharmacies_trans_avg_cnt_3m_to_total_3m, 
-    transaction_pharmacies_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_pharmacies_trans_avg_sum_3m_to_total_6m, 
-    transaction_pharmacies_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_pharmacies_trans_avg_cnt_3m_to_total_6m, 
-    transaction_pharmacies_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_pharmacies_trans_avg_sum_6m_to_total_6m, 
-    transaction_pharmacies_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_pharmacies_trans_avg_cnt_6m_to_total_6m
-FROM '||in_table||'_TRANS_TEMP_12 p1 
-left join '||in_table||'_TRANS_TEMP_0 p2
-    on p1.client_did = p2.client_did
-    and p1.report_date = p2.report_date';
-
-execute immediate '
-create table '||in_table||'_TRANS_TEMP_76 as 
-select /*+parallel (8)*/ 
-    p1.client_did, 
-    p1.report_date,
-    transaction_fuel_trans_cnt_1m / NULLIF (transaction_fuel_trans_cnt_3m, 0) AS transaction_fuel_trans_cnt_1m_to_3m,
-    transaction_fuel_trans_sum_1m / NULLIF (transaction_fuel_trans_sum_3m, 0) AS transaction_fuel_trans_sum_1m_to_3m,
-    transaction_fuel_trans_cnt_3m / NULLIF (transaction_fuel_trans_cnt_6m, 0) AS transaction_fuel_trans_cnt_3m_to_6m,
-    transaction_fuel_trans_sum_3m / NULLIF (transaction_fuel_trans_sum_6m, 0) AS transaction_fuel_trans_sum_3m_to_6m,
-    transaction_fuel_trans_cnt_1m / NULLIF (transaction_total_trans_cnt_1m, 0) AS transaction_fuel_trans_cnt_1m_to_total_1m, 
-    transaction_fuel_trans_sum_1m / NULLIF (transaction_total_trans_sum_1m, 0) AS transaction_fuel_trans_sum_1m_to_total_1m, 
-    transaction_fuel_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_3m, 0) AS transaction_fuel_trans_cnt_3m_to_total_3m, 
-    transaction_fuel_trans_sum_3m / NULLIF (transaction_total_trans_sum_3m, 0) AS transaction_fuel_trans_sum_3m_to_total_3m,
-    transaction_fuel_trans_cnt_3m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_fuel_trans_cnt_3m_to_total_6m, 
-    transaction_fuel_trans_sum_3m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_fuel_trans_sum_3m_to_total_6m, 
-    transaction_fuel_trans_cnt_6m / NULLIF (transaction_total_trans_cnt_6m, 0) AS transaction_fuel_trans_cnt_6m_to_total_6m, 
-    transaction_fuel_trans_sum_6m / NULLIF (transaction_total_trans_sum_6m, 0) AS transaction_fuel_trans_sum_6m_to_total_6m, 
-    transaction_fuel_trans_avg_sum_1m / NULLIF (transaction_fuel_trans_avg_sum_3m, 0) AS transaction_fuel_trans_avg_sum_1m_to_3m, 
-    transaction_fuel_trans_avg_cnt_1m / NULLIF (transaction_fuel_trans_avg_cnt_3m, 0) AS transaction_fuel_trans_avg_cnt_1m_to_3m, 
-    transaction_fuel_trans_avg_sum_3m / NULLIF (transaction_fuel_trans_avg_sum_6m, 0) AS transaction_fuel_trans_avg_sum_3m_to_6m, 
-    transaction_fuel_trans_avg_cnt_3m / NULLIF (transaction_fuel_trans_avg_cnt_6m, 0) AS transaction_fuel_trans_avg_cnt_3m_to_6m, 
-    transaction_fuel_trans_avg_sum_1m / NULLIF (transaction_total_trans_avg_sum_1m, 0) AS transaction_fuel_trans_avg_sum_1m_to_total_1m,
-    transaction_fuel_trans_avg_cnt_1m / NULLIF (transaction_total_trans_avg_cnt_1m, 0) AS transaction_fuel_trans_avg_cnt_1m_to_total_1m,
-    transaction_fuel_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_3m, 0) AS transaction_fuel_trans_avg_sum_3m_to_total_3m, 
-    transaction_fuel_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_3m, 0) AS transaction_fuel_trans_avg_cnt_3m_to_total_3m, 
-    transaction_fuel_trans_avg_sum_3m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_fuel_trans_avg_sum_3m_to_total_6m, 
-    transaction_fuel_trans_avg_cnt_3m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_fuel_trans_avg_cnt_3m_to_total_6m, 
-    transaction_fuel_trans_avg_sum_6m / NULLIF (transaction_total_trans_avg_sum_6m, 0) AS transaction_fuel_trans_avg_sum_6m_to_total_6m, 
-    transaction_fuel_trans_avg_cnt_6m / NULLIF (transaction_total_trans_avg_cnt_6m, 0) AS transaction_fuel_trans_avg_cnt_6m_to_total_6m
-FROM '||in_table||'_TRANS_TEMP_11 p1 
-left join '||in_table||'_TRANS_TEMP_0 p2
-    on p1.client_did = p2.client_did
-    and p1.report_date = p2.report_date';
-
-execute immediate 'create index idx_'||in_table||'_48 on '||in_table||'_TRANS_TEMP_48 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_48 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_49 on '||in_table||'_TRANS_TEMP_49 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_49 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_51 on '||in_table||'_TRANS_TEMP_51 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_51 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_65 on '||in_table||'_TRANS_TEMP_65 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_65 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_70 on '||in_table||'_TRANS_TEMP_70 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_70 NOPARALLEL';
-execute immediate 'create index idx_'||in_table||'_76 on '||in_table||'_TRANS_TEMP_76 (client_did, report_date) PARALLEL 16';
-execute immediate 'alter index idx_'||in_table||'_76 NOPARALLEL';
-
-my_str := '
-create table '||out_table_1||' as
-select /*+parallel(16)*/
-	a.client_did,
-	a.report_date,
-	t35.transaction_auto_services_trans_max_12m as auto_services_trans_max_12m,
-	t35.transaction_auto_services_trans_max_1m as auto_services_trans_max_1m,
-	t35.transaction_auto_services_trans_max_3m as auto_services_trans_max_3m,
-	t35.transaction_auto_services_trans_max_6m as auto_services_trans_max_6m,
-	t00.transaction_avg_trans_prev_3m as avg_trans_prev_3m,
-	t49.transaction_cafe_trans_cnt_1m_to_total_1m as cafe_trans_count_1m_to_total_1m,
-	t2.transaction_cafe_trans_cnt_3m as cafe_trans_count_3m,
-	t49.transaction_cafe_trans_cnt_3m_to_total_3m as cafe_trans_count_3m_to_total_3m,
-	t49.transaction_cafe_trans_cnt_3m_to_total_6m as cafe_trans_count_3m_to_total_6m,
-	t49.transaction_cafe_trans_cnt_6m_to_total_6m as cafe_trans_count_6m_to_total_6m,
-	t2.transaction_cafe_trans_max_1m as cafe_trans_max_1m,
-	t2.transaction_cafe_trans_sum_12m as cafe_trans_sum_12m,
-	t49.transaction_cafe_trans_sum_1m_to_total_1m as cafe_trans_sum_1m_to_total_1m,
-	t49.transaction_cafe_trans_sum_3m_to_6m as cafe_trans_sum_3m_to_6m,
-	t49.transaction_cafe_trans_sum_6m_to_total_6m as cafe_trans_sum_6m_to_total_6m,
-	t10.transaction_courier_trans_min_6m as courier_trans_min_6m,
-	t00.transaction_days_since_first_trans as days_since_first_trans,
-	t00.transaction_days_since_last_trans as days_since_last_trans,
-	t24.transaction_flowers_trans_max_6m as flowers_trans_max_6m,
-	t11.transaction_fuel_trans_cnt_12m as fuel_trans_count_12m,
-	t76.transaction_fuel_trans_cnt_1m_to_3m as fuel_trans_count_1m_to_3m,
-	t76.transaction_fuel_trans_cnt_1m_to_total_1m as fuel_trans_count_1m_to_total_1m,
-	t76.transaction_fuel_trans_cnt_3m_to_total_6m as fuel_trans_count_3m_to_total_6m,
-	t11.transaction_fuel_trans_cnt_6m as fuel_trans_count_6m,
-	t76.transaction_fuel_trans_cnt_6m_to_total_6m as fuel_trans_count_6m_to_total_6m,
-	t11.transaction_fuel_trans_max_12m as fuel_trans_max_12m,
-	t11.transaction_fuel_trans_sum_12m as fuel_trans_sum_12m,
-	t76.transaction_fuel_trans_sum_1m_to_3m as fuel_trans_sum_1m_to_3m,
-	t76.transaction_fuel_trans_sum_1m_to_total_1m as fuel_trans_sum_1m_to_total_1m,
-	t76.transaction_fuel_trans_sum_3m_to_total_6m as fuel_trans_sum_3m_to_total_6m,
-	t11.transaction_fuel_trans_sum_6m as fuel_trans_sum_6m,
-	t76.transaction_fuel_trans_sum_6m_to_total_6m as fuel_trans_sum_6m_to_total_6m,
-	t9.transaction_hotels_trans_min_12m as hotels_trans_min_12m,
-	t6.transaction_medicine_trans_max_1m as medicine_trans_max_1m,
-	t70.transaction_pharmacies_trans_cnt_1m_to_total_1m as pharmacies_trans_count_1m_to_total_1m,
-	t70.transaction_pharmacies_trans_cnt_3m_to_6m as pharmacies_trans_count_3m_to_6m,
-	t70.transaction_pharmacies_trans_cnt_3m_to_total_6m as pharmacies_trans_count_3m_to_total_6m,
-	t70.transaction_pharmacies_trans_cnt_6m_to_total_6m as pharmacies_trans_count_6m_to_total_6m,
-	t12.transaction_pharmacies_trans_max_12m as pharmacies_trans_max_12m,
-	t70.transaction_pharmacies_trans_sum_1m_to_total_1m as pharmacies_trans_sum_1m_to_total_1m,
-	t12.transaction_pharmacies_trans_sum_3m as pharmacies_trans_sum_3m,
-	t70.transaction_pharmacies_trans_sum_3m_to_total_6m as pharmacies_trans_sum_3m_to_total_6m,
-	t70.transaction_pharmacies_trans_sum_6m_to_total_6m as pharmacies_trans_sum_6m_to_total_6m,
-	t19.transaction_sport_trans_min_12m as sport_trans_min_12m,
-	t65.transaction_supermarkets_trans_cnt_12m_to_total_12m as sup_cnt_s_365,
-	t65.transaction_supermarkets_trans_cnt_1m_to_total_1m as supermarkets_trans_count_1m_to_total_1m,
-	t65.transaction_supermarkets_trans_cnt_3m_to_total_3m as supermarkets_trans_count_3m_to_total_3m,
-	t65.transaction_supermarkets_trans_cnt_3m_to_total_6m as supermarkets_trans_count_3m_to_total_6m,
-	t65.transaction_supermarkets_trans_cnt_6m_to_total_6m as supermarkets_trans_count_6m_to_total_6m,
-	t18.transaction_supermarkets_trans_max_1m as supermarkets_trans_max_1m,
-	t18.transaction_supermarkets_trans_max_3m as supermarkets_trans_max_3m,
-	t18.transaction_supermarkets_trans_min_12m as supermarkets_trans_min_12m,
-	t18.transaction_supermarkets_trans_min_1m as supermarkets_trans_min_1m,
-	t18.transaction_supermarkets_trans_sum_1m as supermarkets_trans_sum_1m,
-	t65.transaction_supermarkets_trans_sum_6m_to_total_6m as supermarkets_trans_sum_6m_to_total_6m,
-	t4.transaction_transport_trans_cnt_12m as transport_trans_count_12m,
-	t4.transaction_transport_trans_cnt_1m as transport_trans_count_1m,
-	t51.transaction_transport_trans_cnt_1m_to_3m as transport_trans_count_1m_to_3m,
-	t51.transaction_transport_trans_cnt_1m_to_total_1m as transport_trans_count_1m_to_total_1m,
-	t4.transaction_transport_trans_cnt_3m as transport_trans_count_3m,
-	t51.transaction_transport_trans_cnt_3m_to_total_3m as transport_trans_count_3m_to_total_3m,
-	t51.transaction_transport_trans_cnt_3m_to_total_6m as transport_trans_count_3m_to_total_6m,
-	t51.transaction_transport_trans_cnt_6m_to_total_6m as transport_trans_count_6m_to_total_6m,
-	t4.transaction_transport_trans_max_1m as transport_trans_max_1m,
-	t4.transaction_transport_trans_max_3m as transport_trans_max_3m,
-	t4.transaction_transport_trans_sum_12m as transport_trans_sum_12m,
-	t4.transaction_transport_trans_sum_1m as transport_trans_sum_1m,
-	t51.transaction_transport_trans_sum_1m_to_total_1m as transport_trans_sum_1m_to_total_1m,
-	t4.transaction_transport_trans_sum_3m as transport_trans_sum_3m,
-	t51.transaction_transport_trans_sum_3m_to_6m as transport_trans_sum_3m_to_6m,
-	t51.transaction_transport_trans_sum_3m_to_total_3m as transport_trans_sum_3m_to_total_3m,
-	t51.transaction_transport_trans_sum_3m_to_total_6m as transport_trans_sum_3m_to_total_6m,
-	t4.transaction_transport_trans_sum_6m as transport_trans_sum_6m,
-	t51.transaction_transport_trans_sum_6m_to_total_6m as transport_trans_sum_6m_to_total_6m,
-	t48.transaction_dom_rem_trans_cnt_1m_to_total_1m as dom_rem_trans_count_1m_to_total_1m,
-	t1.transaction_dom_rem_trans_cnt_3m as dom_rem_trans_count_3m,
-	t48.transaction_dom_rem_trans_cnt_3m_to_total_3m as dom_rem_trans_count_3m_to_total_3m,
-	t48.transaction_dom_rem_trans_cnt_6m_to_total_6m as dom_rem_trans_count_6m_to_total_6m,
-	t1.transaction_dom_rem_trans_max_12m as dom_rem_trans_max_12m,
-	t1.transaction_dom_rem_trans_max_1m as dom_rem_trans_max_1m,
-	t1.transaction_dom_rem_trans_min_12m as dom_rem_trans_min_12m,
-	t1.transaction_dom_rem_trans_sum_12m as dom_rem_trans_sum_12m,
-	t48.transaction_dom_rem_trans_sum_1m_to_3m as dom_rem_trans_sum_1m_to_3m,
-	t48.transaction_dom_rem_trans_sum_1m_to_total_1m as dom_rem_trans_sum_1m_to_total_1m,
-	t48.transaction_dom_rem_trans_sum_3m_to_6m as dom_rem_trans_sum_3m_to_6m,
-	t11.transaction_fuel_trans_max_1m as fuel_trans_max_1m,
-	t18.transaction_supermarkets_trans_cnt_3m as supermarkets_flg_3m,
-	t4.transaction_transport_trans_cnt_3m as transport_flg_3m,
-	t2.transaction_cafe_trans_cnt_3m as cafe_flg_3m,
-	t11.transaction_fuel_trans_cnt_3m as fuel_flg_3m,
-	t12.transaction_pharmacies_trans_cnt_3m as pharmacies_flg_3m
-from '||in_table||' a
-LEFT JOIN '||in_table||'_TRANS_TEMP_0 t0 ON t0.client_did = a.client_did AND t0.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_1 t1 ON t1.client_did = a.client_did AND t1.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_2 t2 ON t2.client_did = a.client_did AND t2.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_4 t4 ON t4.client_did = a.client_did AND t4.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_6 t6 ON t6.client_did = a.client_did AND t6.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_9 t9 ON t9.client_did = a.client_did AND t9.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_10 t10 ON t10.client_did = a.client_did AND t10.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_11 t11 ON t11.client_did = a.client_did AND t11.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_12 t12 ON t12.client_did = a.client_did AND t12.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_18 t18 ON t18.client_did = a.client_did AND t18.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_19 t19 ON t19.client_did = a.client_did AND t19.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_24 t24 ON t24.client_did = a.client_did AND t24.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_35 t35 ON t35.client_did = a.client_did AND t35.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_00 t00 ON t00.client_did = a.client_did AND t00.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_48 t48 ON t48.client_did = a.client_did AND t48.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_49 t49 ON t49.client_did = a.client_did AND t49.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_51 t51 ON t51.client_did = a.client_did AND t51.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_65 t65 ON t65.client_did = a.client_did AND t65.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_70 t70 ON t70.client_did = a.client_did AND t70.report_date = a.report_date
-LEFT JOIN '||in_table||'_TRANS_TEMP_76 t76 ON t76.client_did = a.client_did AND t76.report_date = a.report_date
-';
-
-execute immediate my_str;
-
-execute immediate 'create index idx_ema_'||out_table_1||' on '||out_table_1||' (client_did, report_date) PARALLEL 8';
-execute immediate 'grant select on '||out_table_1||' to public';
-
-drop_table_if_exists(upper(concat(in_table, '_trans_p1')));
-drop_table_if_exists(upper(concat(in_table, '_trans_p2')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_00')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_0')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_1')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_2')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_4')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_6')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_9')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_10')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_11')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_12')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_18')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_19')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_24')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_35')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_48')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_49')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_51')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_65')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_70')));
-drop_table_if_exists(upper(concat(in_table, '_TRANS_TEMP_76')));
-
-END;
