@@ -1,149 +1,401 @@
 select /* + parallel(8) */
     a.client_did,
     a.report_date,
-
-	auto_services_trans_max_12m,
-    auto_services_trans_max_1m,
-    auto_services_trans_max_3m,
-    auto_services_trans_max_6m,
-    avg_trans_prev_3m,
-    cafe_trans_count_1m_to_total_1m,
-    cafe_trans_count_3m,
-    cafe_trans_count_3m_to_total_3m,
-    cafe_trans_count_3m_to_total_6m,
-    cafe_trans_count_6m_to_total_6m,
-    cafe_trans_max_1m,
-    cafe_trans_sum_12m,
-    cafe_trans_sum_1m_to_total_1m,
-    cafe_trans_sum_3m_to_6m,
-    cafe_trans_sum_6m_to_total_6m,
-    courier_trans_min_6m,
-    days_since_first_trans,
-    days_since_last_trans,
-    flowers_trans_max_6m,
-    fuel_trans_count_12m,
-    fuel_trans_count_1m_to_3m,
-    fuel_trans_count_1m_to_total_1m,
-    fuel_trans_count_3m_to_total_6m,
-    fuel_trans_count_6m,
-    fuel_trans_count_6m_to_total_6m,
-    fuel_trans_max_12m,
-    fuel_trans_sum_12m,
-    fuel_trans_sum_1m_to_3m,
-    fuel_trans_sum_1m_to_total_1m,
-    fuel_trans_sum_3m_to_total_6m,
-    fuel_trans_sum_6m,
-    fuel_trans_sum_6m_to_total_6m,
-    hotels_trans_min_12m,
-    is_active_pack_premium_flg_1m_mean,
-    medicine_trans_max_1m,
-    pharmacies_trans_count_1m_to_total_1m,
-    pharmacies_trans_count_3m_to_6m,
-    pharmacies_trans_count_3m_to_total_6m,
-    pharmacies_trans_count_6m_to_total_6m,
-    pharmacies_trans_max_12m,
-    pharmacies_trans_sum_1m_to_total_1m,
-    pharmacies_trans_sum_3m,
-    pharmacies_trans_sum_3m_to_total_6m,
-    pharmacies_trans_sum_6m_to_total_6m,
-    portf_acc_passiv_rub_amt_1m_mean,
-    sal_avg_12,
-    sd_age,
-    sd_gender,
-    sport_trans_min_12m,
-    sup_cnt_s_365,
-    supermarkets_trans_count_1m_to_total_1m,
-    supermarkets_trans_count_3m_to_total_3m,
-    supermarkets_trans_count_3m_to_total_6m,
-    supermarkets_trans_count_6m_to_total_6m,
-    supermarkets_trans_max_1m,
-    supermarkets_trans_max_3m,
-    supermarkets_trans_min_12m,
-    supermarkets_trans_min_1m,
-    supermarkets_trans_sum_1m,
-    supermarkets_trans_sum_6m_to_total_6m,
-    tr_atm_sum_trans_180,
-    tr_cnt_trans_1,
-    tr_cnt_trans_14,
-    tr_cnt_trans_180,
-    tr_cnt_trans_240,
-    tr_cnt_trans_30,
-    tr_cnt_trans_300,
-    tr_cnt_trans_365,
-    tr_cnt_trans_60,
-    tr_cnt_trans_7,
-    tr_cnt_trans_730,
-    tr_cnt_trans_90,
-    tr_pos_cnt_trans_1,
-    tr_pos_cnt_trans_14,
-    tr_pos_cnt_trans_180,
-    tr_pos_cnt_trans_240,
-    tr_pos_cnt_trans_30,
-    tr_pos_cnt_trans_60,
-    tr_pos_cnt_trans_7,
-    tr_pos_cnt_trans_90,
-    tr_pos_sum_trans_1,
-    tr_pos_sum_trans_180,
-    tr_pos_sum_trans_240,
-    tr_pos_sum_trans_30,
-    tr_pos_sum_trans_60,
-    tr_pos_sum_trans_7,
-    tr_pos_sum_trans_90,
-    tr_sum_trans_1,
-    tr_sum_trans_14,
-    tr_sum_trans_180,
-    tr_sum_trans_30,
-    tr_sum_trans_60,
-    tr_sum_trans_7,
-    tr_sum_trans_90,
-    transport_trans_count_12m,
-    transport_trans_count_1m,
-    transport_trans_count_1m_to_3m,
-    transport_trans_count_1m_to_total_1m,
-    transport_trans_count_3m,
-    transport_trans_count_3m_to_total_3m,
-    transport_trans_count_3m_to_total_6m,
-    transport_trans_count_6m_to_total_6m,
-    transport_trans_max_1m,
-    transport_trans_max_3m,
-    transport_trans_sum_12m,
-    transport_trans_sum_1m,
-    transport_trans_sum_1m_to_total_1m,
-    transport_trans_sum_3m,
-    transport_trans_sum_3m_to_6m,
-    transport_trans_sum_3m_to_total_3m,
-    transport_trans_sum_3m_to_total_6m,
-    transport_trans_sum_6m,
-    transport_trans_sum_6m_to_total_6m,
-    uralsib_age,
 	
-	dom_rem_trans_count_1m_to_total_1m,
-	dom_rem_trans_count_3m,
-	dom_rem_trans_count_3m_to_total_3m,
-	dom_rem_trans_count_6m_to_total_6m,
-	dom_rem_trans_max_12m,
-	dom_rem_trans_max_1m,
-	dom_rem_trans_min_12m,
-	dom_rem_trans_sum_12m,
-	dom_rem_trans_sum_1m_to_3m,
-	dom_rem_trans_sum_1m_to_total_1m,
-	dom_rem_trans_sum_3m_to_6m,
-	fuel_trans_max_1m,
+	client_agg_monthly_sal_cnt_3m,
+	client_agg_monthly_tot_sum_1m,
+	contract_agg_monthly_cred_cc_unused_limit_aggsum_1m,
+	contract_agg_monthly_dep_total_purchase_count_aggsum_1m,
+	half_posting_mpc_trx_out_aggcount_d1,
+	half_posting_mpc_trx_out_aggcount_d7,
+	half_posting_mpc_trx_out_aggcount_d7_to_m1,
+	half_posting_mpc_trx_out_aggcount_m1,
+	half_posting_mpc_trx_out_count_aggavg_m12,
+	transaction_days_since_last_trans,
+	transaction_ratio_cnt_trans_1m_to_1m_v2,
+	transaction_supermarkets_trans_cnt_12m_to_total_12m,
+	transaction_supermarkets_trans_cnt_1m,
+	transaction_supermarkets_trans_cnt_3m,
+	transaction_supermarkets_v2_trans_cnt_12m,
+	transaction_supermarkets_v2_trans_cnt_1m,
+	transaction_supermarkets_v2_trans_cnt_3m,
+	transaction_supermarkets_v2_trans_cnt_3m_to_total_6m,
+	transaction_supermarkets_v2_trans_cnt_6m,
+	transaction_supermarkets_v2_trans_cnt_6m_to_total_6m,
+	contract_agg_monthly_cred_cc_cash_in_atm_sum_aggsum_3m,
+	dbo_client_info_days_from_created,
+	half_posting_mpc_trx_out_aggsum_d1,
+	half_posting_mpc_trx_out_aggsum_d7,
+	half_posting_mpc_trx_out_sum_aggstd_m1,
+	transaction_dom_rem_trans_cnt_12m,
+	transaction_fastfood_trans_sum_1m,
+	transaction_supermarkets_trans_avg_sum_12m,
+	transaction_supermarkets_trans_max_1m,
+	transaction_supermarkets_trans_max_3m,
+	transaction_supermarkets_trans_sum_12m,
+	transaction_supermarkets_trans_sum_1m,
+	transaction_supermarkets_trans_sum_3m,
+	transaction_supermarkets_trans_sum_6m,
+	transaction_supermarkets_v2_trans_avg_sum_12m,
+	transaction_supermarkets_v2_trans_avg_sum_6m,
+	transaction_supermarkets_v2_trans_max_12m,
+	transaction_supermarkets_v2_trans_max_1m,
+	transaction_supermarkets_v2_trans_max_3m,
+	transaction_supermarkets_v2_trans_max_6m,
+	transaction_supermarkets_v2_trans_sum_12m,
+	transaction_supermarkets_v2_trans_sum_1m,
+	transaction_supermarkets_v2_trans_sum_3m,
+	transaction_supermarkets_v2_trans_sum_6m
 
-	supermarkets_flg_3m,
-	transport_flg_3m,
-	cafe_flg_3m,
-	fuel_flg_3m,
-	pharmacies_flg_3m
+from DAILY_SCORING a 
+LEFT JOIN DAILY_SCORING_OUT_client_agg_monthly t1 
+	on a.client_did = t1.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_1 t2 
+	on a.client_did = t2.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_2 t3
+	on a.client_did = t3.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_dep t4
+	on a.client_did = t4.client_did 
+LEFT JOIN DAILY_SCORING_OUT_half_posting t5
+	on a.client_did = t5.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_1 t6 
+	on a.client_did = t6.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_2 t7 
+	on a.client_did = t7.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_3 t8 
+	on a.client_did = t8.client_did 
+LEFT JOIN DAILY_SCORING_OUT_mcc_model_v2 t9
+	on a.client_did = t9.client_did 
+LEFT JOIN DAILY_SCORING_OUT_dbo_cl_info t10
+	on a.client_did = t10.client_did 
+where transaction_supermarkets_v2_trans_cnt_3m > 0
+;
 
-from DAILY_SCORING a --EMA_MCC_MODEL_TEST_1807 a 
-left join DAILY_SCORING_OUT_client_srvc_model_segm p4
-	on a.client_did = p4.client_did 
-    -- and a.report_date = p4.report_date
-left join DAILY_SCORING_OUT_mcc_model p5
-    on a.client_did = p5.client_did 
-    -- and a.report_date = p5.report_date
-where transaction_total_trans_cnt_3m > 0
 
 
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+	
+half_posting_mpc_trx_out_aggcount_d7,
+half_posting_mpc_trx_out_aggcount_d7_to_m1,
+half_posting_mpc_trx_out_count_aggstd_m1,
+transaction_days_since_last_trans,
+transaction_marketplace_trans_cnt_12m,
+transaction_marketplace_trans_cnt_1m,
+transaction_marketplace_trans_cnt_3m,
+transaction_marketplace_trans_cnt_6m,
+transaction_marketplace_trans_sum_1m,
+transaction_online_shops_trans_cnt_12m,
+transaction_online_shops_trans_cnt_1m,
+transaction_online_shops_trans_cnt_1m_to_total_1m,
+transaction_online_shops_trans_cnt_3m,
+transaction_online_shops_trans_cnt_3m_to_total_6m,
+transaction_online_shops_trans_cnt_6m,
+transaction_online_shops_trans_cnt_6m_to_total_6m,
+transaction_online_shops_trans_sum_12m,
+transaction_online_shops_trans_sum_1m,
+transaction_online_shops_trans_sum_1m_to_total_1m,
+transaction_zoo_trans_sum_12m,
+card_sms_end_diff_sms_start_aggmax_d180,
+card_work_diff_start_aggmin_d365,
+contract_agg_monthly_cred_cc_cash_in_atm_sum_aggsum_12m,
+contract_agg_monthly_cred_cc_cash_in_atm_sum_aggsum_24m,
+contract_agg_monthly_dep_card_credit_turn_share_3m,
+contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d730,
+dbo_dpasp_total_trans_reject_amt_aggavg_m12,
+dbo_dpasp_trans_sbp_entity_reject_amt_aggsum_m12,
+dbo_dpasp_trans_self_reject_amt_aggsum_m12,
+transaction_online_shops_trans_sum_3m,
+transaction_online_shops_trans_sum_6m
+from DAILY_SCORING a 
+LEFT JOIN DAILY_SCORING_OUT_card t1 
+	on a.client_did = t1.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_1 t2 
+	on a.client_did = t2.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_2 t3
+	on a.client_did = t3.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_dep t4
+	on a.client_did = t4.client_did 
+LEFT JOIN DAILY_SCORING_OUT_half_posting t5
+	on a.client_did = t5.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_1 t6 
+	on a.client_did = t6.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_2 t7 
+	on a.client_did = t7.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_3 t8 
+	on a.client_did = t8.client_did 
+LEFT JOIN DAILY_SCORING_OUT_mcc_model_v2 t9
+	on a.client_did = t9.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_cred t11
+	on a.client_did = t11.client_did 
+LEFT JOIN DAILY_SCORING_OUT_dpasp_trx t12
+	on a.client_did = t12.client_did 
+where transaction_marketplace_trans_cnt_3m > 0;
+
+
+
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+	
+client_agg_monthly_tot_sum_1m,
+contract_agg_monthly_dep_total_purchase_count_aggsum_1m,
+contract_agg_monthly_dep_total_purchase_count_aggsum_3m,
+half_posting_mpc_trx_out_aggcount_d1,
+half_posting_mpc_trx_out_aggcount_d7,
+half_posting_mpc_trx_out_aggcount_d7_to_m1,
+half_posting_mpc_trx_out_count_aggavg_d7,
+half_posting_mpc_trx_out_count_aggmax_m1,
+transaction_days_since_last_trans,
+transaction_fastfood_trans_cnt_12m,
+transaction_fastfood_trans_cnt_1m,
+transaction_fastfood_trans_cnt_1m_to_total_1m,
+transaction_fastfood_trans_cnt_3m,
+transaction_fastfood_trans_cnt_3m_to_total_3m,
+transaction_fastfood_trans_cnt_3m_to_total_6m,
+transaction_fastfood_trans_cnt_6m,
+transaction_fastfood_trans_cnt_6m_to_total_6m,
+transaction_fastfood_trans_sum_1m,
+transaction_fun_trans_cnt_1m,
+transaction_supermarkets_trans_sum_1m_to_3m,
+contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d180,
+contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d90,
+dbo_dpasp_change_num_cancel_aggsum_m12,
+half_posting_mpc_trx_out_aggsum_d7,
+transaction_fastfood_trans_avg_sum_12m,
+transaction_fastfood_trans_max_1m,
+transaction_fastfood_trans_max_3m,
+transaction_fastfood_trans_max_6m,
+transaction_fastfood_trans_sum_12m,
+transaction_fastfood_trans_sum_3m,
+transaction_fastfood_trans_sum_6m,
+transaction_flowers_trans_sum_1m,
+transaction_taxes_fines_trans_sum_12m,
+ub_week_total_air_business_pass_cnt_aggsum_d720
+from DAILY_SCORING a 
+LEFT JOIN DAILY_SCORING_OUT_client_agg_monthly t1 
+	on a.client_did = t1.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_dep t4
+	on a.client_did = t4.client_did 
+LEFT JOIN DAILY_SCORING_OUT_half_posting t5
+	on a.client_did = t5.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_1 t6 
+	on a.client_did = t6.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_2 t7 
+	on a.client_did = t7.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_3 t8 
+	on a.client_did = t8.client_did
+LEFT JOIN DAILY_SCORING_OUT_contract_cred t11
+	on a.client_did = t11.client_did 
+LEFT JOIN DAILY_SCORING_OUT_dpasp_risk t12
+	on a.client_did = t12.client_did 
+LEFT JOIN DAILY_SCORING_OUT_ub_week t13
+	on a.client_did = t13.client_did 
+where transaction_fastfood_trans_cnt_3m > 0;
+
+
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+	
+client_agg_monthly_tot_sum_1m,
+client_nonresident_flg,
+contract_agg_monthly_dep_total_purchase_count_aggsum_1m,
+half_posting_mpc_trx_out_aggcount_d1,
+half_posting_mpc_trx_out_aggcount_d7,
+half_posting_mpc_trx_out_aggcount_d7_to_m1,
+transaction_cafe_trans_avg_sum_1m,
+transaction_cafe_trans_avg_sum_1m_to_total_1m,
+transaction_cafe_trans_cnt_12m,
+transaction_cafe_trans_cnt_1m,
+transaction_cafe_trans_cnt_3m,
+transaction_cafe_trans_cnt_3m_to_total_3m,
+transaction_cafe_trans_cnt_3m_to_total_6m,
+transaction_cafe_trans_cnt_6m,
+transaction_cafe_trans_cnt_6m_to_total_6m,
+transaction_cafe_trans_sum_12m,
+transaction_days_since_last_trans,
+transaction_fastfood_trans_cnt_3m_to_total_6m,
+transaction_fastfood_trans_sum_1m,
+transaction_utilities_trans_max_12m,
+application_last_application_income_aggmax_d360,
+application_last_application_income_aggmax_d720,
+card_kgo_sum_com_rur_aggcnt,
+contract_agg_monthly_cred_cc_net_turn_aggavg_12m,
+contract_cred_contract_amt_by_product_category_nm_ptb_cc_aggsum_d90,
+contract_dep_contract_amt_by_open_dt_min,
+dbo_dpasp_total_trans_reject_amt_aggmax_m3,
+dbo_dpasp_total_trans_reject_amt_aggsum_m6,
+dbo_dpasp_trans_individ_entity_reject_amt_aggsum_m12,
+dbo_dpasp_trans_individ_entity_reject_amt_aggsum_m3,
+dbo_dpasp_trans_individ_entity_reject_amt_aggsum_m6,
+dbo_dpasp_trans_individ_entity_reject_cnt_aggsum_m3,
+dbo_dpasp_trans_sbp_reject_amt_aggsum_m1,
+dbo_dpasp_trans_self_amt_aggsum_d7,
+half_posting_mpc_trx_out_aggsum_d1,
+half_posting_mpc_trx_out_aggsum_d7,
+half_posting_mpc_trx_out_sum_aggavg_d7,
+half_posting_sbp_large_trx_out_aggcount_m3,
+transaction_auto_services_trans_cnt_12m,
+transaction_beauty_trans_sum_1m,
+transaction_cafe_trans_cnt_1m_to_total_1m,
+transaction_cafe_trans_max_6m,
+transaction_cafe_trans_sum_1m,
+transaction_cafe_trans_sum_3m,
+transaction_cafe_trans_sum_6m,
+transaction_clothes_trans_sum_12m,
+transaction_diff_min_trans_3m,
+transaction_fastfood_trans_max_12m,
+transaction_fastfood_trans_max_3m,
+transaction_flowers_trans_sum_3m,
+transaction_supermarkets_trans_avg_sum_12m,
+transaction_supermarkets_trans_sum_1m,
+transaction_supermarkets_v2_trans_sum_1m,
+transaction_total_trans_sum_1m,
+transaction_train_trans_sum_1m
+
+from DAILY_SCORING a 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_1 t6 
+	on a.client_did = t6.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_2 t7 
+	on a.client_did = t7.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_3 t8 
+	on a.client_did = t8.client_did 
+LEFT JOIN DAILY_SCORING_OUT_mcc_model_v2 t9
+	on a.client_did = t9.client_did 
+LEFT JOIN DAILY_SCORING_OUT_half_posting t5
+	on a.client_did = t5.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_cred t11
+	on a.client_did = t11.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_dep t12
+	on a.client_did = t12.client_did 
+LEFT JOIN DAILY_SCORING_OUT_client_agg_monthly t1 
+	on a.client_did = t1.client_did 
+LEFT JOIN DAILY_SCORING_OUT_dpasp_trx t13
+	on a.client_did = t13.client_did 
+LEFT JOIN DAILY_SCORING_OUT_client t14
+	on a.client_did = t14.client_did 
+LEFT JOIN DAILY_SCORING_OUT_application t15
+	on a.client_did = t15.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_dep t16
+	on a.client_did = t16.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_1 t17
+	on a.client_did = t17.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_2 t18
+	on a.client_did = t18.client_did 
+LEFT JOIN DAILY_SCORING_OUT_card_kgo t19
+	on a.client_did = t19.client_did 
+where transaction_cafe_trans_cnt_3m > 0;
+   
+  
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+client_agg_monthly_sal_sum_1m,
+client_gender,
+contract_dep_contract_uid_by_product_category_nm_dc_curr_acc_aggcnt_d730,
+half_posting_mpc_trx_out_aggcount_d1,
+half_posting_mpc_trx_out_aggcount_d7,
+half_posting_mpc_trx_out_aggcount_d7_to_m1,
+half_posting_mpc_trx_out_aggsum_d7,
+transaction_beauty_trans_sum_6m,
+transaction_clothes_trans_avg_sum_1m_to_total_1m,
+transaction_clothes_trans_cnt_12m,
+transaction_clothes_trans_cnt_1m,
+transaction_clothes_trans_cnt_3m,
+transaction_clothes_trans_cnt_3m_to_total_6m,
+transaction_clothes_trans_cnt_6m,
+transaction_clothes_trans_cnt_6m_to_total_6m,
+transaction_clothes_trans_sum_1m,
+transaction_days_since_last_trans,
+transaction_ratio_cnt_trans_3m_to_3m,
+transaction_ratio_cnt_trans_5m_to_5m,
+transaction_total_trans_cnt_1m_v2,
+card_card_uid_aggcnt,
+card_kgo_sum_com_rur_aggmax,
+card_kgo_sum_com_rur_aggmax_d730,
+client_agg_monthly_izp_sum_12m,
+client_agg_monthly_izp_sum_1m,
+client_agg_monthly_izp_sum_2m,
+client_agg_monthly_izp_sum_3m,
+contract_agg_monthly_cred_cc_total_monthavg_balance_aggmax_3m,
+contract_agg_monthly_dep_card_cash_out_ofc_sum_aggsum_6m,
+contract_agg_monthly_dep_total_cash_out_ofc_sum_aggsum_1m,
+contract_agg_monthly_dep_total_cash_out_ofc_sum_aggsum_24m,
+contract_agg_monthly_dep_total_cash_out_ofc_sum_aggsum_3m,
+contract_agg_monthly_dep_total_cash_out_ofc_sum_aggsum_6m,
+contract_dep_contract_amt_by_open_dt_min,
+contract_dep_contract_amt_by_product_category_nm_term_dep_aggmax_d365,
+contract_dep_contract_amt_by_product_category_nm_term_dep_aggmax_d730,
+contract_dep_contract_amt_by_product_category_nm_term_dep_aggmax_d90,
+dbo_dpasp_pay_sbp_amt_aggsum_m6,
+dbo_dpasp_total_trans_amt_aggmin_d7,
+dbo_dpasp_total_trans_amt_aggsum_d7,
+dbo_dpasp_trans_individ_entity_amt_aggsum_m1,
+dbo_dpasp_trans_sbp_entity_reject_amt_aggsum_m1,
+dbo_dpasp_trans_self_amt_aggsum_m1,
+dbo_dpasp_trans_self_amt_aggsum_m6,
+dbo_dpasp_trans_self_cnt_aggsum_m3_to_m6,
+dbo_dpasp_trans_self_reject_amt_aggsum_m12,
+half_posting_mpc_large_trx_out_aggcount_m3,
+half_posting_mpc_trx_out_aggsum_d1,
+half_posting_mpc_trx_out_aggsum_d7_to_m1,
+half_posting_sbp_trx_out_sum_aggmax_m6,
+transaction_beauty_trans_cnt_12m,
+transaction_beauty_trans_sum_1m,
+transaction_books_trans_cnt_3m_to_total_3m,
+transaction_books_trans_min_12m,
+transaction_clothes_trans_avg_sum_1m_to_3m,
+transaction_clothes_trans_cnt_1m_to_total_1m,
+transaction_clothes_trans_max_12m,
+transaction_clothes_trans_max_1m,
+transaction_clothes_trans_max_3m,
+transaction_clothes_trans_max_6m,
+transaction_clothes_trans_sum_12m,
+transaction_clothes_trans_sum_3m,
+transaction_clothes_trans_sum_3m_to_total_3m,
+transaction_clothes_trans_sum_6m,
+transaction_clothes_trans_sum_6m_to_total_6m,
+transaction_consulting_trans_min_12m,
+transaction_fun_trans_sum_1m,
+transaction_max_trans_prev_3m,
+transaction_max_trans_prev_6m,
+transaction_other_trans_sum_1m,
+transaction_taxes_fines_trans_sum_12m,
+transaction_tech_trans_sum_12m,
+transaction_tech_trans_sum_3m
+from DAILY_SCORING a 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_1 t6 
+	on a.client_did = t6.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_2 t7 
+	on a.client_did = t7.client_did 
+LEFT JOIN DAILY_SCORING_OUT_TRANSACTION_3 t8 
+	on a.client_did = t8.client_did 
+LEFT JOIN DAILY_SCORING_OUT_half_posting t5
+	on a.client_did = t5.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_1 t2 
+	on a.client_did = t2.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_2 t3
+	on a.client_did = t3.client_did 
+LEFT JOIN DAILY_SCORING_OUT_contract_dep t12
+	on a.client_did = t12.client_did 
+LEFT JOIN DAILY_SCORING_OUT_client_agg_monthly t1 
+	on a.client_did = t1.client_did 
+LEFT JOIN DAILY_SCORING_OUT_client t14
+	on a.client_did = t14.client_did
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_dep t4
+	on a.client_did = t4.client_did
+LEFT JOIN DAILY_SCORING_OUT_dpasp_trx t13
+	on a.client_did = t13.client_did
+LEFT JOIN DAILY_SCORING_OUT_card_kgo t19
+	on a.client_did = t19.client_did 
+LEFT JOIN DAILY_SCORING_OUT_card t17 
+	on a.client_did = t17.client_did 
+where  transaction_clothes_trans_cnt_3m > 0;
+
+
+
+
+    
 
