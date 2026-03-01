@@ -5,11 +5,11 @@
 -- 0: Никогда не было НС (предложение ограничить горизонт до 5л в глубину) - случайное
 --	  распределение report_date в периоде t0 - t1
 -- 0: берем все client_did и накопы, которые открыты 
---    до 01.01.2025 (начало ВДР) а закрыт до 01.01.2026 (конец ВДР) и обозначаем их нулями
+--    до 01.01.2025 (начало ВДР) а закрыт до 31.01.2026 (конец ВДР) и обозначаем их нулями
 
 
 
--- все НС открытые с 01.01.2025 по 01.01.2026 + рандомный отчетный день за 30 дней до этого
+-- все НС открытые с 01.01.2025 по 31.01.2026 + рандомный отчетный день за 30 дней до этого
 CREATE TABLE EMA_ES19038_P1 AS --44635 client_did
 SELECT /*+parallel(8)*/ 
   contr.client_did, 
@@ -24,14 +24,14 @@ SELECT /*+parallel(8)*/
 FROM dm.contracts contr
 WHERE 1=1  
   AND (lower(contr.DEP_SHORT_NM) like '%накоп%' or lower(contr.DEP_NAME) like '%накоп%')
-  AND contr.ACC_OPEN_DT BETWEEN '01.02.2025' AND '31.01.2026';  
+  AND contr.ACC_OPEN_DT BETWEEN '01.01.2025' AND '31.01.2026';  
 
 -- отдельно фильтруем нужные даты для таблицы с остатками на счетах за 2 недели после открытия
-drop table tmp_date_ranges_year;
+drop table tmp_date_rangese_year;
 create table tmp_date_rangese_year as
 select distinct 
     report_date,
-	report_date + 14 as end_date
+	ACC_OPEN_DT + 14 as end_date
 from EMA_ES19038_P1;
 
 create index idx_ema_year_tmp_ranges_dates on tmp_date_rangese_year(report_date, end_date);
@@ -69,7 +69,7 @@ GROUP BY contr.client_did;
 CREATE TABLE EMA_ES19038_P4 AS
 SELECT /*+parallel(8)*/ 
   contr.client_did, 
-  date'2025-02-01' + trunc(dbms_random.value(0, 396)) as report_date,
+  date'2025-01-01' + trunc(dbms_random.value(0, 365)) as report_date,
   contr.account_uid,
   contr.fact_close_dt,
   contr.plan_close_dt,
@@ -81,7 +81,7 @@ LEFT JOIN EMA_ES19038_P1 base ON              -- удаляем клиентов
   base.client_did = contr.client_did
 WHERE 1=1 
   AND base.client_did is null
-  AND contr.ACC_OPEN_DT BETWEEN '01.01.2021' AND '01.02.2025' 
+  AND contr.ACC_OPEN_DT BETWEEN '01.01.2021' AND '31.12.2024' 
   AND contr.FACT_CLOSE_DT <= '31.01.2026'
   AND (lower(contr.DEP_SHORT_NM) like '%накоп%' or lower(contr.DEP_NAME) like '%накоп%'); 
   
@@ -110,7 +110,7 @@ group by client_did, 0
 UNION ALL
 SELECT /*+parallel(8)*/ DISTINCT
   client_did, 
-  date'2024-03-01' + trunc(dbms_random.value(0, 396)) as report_date,
+  date'2025-01-01' + trunc(dbms_random.value(0, 365)) as report_date,
   0 as target
 FROM EMA_ES19038_P3
 WHERE acc_flg = 0
