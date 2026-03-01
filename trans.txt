@@ -7,7 +7,18 @@
 -- 0: берем все client_did и накопы, которые открыты 
 --    до 01.01.2025 (начало ВДР) а закрыт до 31.01.2026 (конец ВДР) и обозначаем их нулями
 
-
+-- для всех НС подтягиваем баланс через 2 недели (вариант от P1)
+create table EMA_ES19038_P2 as
+select
+       sa.client_did,
+       sa.report_date,
+       sa.account_uid,
+       sa.ACC_OPEN_DT + 14 as ACC_BAL_OPER_DT,
+       case when b.ACC_BAL_CLOSE_BAL_RUB_AMT > 500000 then 1 else 0 end as target
+from EMA_ES19038_P1 sa
+join dm_rrb.dm_rrb_au_account_balance b
+  on  b.ACC_BAL_ACC_UID = sa.account_uid
+  and b.ACC_BAL_OPER_DT = sa.ACC_OPEN_DT + 14;
 
 -- все НС открытые с 01.01.2025 по 31.01.2026 + рандомный отчетный день за 30 дней до этого
 CREATE TABLE EMA_ES19038_P1 AS --44635 client_did
