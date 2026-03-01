@@ -1,10 +1,124 @@
-SELECT client_did, report_date, target
+-- 1: Открыл НС за период t0 - t1 в течение 30 дней, при этом через 2 нед после открытия остаток на 
+--    счете НС не менее 500к
+-- 0: Открыл НС за период t0 - t1 в течение 30 дней, при этом через 2 нед после открытия остаток на 
+--    счете МЕНЬШЕ 500к
+-- 0: Никогда не было НС (предложение ограничить горизонт до 5л в глубину) - случайное
+--	  распределение report_date в периоде t0 - t1
+-- 0: берем все client_did и накопы, которые открыты 
+--    до 01.01.2025 (начало ВДР) а закрыт до 01.01.2026 (конец ВДР) и обозначаем их нулями
+
+
+
+-- все НС открытые с 01.01.2025 по 01.01.2026 + рандомный отчетный день за 30 дней до этого
+CREATE TABLE EMA_ES19038_P1 AS --44635 client_did
+SELECT /*+parallel(8)*/ 
+  contr.client_did, 
+--  contr.client_ibso_id,
+  contr.account_uid,
+  contr.fact_close_dt,
+  contr.plan_close_dt,
+  contr.open_dt,
+  contr.acc_open_dt - trunc(dbms_random.value(1, 30)) as report_date,
+  contr.acc_close_dt,
+  contr.acc_open_dt
+FROM dm.contracts contr
+WHERE 1=1  
+  AND (lower(contr.DEP_SHORT_NM) like '%накоп%' or lower(contr.DEP_NAME) like '%накоп%')
+  AND contr.ACC_OPEN_DT BETWEEN '01.02.2025' AND '31.01.2026';  
+
+-- отдельно фильтруем нужные даты для таблицы с остатками на счетах за 2 недели после открытия
+drop table tmp_date_ranges_year;
+create table tmp_date_rangese_year as
+select distinct 
+    report_date,
+	report_date + 14 as end_date
+from EMA_ES19038_P1;
+
+create index idx_ema_year_tmp_ranges_dates on tmp_date_rangese_year(report_date, end_date);
+create index idx_ema_year_tmp_ranges_report on tmp_date_rangese_year(report_date);
+
+--для всех НС подтягиваем баланс через 2 недели 
+drop table EMA_ES19038_P2;
+create table EMA_ES19038_P2 as 
+select 
+       sa.client_did,
+       sa.report_date, 
+	   sa.account_uid,
+       b.ACC_BAL_OPER_DT,
+       case when b.ACC_BAL_CLOSE_BAL_RUB_AMT > 500000 then 1 else 0 end as target
+from tmp_date_rangese_year d
+join dm_rrb.dm_rrb_au_account_balance b
+  on b.ACC_BAL_OPER_DT = d.end_date
+join EMA_ES19038_P1 sa
+  on sa.account_uid = b.ACC_BAL_ACC_UID
+  and sa.report_date = d.report_date
+group by sa.client_did, sa.report_date, sa.account_uid, b.ACC_BAL_OPER_DT;
+
+
+-- Подмножество клиентов, которые никогда не использовали накоп - последние 5 лет
+CREATE TABLE EMA_ES19038_P3 AS
+SELECT /*+parallel(8)*/ 
+  contr.client_did,
+  max(case when (lower(contr.DEP_SHORT_NM) like '%накоп%' or lower(contr.DEP_NAME) like '%накоп%') then 1 else 0 end) as acc_flg 
+FROM dm.contracts contr
+WHERE 1=1 
+  AND contr.ACC_OPEN_DT BETWEEN '01.01.2021' AND '31.01.2026'
+GROUP BY contr.client_did;
+
+
+CREATE TABLE EMA_ES19038_P4 AS
+SELECT /*+parallel(8)*/ 
+  contr.client_did, 
+  date'2025-02-01' + trunc(dbms_random.value(0, 396)) as report_date,
+  contr.account_uid,
+  contr.fact_close_dt,
+  contr.plan_close_dt,
+  contr.open_dt,
+  contr.acc_close_dt,
+  contr.acc_open_dt             
+FROM dm.contracts contr
+LEFT JOIN EMA_ES19038_P1 base ON              -- удаляем клиентов, который открыли накоп
+  base.client_did = contr.client_did
+WHERE 1=1 
+  AND base.client_did is null
+  AND contr.ACC_OPEN_DT BETWEEN '01.01.2021' AND '01.02.2025' 
+  AND contr.FACT_CLOSE_DT <= '31.01.2026'
+  AND (lower(contr.DEP_SHORT_NM) like '%накоп%' or lower(contr.DEP_NAME) like '%накоп%'); 
+  
+  
+CREATE TABLE EMA_SAMPLE_ES19038 AS
+SELECT /*+parallel(8)*/ 
+	client_did, 
+	report_date, 
+	target
 FROM (
-  SELECT *,
+  SELECT a.*,
     ROW_NUMBER() OVER (
       PARTITION BY client_did 
       ORDER BY target DESC, report_date DESC
     ) AS rn
-  FROM your_table
+  FROM EMA_ES19038_P2 a
 ) t
-WHERE rn = 1
+WHERE rn = 1 
+UNION ALL
+SELECT /*+parallel(8)*/ DISTINCT
+  client_did, 
+  max(report_date) as report_date,
+  0 as target
+FROM EMA_ES19038_P1 where client_did not in (select client_did from EMA_ES19038_P2) 
+group by client_did, 0
+UNION ALL
+SELECT /*+parallel(8)*/ DISTINCT
+  client_did, 
+  date'2024-03-01' + trunc(dbms_random.value(0, 396)) as report_date,
+  0 as target
+FROM EMA_ES19038_P3
+WHERE acc_flg = 0
+UNION ALL
+SELECT /*+parallel(8)*/ DISTINCT
+  client_did, 
+  max(report_date) as report_date,
+  0 as target
+FROM EMA_ES19038_P4
+GROUP BY client_did, 0 
+;
