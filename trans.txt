@@ -1,47 +1,112 @@
-Разработка веб-тренажера для обучения операторов контакт-центра с имитацией чат-канала и системой автоматической оценки на базе ИИ
+from __future__ import annotations
+from dataclasses import dataclass
+from io import BytesIO
+from minio import Minio
+from minio.error import S3Error
+from .utils import parse_s3_uri
+from .exceptions import StorageError
 
- ** 
 
-Цель: Позволить операторам отрабатывать практические сценарии (кейсы) в безопасной среде, а администраторам — гибко создавать учебные материалы и получать объективную оценку навыков сотрудников. Важно, чтобы у сотрудников была возможность работать с интерфейсом как с компьютера, так и с мобильного телефона
+class StorageClient:
+    """Абстрактный интерфейс хранилища артефактов."""
 
-Основной функционал:
+    def put(self, uri: str, data: bytes) -> None: ...
+    def get(self, uri: str) -> bytes: ...
+    def delete(self, uri: str) -> None: ...
+    def exists(self, uri: str) -> bool: ...
 
- ** 
 
-Панель администратора:
+@dataclass
+class MinioClient(StorageClient):
+    """
+    Клиент для MinIO с использованием официального SDK.
+    Совместим по интерфейсу с S3Client (put/get/delete/exists).
+    """
 
- 
-Создание/редактирование кейсов:{}Возможность создавать сценарии для голоса или чата.
-Конструктор сценария:Визуальный редактор для описания:
-Контекста кейса:Например, "Клиент звонит из-за неработающей услуги, он зол".
-Инструкции для оператора:Цели и задачи (успокоить, идентифицировать проблему, предложить решение).
-Диалога-макета:Предопределенные реплики "клиента" (системы) на каждом шаге.
-Ограничений и проверок:Ключевые фразы, которые оператор обязан сказать (например, представиться) или, наоборот, не должен говорить (слэнг, грубость). Тайминг для голосовых ответов
- 
+    def __init__(
+        self,
+        endpoint: str,
+        access_key: str,
+        secret_key: str,
+        secure: bool = False,
+        region: str | None = None,
+    ):
+        self.endpoint = endpoint
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.secure = secure  # False -> http, True -> https
+        self.region = region
 
-Тренажер для оператора:
+    # ленивое создание клиента
+    _client: Minio | None = None
 
- 
-Выбор кейса:Каталог доступных для отработки сценариев.
-Голосовой канал:Интерфейс, имитирующий звонок (кнопки "Принять/Завершить вызов", индикатор разговора). Интеграция с ASR (распознавание речи) для преобразования голоса оператора в текст в реальном времени.
-Чат-канал:Интерфейс, имитирующий мессенджер/чат-бот, где оператор ведет текстовый диалог с "клиентом" (системой).
-Динамический сценарий: Реакция "клиента" на ответы оператора на основе заложенной в кейс логики (например, если оператор не извинился, "клиент" усиливает недовольство).
-Система оценки на базе ИИ
-Анализ диалога:ИИ обрабатывает полную расшифровку (текст + метаданные для голоса)
- 
+    def _get_client(self) -> Minio:
+        if self._client is None:
+            self._client = Minio(
+                endpoint=self.endpoint,
+                access_key=self.access_key,
+                secret_key=self.secret_key,
+                secure=self.secure,
+                region=self.region,
+            )
+        return self._client
 
-Генерация итогового отчета:
+    def put(self, uri: str, data: bytes) -> None:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            # убедимся, что бакет существует (создавать или проверить — на ваш выбор)
+            # if not client.bucket_exists(bucket):
+            #     client.make_bucket(bucket)
 
-Оценка по ключевым критериям:{}Эмпатия, соблюдение скрипта, грамотность речи, эффективность решения, скорость реакции.
-Конкретные примеры:Вывод реплик оператора, которые были удачными или проблемными ("Вы успешно успокоили клиента фразой 'Понимаю ваше возмущение'", "Вы забыли представиться в начале разговора").
-Рекомендации по улучшению:Конкретные советы ("Потренируйтесь использовать вводные фразы для уточнения", "Обратите внимание на слова-паразиты: в диалоге было 5 раз 'короче'"). Приоритет
-Сравнение с эталоном:Если заложен идеальный скрипт, ИИ может показать расхождения.
+            bio = BytesIO(data)
+            client.put_object(
+                bucket_name=bucket,
+                object_name=key,
+                data=bio,
+                length=len(data),  # для BytesIO — фиксированная длина
+                content_type="application/octet-stream",
+            )
+        except S3Error as e:
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
 
-Фича	Описание	REST Endpoint	Method
-Просмотр списка кейсов	Администратор видит все кейсы	/api/admin/cases	GET
-Создание кейса	Администратор создаёт новый кейс	/api/admin/cases	POST
-Получение информации по кейсу	Просмотр деталей конкретного кейса	/api/admin/cases/{case_id}	GET
-Редактирование кейса	Изменение деталей существующего кейса	/api/admin/cases/{case_id}	PUT
-Удаление кейса	Администратор удаляет кейс	/api/admin/cases/{case_id}	DELETE
-Просмотр логов сессий	Администратор видит историю тренировок	/api/admin/sessions	GET
-Получение оценки конкретной сессии	Администратор видит детали оценки оператора	/api/admin/scores/{score_id}	GET
+    def get(self, uri: str) -> bytes:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            resp = client.get_object(bucket, key)
+            try:
+                return resp.read()
+            finally:
+                resp.close()
+                resp.release_conn()
+        except S3Error as e:
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
+
+    def delete(self, uri: str) -> None:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            client.remove_object(bucket, key)
+        except S3Error as e:
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
+
+    def exists(self, uri: str) -> bool:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            client.stat_object(bucket, key)
+            return True
+        except S3Error as e:
+            # у MinIO "нет объекта" обычно S3Error с кодом "NoSuchKey" или "NotFound"
+            if e.code in {"NoSuchKey", "NoSuchObject", "NoSuchEntity", "NotFound"}:
+                return False
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
