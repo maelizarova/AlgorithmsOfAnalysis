@@ -1,112 +1,25 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from io import BytesIO
-from minio import Minio
-from minio.error import S3Error
-from .utils import parse_s3_uri
-from .exceptions import StorageError
+import hashlib
+from datetime import datetime, timezone, timedelta
+
+TZ_UTC_PLUS_3 = timezone(timedelta(hours=3))
 
 
-class StorageClient:
-    """Абстрактный интерфейс хранилища артефактов."""
-
-    def put(self, uri: str, data: bytes) -> None: ...
-    def get(self, uri: str) -> bytes: ...
-    def delete(self, uri: str) -> None: ...
-    def exists(self, uri: str) -> bool: ...
-
-
-@dataclass
-class MinioClient(StorageClient):
+def now_utc_plus_3_naive():
+    """Возвращает текущий datetime в зоне UTC+3.
+    Это удобно для записи в Oracle DATE.
     """
-    Клиент для MinIO с использованием официального SDK.
-    Совместим по интерфейсу с S3Client (put/get/delete/exists).
-    """
+    return datetime.now(tz=TZ_UTC_PLUS_3).replace(tzinfo=None)
 
-    def __init__(
-        self,
-        endpoint: str,
-        access_key: str,
-        secret_key: str,
-        secure: bool = False,
-        region: str | None = None,
-    ):
-        self.endpoint = endpoint
-        self.access_key = access_key
-        self.secret_key = secret_key
-        self.secure = secure  # False -> http, True -> https
-        self.region = region
 
-    # ленивое создание клиента
-    _client: Minio | None = None
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
-    def _get_client(self) -> Minio:
-        if self._client is None:
-            self._client = Minio(
-                endpoint=self.endpoint,
-                access_key=self.access_key,
-                secret_key=self.secret_key,
-                secure=self.secure,
-                region=self.region,
-            )
-        return self._client
 
-    def put(self, uri: str, data: bytes) -> None:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            # убедимся, что бакет существует (создавать или проверить — на ваш выбор)
-            # if not client.bucket_exists(bucket):
-            #     client.make_bucket(bucket)
-
-            bio = BytesIO(data)
-            client.put_object(
-                bucket_name=bucket,
-                object_name=key,
-                data=bio,
-                length=len(data),  # для BytesIO — фиксированная длина
-                content_type="application/octet-stream",
-            )
-        except S3Error as e:
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
-
-    def get(self, uri: str) -> bytes:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            resp = client.get_object(bucket, key)
-            try:
-                return resp.read()
-            finally:
-                resp.close()
-                resp.release_conn()
-        except S3Error as e:
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
-
-    def delete(self, uri: str) -> None:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            client.remove_object(bucket, key)
-        except S3Error as e:
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
-
-    def exists(self, uri: str) -> bool:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            client.stat_object(bucket, key)
-            return True
-        except S3Error as e:
-            # у MinIO "нет объекта" обычно S3Error с кодом "NoSuchKey" или "NotFound"
-            if e.code in {"NoSuchKey", "NoSuchObject", "NoSuchEntity", "NotFound"}:
-                return False
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
+def parse_s3_uri(uri: str) -> tuple[str, str]:
+    """Разбирает bucket/key в (bucket, key)."""
+    parts = uri.split("/", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise ValueError(f"Некорректный S3 URI: {uri}")
+    bucket, key = parts[0], parts[1]
+    return bucket, key
