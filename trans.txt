@@ -1,25 +1,15 @@
-from __future__ import annotations
-import hashlib
-from datetime import datetime, timezone, timedelta
+minio:
+  endpoint: "your-s3-endpoint:9000"
+  access_key: "your-access-key"
+  secret_key: "your-secret-key"
+  secure: false
+  region: null
 
-TZ_UTC_PLUS_3 = timezone(timedelta(hours=3))
+paths:
+  cases: "trainer-data/cases"
+  profiles: "trainer-data/profiles"
+  sessions: "trainer-data/sessions"
+  scores: "trainer-data/scores"
 
-
-def now_utc_plus_3_naive():
-    """Возвращает текущий datetime в зоне UTC+3.
-    Это удобно для записи в Oracle DATE.
-    """
-    return datetime.now(tz=TZ_UTC_PLUS_3).replace(tzinfo=None)
-
-
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def parse_s3_uri(uri: str) -> tuple[str, str]:
-    """Разбирает bucket/key в (bucket, key)."""
-    parts = uri.split("/", 1)
-    if len(parts) != 2 or not parts[0] or not parts[1]:
-        raise ValueError(f"Некорректный S3 URI: {uri}")
-    bucket, key = parts[0], parts[1]
-    return bucket, key
+auth:
+  api_key: "change-me"
