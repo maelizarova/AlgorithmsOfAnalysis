@@ -1,18 +1,82 @@
 from __future__ import annotations
 
-from fastapi import Header, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Body, Depends, status
+
+from admin.auth import build_api_key_verifier
+from admin.service import AdminService
+from config import AppSettings
+from storage import StorageClient
 
 
-def build_api_key_verifier(expected_api_key: str):
-    def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
-        if x_api_key != expected_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing API key",
-            )
+YamlBody = Annotated[
+    str,
+    Body(
+        ...,
+        media_type="text/plain",
+        description="Сырой YAML как текст.",
+        examples=["name: Example\nsteps:\n  - say_hello"],
+    ),
+]
 
-    return verify_api_key
 
+def create_admin_router(settings: AppSettings, storage: StorageClient) -> APIRouter:
+    verify_api_key = build_api_key_verifier(settings.auth.api_key)
+    service = AdminService(storage=storage, paths=settings.paths)
 
+    router = APIRouter(
+        prefix="/api/admin",
+        tags=["admin"],
+        dependencies=[Depends(verify_api_key)],
+    )
 
-"""Пакет backend-админки."""
+    @router.get("/cases")
+    def list_cases():
+        return service.list_cases()
+
+    @router.post("/cases", status_code=status.HTTP_201_CREATED)
+    def create_case(raw_yaml: YamlBody):
+        return service.create_case(raw_yaml)
+
+    @router.get("/cases/{case_id}")
+    def get_case(case_id: str):
+        return service.get_case(case_id)
+
+    @router.put("/cases/{case_id}")
+    def update_case(case_id: str, raw_yaml: YamlBody):
+        return service.update_case(case_id, raw_yaml)
+
+    @router.delete("/cases/{case_id}")
+    def delete_case(case_id: str):
+        return service.delete_case(case_id)
+
+    @router.get("/profiles")
+    def list_profiles():
+        return service.list_profiles()
+
+    @router.post("/profiles", status_code=status.HTTP_201_CREATED)
+    def create_profile(raw_yaml: YamlBody):
+        return service.create_profile(raw_yaml)
+
+    @router.get("/profiles/{profile_id}")
+    def get_profile(profile_id: str):
+        return service.get_profile(profile_id)
+
+    @router.put("/profiles/{profile_id}")
+    def update_profile(profile_id: str, raw_yaml: YamlBody):
+        return service.update_profile(profile_id, raw_yaml)
+
+    @router.delete("/profiles/{profile_id}")
+    def delete_profile(profile_id: str):
+        return service.delete_profile(profile_id)
+
+    @router.get("/sessions")
+    def list_sessions():
+        return service.list_sessions()
+
+    @router.get("/scores/{score_id}")
+    def get_score(score_id: str):
+        return service.get_score(score_id)
+
+    return router
