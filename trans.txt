@@ -1,25 +1,136 @@
 from __future__ import annotations
-import hashlib
-from datetime import datetime, timezone, timedelta
 
-TZ_UTC_PLUS_3 = timezone(timedelta(hours=3))
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+import os
 
+import yaml
 
-def now_utc_plus_3_naive():
-    """Возвращает текущий datetime в зоне UTC+3.
-    Это удобно для записи в Oracle DATE.
-    """
-    return datetime.now(tz=TZ_UTC_PLUS_3).replace(tzinfo=None)
-
-
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+from exceptions import ConfigError
+from utils import parse_s3_uri
 
 
-def parse_s3_uri(uri: str) -> tuple[str, str]:
-    """Разбирает bucket/key в (bucket, key)."""
-    parts = uri.split("/", 1)
-    if len(parts) != 2 or not parts[0] or not parts[1]:
-        raise ValueError(f"Некорректный S3 URI: {uri}")
-    bucket, key = parts[0], parts[1]
-    return bucket, key
+@dataclass(frozen=True)
+class MinioSettings:
+    endpoint: str
+    access_key: str
+    secret_key: str
+    secure: bool = False
+    region: str | None = None
+
+
+@dataclass(frozen=True)
+class PathsSettings:
+    cases: str
+    profiles: str
+    sessions: str
+    scores: str
+
+
+@dataclass(frozen=True)
+class AuthSettings:
+    api_key: str
+
+
+@dataclass(frozen=True)
+class AppSettings:
+    minio: MinioSettings
+    paths: PathsSettings
+    auth: AuthSettings
+
+
+def _require_section(data: dict, section_name: str) -> dict:
+    section = data.get(section_name)
+    if not isinstance(section, dict):
+        raise ConfigError(f"Секция '{section_name}' отсутствует или не является объектом.")
+    return section
+
+
+def _require_non_empty_str(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"Поле '{field_name}' должно быть непустой строкой.")
+    return value.strip()
+
+
+def _read_bool(value: object, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y"}:
+            return True
+        if normalized in {"0", "false", "no", "n"}:
+            return False
+    raise ConfigError(f"Поле '{field_name}' должно быть булевым значением.")
+
+
+def _normalize_s3_prefix(uri: str, field_name: str) -> str:
+    try:
+        bucket, key = parse_s3_uri(uri)
+    except ValueError as exc:
+        raise ConfigError(f"Поле '{field_name}' должно быть S3 URI вида bucket/key.") from exc
+    return f"{bucket}/{key.rstrip('/')}"
+
+
+def load_settings(config_path: str | None = None) -> AppSettings:
+    path = Path(config_path or os.getenv("APP_CONFIG_PATH", "config.yaml"))
+    if not path.exists():
+        raise ConfigError(
+            f"Файл конфигурации не найден: {path}. "
+            "Укажите путь в APP_CONFIG_PATH или создайте config.yaml."
+        )
+
+    try:
+        raw_data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"Некорректный YAML в файле {path}.") from exc
+
+    if not isinstance(raw_data, dict):
+        raise ConfigError("Корневой YAML-объект должен быть объектом.")
+
+    minio_section = _require_section(raw_data, "minio")
+    paths_section = _require_section(raw_data, "paths")
+    auth_section = _require_section(raw_data, "auth")
+
+    minio_settings = MinioSettings(
+        endpoint=_require_non_empty_str(minio_section.get("endpoint"), "minio.endpoint"),
+        access_key=_require_non_empty_str(minio_section.get("access_key"), "minio.access_key"),
+        secret_key=_require_non_empty_str(minio_section.get("secret_key"), "minio.secret_key"),
+        secure=_read_bool(minio_section.get("secure", False), "minio.secure"),
+        region=(
+            _require_non_empty_str(minio_section["region"], "minio.region")
+            if minio_section.get("region") is not None
+            else None
+        ),
+    )
+
+    paths_settings = PathsSettings(
+        cases=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("cases"), "paths.cases"),
+            "paths.cases",
+        ),
+        profiles=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("profiles"), "paths.profiles"),
+            "paths.profiles",
+        ),
+        sessions=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("sessions"), "paths.sessions"),
+            "paths.sessions",
+        ),
+        scores=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("scores"), "paths.scores"),
+            "paths.scores",
+        ),
+    )
+
+    auth_settings = AuthSettings(
+        api_key=_require_non_empty_str(auth_section.get("api_key"), "auth.api_key")
+    )
+
+    return AppSettings(minio=minio_settings, paths=paths_settings, auth=auth_settings)
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> AppSettings:
+    return load_settings()
