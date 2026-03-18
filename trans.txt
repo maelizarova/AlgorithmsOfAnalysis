@@ -1,15 +1,18 @@
-minio:
-  endpoint: "your-s3-endpoint:9000"
-  access_key: "your-access-key"
-  secret_key: "your-secret-key"
-  secure: false
-  region: null
+from __future__ import annotations
 
-paths:
-  cases: "trainer-data/cases"
-  profiles: "trainer-data/profiles"
-  sessions: "trainer-data/sessions"
-  scores: "trainer-data/scores"
+from fastapi import Header, HTTPException, status
 
-auth:
-  api_key: "change-me"
+
+def build_api_key_verifier(expected_api_key: str):
+    def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
+        if x_api_key != expected_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API key",
+            )
+
+    return verify_api_key
+
+
+
+"""Пакет backend-админки."""
