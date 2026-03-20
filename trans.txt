@@ -1,82 +1,231 @@
 from __future__ import annotations
 
-from typing import Annotated
+from pathlib import PurePosixPath
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Body, Depends, status
+import yaml
+from fastapi import HTTPException, status
 
-from ..config import AppSettings
-from ..storage import StorageClient
-from .auth import build_api_key_verifier
-from .service import AdminService
-
-
-YamlBody = Annotated[
-    str,
-    Body(
-        ...,
-        media_type="text/plain",
-        description="Сырой YAML как текст.",
-        examples=["name: Example\nsteps:\n  - say_hello"],
-    ),
-]
+from ..config import PathsSettings
+from ..exceptions import StorageError
+from ..storage import StorageClient, StorageObject
+from ..utils import parse_s3_uri
 
 
-def create_admin_router(settings: AppSettings, storage: StorageClient) -> APIRouter:
-    verify_api_key = build_api_key_verifier(settings.auth.api_key)
-    service = AdminService(storage=storage, paths=settings.paths)
+class AdminService:
+    def __init__(self, storage: StorageClient, paths: PathsSettings):
+        self.storage = storage
+        self.paths = paths
 
-    router = APIRouter(
-        prefix="/api/admin",
-        tags=["admin"],
-        dependencies=[Depends(verify_api_key)],
-    )
+    @staticmethod
+    def _safe_decode(payload: bytes) -> str:
+        return payload.decode("utf-8", errors="replace")
 
-    @router.get("/cases")
-    def list_cases():
-        return service.list_cases()
+    @staticmethod
+    def _join_uri(prefix: str, file_name: str) -> str:
+        return f"{prefix.rstrip('/')}/{file_name.lstrip('/')}"
 
-    @router.post("/cases", status_code=status.HTTP_201_CREATED)
-    def create_case(raw_yaml: YamlBody):
-        return service.create_case(raw_yaml)
+    @staticmethod
+    def _is_uuid(value: str) -> bool:
+        try:
+            UUID(value)
+            return True
+        except ValueError:
+            return False
 
-    @router.get("/cases/{case_id}")
-    def get_case(case_id: str):
-        return service.get_case(case_id)
+    @staticmethod
+    def _validate_uuid(value: str, field_name: str) -> str:
+        try:
+            return str(UUID(value))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{field_name}' должен быть корректным UUID.",
+            ) from exc
 
-    @router.put("/cases/{case_id}")
-    def update_case(case_id: str, raw_yaml: YamlBody):
-        return service.update_case(case_id, raw_yaml)
+    @staticmethod
+    def _validate_yaml(raw_yaml: str) -> None:
+        if not raw_yaml.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="YAML-тело запроса пустое.",
+            )
+        try:
+            yaml.safe_load(raw_yaml)
+        except yaml.YAMLError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Некорректный YAML: {exc}",
+            ) from exc
 
-    @router.delete("/cases/{case_id}")
-    def delete_case(case_id: str):
-        return service.delete_case(case_id)
+    @staticmethod
+    def _as_iso_datetime(storage_obj: StorageObject) -> str | None:
+        if storage_obj.last_modified is None:
+            return None
+        return storage_obj.last_modified.isoformat()
 
-    @router.get("/profiles")
-    def list_profiles():
-        return service.list_profiles()
+    def _storage_call(self, fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except StorageError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Ошибка хранилища: {exc}",
+            ) from exc
 
-    @router.post("/profiles", status_code=status.HTTP_201_CREATED)
-    def create_profile(raw_yaml: YamlBody):
-        return service.create_profile(raw_yaml)
+    def _relative_key(self, full_key: str, uri_prefix: str) -> str | None:
+        _, prefix_key = parse_s3_uri(uri_prefix)
+        normalized_prefix = prefix_key.rstrip("/") + "/"
+        if not full_key.startswith(normalized_prefix):
+            return None
+        return full_key[len(normalized_prefix) :]
 
-    @router.get("/profiles/{profile_id}")
-    def get_profile(profile_id: str):
-        return service.get_profile(profile_id)
+    def _list_yaml_entities(self, uri_prefix: str) -> list[dict]:
+        objects = self._storage_call(self.storage.list, uri_prefix)
+        result: list[dict] = []
+        for obj in objects:
+            relative_key = self._relative_key(obj.key, uri_prefix)
+            if not relative_key or "/" in relative_key:
+                continue
+            if not relative_key.endswith(".yaml"):
+                continue
+            entity_id = relative_key.removesuffix(".yaml")
+            if not self._is_uuid(entity_id):
+                continue
+            result.append(
+                {
+                    "id": entity_id,
+                    "file_name": relative_key,
+                    "size": obj.size,
+                    "last_modified": self._as_iso_datetime(obj),
+                }
+            )
+        result.sort(key=lambda item: item["id"])
+        return result
 
-    @router.put("/profiles/{profile_id}")
-    def update_profile(profile_id: str, raw_yaml: YamlBody):
-        return service.update_profile(profile_id, raw_yaml)
+    def _create_yaml_entity(self, uri_prefix: str, raw_yaml: str) -> dict:
+        self._validate_yaml(raw_yaml)
+        entity_id = str(uuid4())
+        uri = self._join_uri(uri_prefix, f"{entity_id}.yaml")
+        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
+        return {"id": entity_id, "uri": uri}
 
-    @router.delete("/profiles/{profile_id}")
-    def delete_profile(profile_id: str):
-        return service.delete_profile(profile_id)
+    def _get_yaml_entity(self, uri_prefix: str, entity_id: str, entity_name: str) -> dict:
+        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
+        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
+        exists = self._storage_call(self.storage.exists, uri)
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{entity_name.capitalize()} не найден.",
+            )
+        payload = self._storage_call(self.storage.get, uri)
+        return {"id": valid_id, "yaml": self._safe_decode(payload)}
 
-    @router.get("/sessions")
-    def list_sessions():
-        return service.list_sessions()
+    def _update_yaml_entity(
+        self, uri_prefix: str, entity_id: str, raw_yaml: str, entity_name: str
+    ) -> dict:
+        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
+        self._validate_yaml(raw_yaml)
+        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
+        exists = self._storage_call(self.storage.exists, uri)
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{entity_name.capitalize()} не найден.",
+            )
+        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
+        return {"id": valid_id, "uri": uri}
 
-    @router.get("/scores/{score_id}")
-    def get_score(score_id: str):
-        return service.get_score(score_id)
+    def _delete_yaml_entity(self, uri_prefix: str, entity_id: str, entity_name: str) -> dict:
+        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
+        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
+        exists = self._storage_call(self.storage.exists, uri)
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{entity_name.capitalize()} не найден.",
+            )
+        self._storage_call(self.storage.delete, uri)
+        return {"id": valid_id, "deleted": True}
 
-    return router
+    def list_cases(self) -> list[dict]:
+        return self._list_yaml_entities(self.paths.cases)
+
+    def create_case(self, raw_yaml: str) -> dict:
+        return self._create_yaml_entity(self.paths.cases, raw_yaml)
+
+    def get_case(self, case_id: str) -> dict:
+        return self._get_yaml_entity(self.paths.cases, case_id, "case")
+
+    def update_case(self, case_id: str, raw_yaml: str) -> dict:
+        return self._update_yaml_entity(self.paths.cases, case_id, raw_yaml, "case")
+
+    def delete_case(self, case_id: str) -> dict:
+        return self._delete_yaml_entity(self.paths.cases, case_id, "case")
+
+    def list_profiles(self) -> list[dict]:
+        return self._list_yaml_entities(self.paths.profiles)
+
+    def create_profile(self, raw_yaml: str) -> dict:
+        return self._create_yaml_entity(self.paths.profiles, raw_yaml)
+
+    def get_profile(self, profile_id: str) -> dict:
+        return self._get_yaml_entity(self.paths.profiles, profile_id, "profile")
+
+    def update_profile(self, profile_id: str, raw_yaml: str) -> dict:
+        return self._update_yaml_entity(self.paths.profiles, profile_id, raw_yaml, "profile")
+
+    def delete_profile(self, profile_id: str) -> dict:
+        return self._delete_yaml_entity(self.paths.profiles, profile_id, "profile")
+
+    def list_sessions(self) -> list[dict]:
+        objects = self._storage_call(self.storage.list, self.paths.sessions)
+        result: list[dict] = []
+        for obj in objects:
+            relative_key = self._relative_key(obj.key, self.paths.sessions)
+            if not relative_key:
+                continue
+            file_name = PurePosixPath(relative_key).name
+            session_id = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+            result.append(
+                {
+                    "id": session_id,
+                    "file_name": relative_key,
+                    "size": obj.size,
+                    "last_modified": self._as_iso_datetime(obj),
+                    "uri": obj.uri,
+                }
+            )
+        result.sort(
+            key=lambda item: (item["last_modified"] is not None, item["last_modified"] or ""),
+            reverse=True,
+        )
+        return result
+
+    def get_score(self, score_id: str) -> dict:
+        if not score_id.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="'score_id' не может быть пустым.",
+            )
+
+        candidates = [score_id]
+        if "." not in score_id:
+            candidates.extend(f"{score_id}{ext}" for ext in (".json", ".yaml", ".yml", ".txt"))
+
+        for file_name in candidates:
+            uri = self._join_uri(self.paths.scores, file_name)
+            if self._storage_call(self.storage.exists, uri):
+                payload = self._storage_call(self.storage.get, uri)
+                return {
+                    "id": score_id,
+                    "file_name": file_name,
+                    "uri": uri,
+                    "content": self._safe_decode(payload),
+                }
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Оценка не найдена.",
+        )
