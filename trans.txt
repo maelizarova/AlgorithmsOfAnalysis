@@ -1,29 +1,4 @@
-from __future__ import annotations
-
-from fastapi import FastAPI
-
-from app.admin.router import create_admin_router
-from app.config import get_settings
-from app.storage import MinioClient
-
-
-def create_app() -> FastAPI:
-    settings = get_settings()
-
-    storage = MinioClient(
-        endpoint=settings.minio.endpoint,
-        access_key=settings.minio.access_key,
-        secret_key=settings.minio.secret_key,
-        secure=settings.minio.secure,
-        region=settings.minio.region,
-    )
-
-    app = FastAPI(
-        title="Contact Center Trainer Admin API",
-        version="1.0.0",
-    )
-    app.include_router(create_admin_router(settings=settings, storage=storage))
-    return app
-
-
-app = create_app()
+fastapi
+minio
+PyYAML
+uvicorn
