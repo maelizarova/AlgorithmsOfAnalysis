@@ -1,231 +1,312 @@
-from __future__ import annotations
+# %% [markdown]
+# # Smoke-тесты для Admin API
+# 
+# Этот ноутбук позволяет:
+# - поднять сервер один раз (если он еще не запущен),
+# - запускать проверки API многократно без полного перезапуска,
+# - запускать только нужные группы тестов (`cases`, `profiles`, `sessions`, `scores`).
+# 
+# Перед первым запуском:
+# 1. Установите зависимости из `requirements.txt`.
+# 2. Проверьте `config.yaml` (особенно `auth.api_key` и MinIO-параметры).
+# 3. В ячейке ниже установите правильный `API_KEY`.
 
-from pathlib import PurePosixPath
-from uuid import UUID, uuid4
+# %%
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
 
-import yaml
-from fastapi import HTTPException, status
+# Работает и когда ноутбук открыт из корня, и когда лежит в /notebooks
+PROJECT_DIR = Path.cwd()
+if not (PROJECT_DIR / "config.yaml").exists() and (PROJECT_DIR.parent / "config.yaml").exists():
+    PROJECT_DIR = PROJECT_DIR.parent
 
-from ..config import PathsSettings
-from ..exceptions import StorageError
-from ..storage import StorageClient, StorageObject
-from ..utils import parse_s3_uri
+APP_URL = "http://127.0.0.1:8000"
+BASE_URL = f"{APP_URL}/api/admin"
+API_KEY = "change-me"  # <-- поставьте ваш ключ из config.yaml (auth.api_key)
+CONFIG_PATH = PROJECT_DIR / "config.yaml"
+
+SERVER_PROCESS = None
+
+print("PROJECT_DIR:", PROJECT_DIR)
+print("BASE_URL:", BASE_URL)
+print("CONFIG_PATH:", CONFIG_PATH)
 
 
-class AdminService:
-    def __init__(self, storage: StorageClient, paths: PathsSettings):
-        self.storage = storage
-        self.paths = paths
-
-    @staticmethod
-    def _safe_decode(payload: bytes) -> str:
-        return payload.decode("utf-8", errors="replace")
-
-    @staticmethod
-    def _join_uri(prefix: str, file_name: str) -> str:
-        return f"{prefix.rstrip('/')}/{file_name.lstrip('/')}"
-
-    @staticmethod
-    def _is_uuid(value: str) -> bool:
-        try:
-            UUID(value)
+# %%
+def is_server_running(timeout: float = 1.5) -> bool:
+    url = f"{APP_URL}/docs"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout):
             return True
-        except ValueError:
-            return False
+    except Exception:
+        return False
 
-    @staticmethod
-    def _validate_uuid(value: str, field_name: str) -> str:
+
+def start_server_if_needed(wait_timeout: float = 20.0) -> None:
+    """Запускает сервер, только если он еще не работает."""
+    global SERVER_PROCESS
+
+    if is_server_running():
+        print("Сервер уже запущен. Повторный запуск не нужен.")
+        return
+
+    env = os.environ.copy()
+    env["APP_CONFIG_PATH"] = str(CONFIG_PATH)
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000",
+    ]
+
+    SERVER_PROCESS = subprocess.Popen(
+        cmd,
+        cwd=str(PROJECT_DIR),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+    )
+
+    start_ts = time.time()
+    while time.time() - start_ts < wait_timeout:
+        if is_server_running():
+            print("Сервер успешно запущен.")
+            return
+        if SERVER_PROCESS.poll() is not None:
+            raise RuntimeError("Uvicorn завершился раньше времени. Проверьте config.yaml и зависимости.")
+        time.sleep(0.4)
+
+    raise TimeoutError("Сервер не успел подняться за отведенное время.")
+
+
+def stop_server_started_here() -> None:
+    """Останавливает только тот сервер, который был запущен из этого ноутбука."""
+    global SERVER_PROCESS
+
+    if SERVER_PROCESS is None:
+        print("В этом ноутбуке сервер не запускался — останавливать нечего.")
+        return
+
+    if SERVER_PROCESS.poll() is None:
+        SERVER_PROCESS.terminate()
         try:
-            return str(UUID(value))
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'{field_name}' должен быть корректным UUID.",
-            ) from exc
+            SERVER_PROCESS.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            SERVER_PROCESS.kill()
+            SERVER_PROCESS.wait(timeout=5)
 
-    @staticmethod
-    def _validate_yaml(raw_yaml: str) -> None:
-        if not raw_yaml.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="YAML-тело запроса пустое.",
-            )
+    SERVER_PROCESS = None
+    print("Сервер, запущенный из ноутбука, остановлен.")
+
+
+# %%
+def api_request(method: str, path: str, *, body: str | None = None, use_api_key: bool = True, timeout: float = 10.0):
+    """Универсальный HTTP-запрос к API. Возвращает (status_code, payload)."""
+    url = f"{BASE_URL}{path}"
+    headers = {}
+    data = None
+
+    if use_api_key:
+        headers["X-API-Key"] = API_KEY
+
+    if body is not None:
+        headers["Content-Type"] = "text/plain"
+        data = body.encode("utf-8")
+
+    request = urllib.request.Request(url=url, method=method.upper(), headers=headers, data=data)
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+            content_type = response.headers.get("Content-Type", "")
+            if "application/json" in content_type and raw:
+                return response.status, json.loads(raw)
+            return response.status, raw
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode("utf-8")
         try:
-            yaml.safe_load(raw_yaml)
-        except yaml.YAMLError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Некорректный YAML: {exc}",
-            ) from exc
+            payload = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            payload = raw
+        return error.code, payload
 
-    @staticmethod
-    def _as_iso_datetime(storage_obj: StorageObject) -> str | None:
-        if storage_obj.last_modified is None:
-            return None
-        return storage_obj.last_modified.isoformat()
 
-    def _storage_call(self, fn, *args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except StorageError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Ошибка хранилища: {exc}",
-            ) from exc
+def expect_status(actual: int, expected: int | tuple[int, ...], step: str) -> None:
+    if isinstance(expected, tuple):
+        if actual not in expected:
+            raise AssertionError(f"{step}: ожидался один из {expected}, получен {actual}")
+        return
+    if actual != expected:
+        raise AssertionError(f"{step}: ожидался {expected}, получен {actual}")
 
-    def _relative_key(self, full_key: str, uri_prefix: str) -> str | None:
-        _, prefix_key = parse_s3_uri(uri_prefix)
-        normalized_prefix = prefix_key.rstrip("/") + "/"
-        if not full_key.startswith(normalized_prefix):
-            return None
-        return full_key[len(normalized_prefix) :]
 
-    def _list_yaml_entities(self, uri_prefix: str) -> list[dict]:
-        objects = self._storage_call(self.storage.list, uri_prefix)
-        result: list[dict] = []
-        for obj in objects:
-            relative_key = self._relative_key(obj.key, uri_prefix)
-            if not relative_key or "/" in relative_key:
-                continue
-            if not relative_key.endswith(".yaml"):
-                continue
-            entity_id = relative_key.removesuffix(".yaml")
-            if not self._is_uuid(entity_id):
-                continue
-            result.append(
-                {
-                    "id": entity_id,
-                    "file_name": relative_key,
-                    "size": obj.size,
-                    "last_modified": self._as_iso_datetime(obj),
-                }
-            )
-        result.sort(key=lambda item: item["id"])
-        return result
+def print_result(step: str, status_code: int, payload) -> None:
+    print(f"[{step}] status={status_code}")
+    if isinstance(payload, (dict, list)):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(payload)
+    print("-" * 80)
 
-    def _create_yaml_entity(self, uri_prefix: str, raw_yaml: str) -> dict:
-        self._validate_yaml(raw_yaml)
-        entity_id = str(uuid4())
-        uri = self._join_uri(uri_prefix, f"{entity_id}.yaml")
-        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
-        return {"id": entity_id, "uri": uri}
 
-    def _get_yaml_entity(self, uri_prefix: str, entity_id: str, entity_name: str) -> dict:
-        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
-        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{entity_name.capitalize()} не найден.",
-            )
-        payload = self._storage_call(self.storage.get, uri)
-        return {"id": valid_id, "yaml": self._safe_decode(payload)}
+# %%
+def test_auth_without_key() -> None:
+    status_code, payload = api_request("GET", "/cases", use_api_key=False)
+    print_result("auth_without_key", status_code, payload)
+    expect_status(status_code, 401, "auth_without_key")
 
-    def _update_yaml_entity(
-        self, uri_prefix: str, entity_id: str, raw_yaml: str, entity_name: str
-    ) -> dict:
-        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
-        self._validate_yaml(raw_yaml)
-        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{entity_name.capitalize()} не найден.",
-            )
-        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
-        return {"id": valid_id, "uri": uri}
 
-    def _delete_yaml_entity(self, uri_prefix: str, entity_id: str, entity_name: str) -> dict:
-        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
-        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{entity_name.capitalize()} не найден.",
-            )
-        self._storage_call(self.storage.delete, uri)
-        return {"id": valid_id, "deleted": True}
+def test_cases_crud() -> None:
+    yaml_v1 = "title: Smoke Case\nsteps:\n  - hello"
+    yaml_v2 = "title: Smoke Case Updated\nsteps:\n  - hello\n  - updated"
 
-    def list_cases(self) -> list[dict]:
-        return self._list_yaml_entities(self.paths.cases)
+    status_code, payload = api_request("POST", "/cases", body=yaml_v1)
+    print_result("cases_create", status_code, payload)
+    expect_status(status_code, 201, "cases_create")
 
-    def create_case(self, raw_yaml: str) -> dict:
-        return self._create_yaml_entity(self.paths.cases, raw_yaml)
+    case_id = payload.get("id") if isinstance(payload, dict) else None
+    if not case_id:
+        raise AssertionError("cases_create: в ответе нет поля 'id'")
 
-    def get_case(self, case_id: str) -> dict:
-        return self._get_yaml_entity(self.paths.cases, case_id, "case")
+    status_code, payload = api_request("GET", "/cases")
+    print_result("cases_list", status_code, payload)
+    expect_status(status_code, 200, "cases_list")
 
-    def update_case(self, case_id: str, raw_yaml: str) -> dict:
-        return self._update_yaml_entity(self.paths.cases, case_id, raw_yaml, "case")
+    status_code, payload = api_request("GET", f"/cases/{case_id}")
+    print_result("cases_get", status_code, payload)
+    expect_status(status_code, 200, "cases_get")
 
-    def delete_case(self, case_id: str) -> dict:
-        return self._delete_yaml_entity(self.paths.cases, case_id, "case")
+    status_code, payload = api_request("PUT", f"/cases/{case_id}", body=yaml_v2)
+    print_result("cases_update", status_code, payload)
+    expect_status(status_code, 200, "cases_update")
 
-    def list_profiles(self) -> list[dict]:
-        return self._list_yaml_entities(self.paths.profiles)
+    status_code, payload = api_request("DELETE", f"/cases/{case_id}")
+    print_result("cases_delete", status_code, payload)
+    expect_status(status_code, 200, "cases_delete")
 
-    def create_profile(self, raw_yaml: str) -> dict:
-        return self._create_yaml_entity(self.paths.profiles, raw_yaml)
+    status_code, payload = api_request("GET", f"/cases/{case_id}")
+    print_result("cases_get_after_delete", status_code, payload)
+    expect_status(status_code, 404, "cases_get_after_delete")
 
-    def get_profile(self, profile_id: str) -> dict:
-        return self._get_yaml_entity(self.paths.profiles, profile_id, "profile")
 
-    def update_profile(self, profile_id: str, raw_yaml: str) -> dict:
-        return self._update_yaml_entity(self.paths.profiles, profile_id, raw_yaml, "profile")
+def test_profiles_crud() -> None:
+    yaml_v1 = "name: Smoke Profile\nsegment: test"
+    yaml_v2 = "name: Smoke Profile Updated\nsegment: test"
 
-    def delete_profile(self, profile_id: str) -> dict:
-        return self._delete_yaml_entity(self.paths.profiles, profile_id, "profile")
+    status_code, payload = api_request("POST", "/profiles", body=yaml_v1)
+    print_result("profiles_create", status_code, payload)
+    expect_status(status_code, 201, "profiles_create")
 
-    def list_sessions(self) -> list[dict]:
-        objects = self._storage_call(self.storage.list, self.paths.sessions)
-        result: list[dict] = []
-        for obj in objects:
-            relative_key = self._relative_key(obj.key, self.paths.sessions)
-            if not relative_key:
-                continue
-            file_name = PurePosixPath(relative_key).name
-            session_id = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
-            result.append(
-                {
-                    "id": session_id,
-                    "file_name": relative_key,
-                    "size": obj.size,
-                    "last_modified": self._as_iso_datetime(obj),
-                    "uri": obj.uri,
-                }
-            )
-        result.sort(
-            key=lambda item: (item["last_modified"] is not None, item["last_modified"] or ""),
-            reverse=True,
-        )
-        return result
+    profile_id = payload.get("id") if isinstance(payload, dict) else None
+    if not profile_id:
+        raise AssertionError("profiles_create: в ответе нет поля 'id'")
 
-    def get_score(self, score_id: str) -> dict:
-        if not score_id.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="'score_id' не может быть пустым.",
-            )
+    status_code, payload = api_request("GET", "/profiles")
+    print_result("profiles_list", status_code, payload)
+    expect_status(status_code, 200, "profiles_list")
 
-        candidates = [score_id]
-        if "." not in score_id:
-            candidates.extend(f"{score_id}{ext}" for ext in (".json", ".yaml", ".yml", ".txt"))
+    status_code, payload = api_request("GET", f"/profiles/{profile_id}")
+    print_result("profiles_get", status_code, payload)
+    expect_status(status_code, 200, "profiles_get")
 
-        for file_name in candidates:
-            uri = self._join_uri(self.paths.scores, file_name)
-            if self._storage_call(self.storage.exists, uri):
-                payload = self._storage_call(self.storage.get, uri)
-                return {
-                    "id": score_id,
-                    "file_name": file_name,
-                    "uri": uri,
-                    "content": self._safe_decode(payload),
-                }
+    status_code, payload = api_request("PUT", f"/profiles/{profile_id}", body=yaml_v2)
+    print_result("profiles_update", status_code, payload)
+    expect_status(status_code, 200, "profiles_update")
 
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Оценка не найдена.",
-        )
+    status_code, payload = api_request("DELETE", f"/profiles/{profile_id}")
+    print_result("profiles_delete", status_code, payload)
+    expect_status(status_code, 200, "profiles_delete")
+
+    status_code, payload = api_request("GET", f"/profiles/{profile_id}")
+    print_result("profiles_get_after_delete", status_code, payload)
+    expect_status(status_code, 404, "profiles_get_after_delete")
+
+
+def test_sessions_list() -> None:
+    status_code, payload = api_request("GET", "/sessions")
+    print_result("sessions_list", status_code, payload)
+    expect_status(status_code, 200, "sessions_list")
+
+
+def test_score_get(score_id: str = "non-existent-score-id") -> None:
+    status_code, payload = api_request("GET", f"/scores/{score_id}")
+    print_result("score_get", status_code, payload)
+    expect_status(status_code, (200, 404), "score_get")
+
+
+# %%
+def run_smoke(
+    *,
+    run_auth: bool = True,
+    run_cases: bool = True,
+    run_profiles: bool = True,
+    run_sessions: bool = True,
+    run_scores: bool = True,
+    score_id: str = "non-existent-score-id",
+    auto_start_server: bool = True,
+):
+    if auto_start_server:
+        start_server_if_needed()
+
+    checks = []
+
+    if run_auth:
+        test_auth_without_key()
+        checks.append("auth")
+
+    if run_cases:
+        test_cases_crud()
+        checks.append("cases")
+
+    if run_profiles:
+        test_profiles_crud()
+        checks.append("profiles")
+
+    if run_sessions:
+        test_sessions_list()
+        checks.append("sessions")
+
+    if run_scores:
+        test_score_get(score_id=score_id)
+        checks.append("scores")
+
+    print("Готово. Пройдены проверки:", ", ".join(checks) if checks else "(ничего не выбрано)")
+
+
+# Базовый запуск всех проверок
+run_smoke()
+
+
+# %% [markdown]
+# ## Полезные команды
+# 
+# Запустить только часть проверок:
+# 
+# ```python
+# run_smoke(run_profiles=False, run_scores=False)
+# ```
+# 
+# Проверить конкретную оценку по `score_id`:
+# 
+# ```python
+# run_smoke(run_auth=False, run_cases=False, run_profiles=False, run_sessions=False, run_scores=True, score_id="your-score-id")
+# ```
+# 
+# Остановить сервер, если вы запускали его из этого ноутбука:
+# 
+# ```python
+# stop_server_started_here()
+# ```
+
+
