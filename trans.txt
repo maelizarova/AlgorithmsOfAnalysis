@@ -1,151 +1,65 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from datetime import datetime
-from io import BytesIO
-
-from minio import Minio
-from minio.error import S3Error
-
-from .exceptions import StorageError
-from .utils import parse_s3_uri
+def test_auth_without_key() -> None:
+    status_code, payload = api_request("GET", "/cases", use_api_key=False)
+    print_result("auth_without_key", status_code, payload)
+    expect_status(status_code, 401, "auth_without_key")
 
 
-@dataclass
-class StorageObject:
-    """Описание объекта в хранилище."""
+def test_cases_crud() -> None:
+    yaml_v1 = "title: Smoke Case\nsteps:\n  - hello"
+    yaml_v2 = "title: Smoke Case Updated\nsteps:\n  - hello\n  - updated"
 
-    uri: str
-    key: str
-    size: int | None = None
-    last_modified: datetime | None = None
+    status_code, payload = api_request("POST", "/cases", body=yaml_v1)
+    print_result("cases_create", status_code, payload)
+    expect_status(status_code, 201, "cases_create")
+
+    case_id = payload.get("id") if isinstance(payload, dict) else None
+    if not case_id:
+        raise AssertionError("cases_create: в ответе нет поля 'id'")
+
+    status_code, payload = api_request("GET", "/cases")
+    print_result("cases_list", status_code, payload)
+    expect_status(status_code, 200, "cases_list")
+
+    status_code, payload = api_request("GET", f"/cases/{case_id}")
+    print_result("cases_get", status_code, payload)
+    expect_status(status_code, 200, "cases_get")
+
+    status_code, payload = api_request("PUT", f"/cases/{case_id}", body=yaml_v2)
+    print_result("cases_update", status_code, payload)
+    expect_status(status_code, 200, "cases_update")
+
+    status_code, payload = api_request("DELETE", f"/cases/{case_id}")
+    print_result("cases_delete", status_code, payload)
+    expect_status(status_code, 200, "cases_delete")
+
+    status_code, payload = api_request("GET", f"/cases/{case_id}")
+    print_result("cases_get_after_delete", status_code, payload)
+    expect_status(status_code, 404, "cases_get_after_delete")
 
 
-class StorageClient:
-    """Абстрактный интерфейс хранилища артефактов."""
+def test_profiles_single_file() -> None:
+    yaml_all_profiles = "profiles:\n  - external_id: client_001\n    name: Smoke Profile"
 
-    def put(self, uri: str, data: bytes) -> None: ...
-    def get(self, uri: str) -> bytes: ...
-    def delete(self, uri: str) -> None: ...
-    def exists(self, uri: str) -> bool: ...
-    def list(self, uri_prefix: str) -> list[StorageObject]: ...
+    status_code, payload = api_request("PUT", "/profiles", body=yaml_all_profiles)
+    print_result("profiles_put_all", status_code, payload)
+    expect_status(status_code, 200, "profiles_put_all")
+
+    status_code, payload = api_request("GET", "/profiles")
+    print_result("profiles_get_all", status_code, payload)
+    expect_status(status_code, 200, "profiles_get_all")
+
+    status_code, payload = api_request("POST", "/profiles")
+    print_result("profiles_post_disabled", status_code, payload)
+    expect_status(status_code, 501, "profiles_post_disabled")
 
 
-@dataclass
-class MinioClient(StorageClient):
-    """
-    Клиент для MinIO с использованием официального SDK.
-    Совместим по интерфейсу с S3Client (put/get/delete/exists).
-    """
+def test_sessions_list() -> None:
+    status_code, payload = api_request("GET", "/sessions")
+    print_result("sessions_list", status_code, payload)
+    expect_status(status_code, 200, "sessions_list")
 
-    def __init__(
-        self,
-        endpoint: str,
-        access_key: str,
-        secret_key: str,
-        secure: bool = False,
-        region: str | None = None,
-    ):
-        self.endpoint = endpoint
-        self.access_key = access_key
-        self.secret_key = secret_key
-        self.secure = secure  # False -> http, True -> https
-        self.region = region
 
-    # ленивое создание клиента
-    _client: Minio | None = None
-
-    def _get_client(self) -> Minio:
-        if self._client is None:
-            self._client = Minio(
-                endpoint=self.endpoint,
-                access_key=self.access_key,
-                secret_key=self.secret_key,
-                secure=self.secure,
-                region=self.region,
-            )
-        return self._client
-
-    def put(self, uri: str, data: bytes) -> None:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            bio = BytesIO(data)
-            client.put_object(
-                bucket_name=bucket,
-                object_name=key,
-                data=bio,
-                length=len(data),
-                content_type="application/octet-stream",
-            )
-        except S3Error as e:
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
-
-    def get(self, uri: str) -> bytes:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            resp = client.get_object(bucket, key)
-            try:
-                return resp.read()
-            finally:
-                resp.close()
-                resp.release_conn()
-        except S3Error as e:
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
-
-    def delete(self, uri: str) -> None:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            client.remove_object(bucket, key)
-        except S3Error as e:
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
-
-    def exists(self, uri: str) -> bool:
-        bucket, key = parse_s3_uri(uri)
-        client = self._get_client()
-        try:
-            client.stat_object(bucket, key)
-            return True
-        except S3Error as e:
-            if e.code in {"NoSuchKey", "NoSuchObject", "NoSuchEntity", "NotFound"}:
-                return False
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
-
-    def list(self, uri_prefix: str) -> list[StorageObject]:
-        bucket, key_prefix = parse_s3_uri(uri_prefix)
-        client = self._get_client()
-        normalized_prefix = key_prefix.rstrip("/") + "/"
-        try:
-            objects = client.list_objects(
-                bucket_name=bucket,
-                prefix=normalized_prefix,
-                recursive=True,
-            )
-            result: list[StorageObject] = []
-            for obj in objects:
-                object_key = obj.object_name
-                if not object_key:
-                    continue
-                result.append(
-                    StorageObject(
-                        uri=f"{bucket}/{object_key}",
-                        key=object_key,
-                        size=getattr(obj, "size", None),
-                        last_modified=getattr(obj, "last_modified", None),
-                    )
-                )
-            return result
-        except S3Error as e:
-            raise StorageError(f"{e.code}: {e.message}") from e
-        except Exception as e:
-            raise StorageError(str(e)) from e
+def test_score_disabled(score_id: str = "non-existent-score-id") -> None:
+    status_code, payload = api_request("GET", f"/scores/{score_id}")
+    print_result("score_get_disabled", status_code, payload)
+    expect_status(status_code, 501, "score_get_disabled")
