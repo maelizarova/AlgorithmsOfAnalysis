@@ -1,325 +1,136 @@
 from __future__ import annotations
 
-from pathlib import PurePosixPath
-from uuid import UUID, uuid4
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+import os
 
 import yaml
-from fastapi import HTTPException, status
 
-from ..config import PathsSettings
-from ..exceptions import StorageError
-from ..storage import StorageClient, StorageObject
-from ..utils import parse_s3_uri
+from .exceptions import ConfigError
+from .utils import parse_s3_uri
 
 
-class AdminService:
-    PROFILES_FILE_NAME = "profiles.yaml"
+@dataclass(frozen=True)
+class MinioSettings:
+    endpoint: str
+    access_key: str
+    secret_key: str
+    secure: bool = False
+    region: str | None = None
 
-    def __init__(self, storage: StorageClient, paths: PathsSettings):
-        self.storage = storage
-        self.paths = paths
 
-    @staticmethod
-    def _safe_decode(payload: bytes) -> str:
-        return payload.decode("utf-8", errors="replace")
+@dataclass(frozen=True)
+class PathsSettings:
+    cases: str
+    profiles: str
+    sessions: str
+    scores: str
 
-    @staticmethod
-    def _join_uri(prefix: str, file_name: str) -> str:
-        return f"{prefix.rstrip('/')}/{file_name.lstrip('/')}"
 
-    @staticmethod
-    def _is_uuid(value: str) -> bool:
-        try:
-            UUID(value)
+@dataclass(frozen=True)
+class AuthSettings:
+    api_key: str
+
+
+@dataclass(frozen=True)
+class AppSettings:
+    minio: MinioSettings
+    paths: PathsSettings
+    auth: AuthSettings
+
+
+def _require_section(data: dict, section_name: str) -> dict:
+    section = data.get(section_name)
+    if not isinstance(section, dict):
+        raise ConfigError(f"Секция '{section_name}' отсутствует или не является объектом.")
+    return section
+
+
+def _require_non_empty_str(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"Поле '{field_name}' должно быть непустой строкой.")
+    return value.strip()
+
+
+def _read_bool(value: object, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y"}:
             return True
-        except ValueError:
+        if normalized in {"0", "false", "no", "n"}:
             return False
+    raise ConfigError(f"Поле '{field_name}' должно быть булевым значением.")
 
-    @staticmethod
-    def _validate_uuid(value: str, field_name: str) -> str:
-        try:
-            return str(UUID(value))
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'{field_name}' должен быть корректным UUID.",
-            ) from exc
 
-    @staticmethod
-    def _validate_yaml(raw_yaml: str) -> None:
-        if not raw_yaml.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="YAML-тело запроса пустое.",
-            )
-        try:
-            yaml.safe_load(raw_yaml)
-        except yaml.YAMLError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Некорректный YAML: {exc}",
-            ) from exc
+def _normalize_s3_prefix(uri: str, field_name: str) -> str:
+    try:
+        bucket, key = parse_s3_uri(uri)
+    except ValueError as exc:
+        raise ConfigError(f"Поле '{field_name}' должно быть S3 URI вида bucket/key.") from exc
+    return f"{bucket}/{key.rstrip('/')}"
 
-    @staticmethod
-    def _normalize_case_file_name(case_id: str) -> str:
-        normalized = case_id.strip()
-        if not normalized:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="'case_id' не может быть пустым.",
-            )
-        if "/" in normalized or "\\" in normalized or normalized in {".", ".."}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="'case_id' должен быть именем файла без путей.",
-            )
 
-        suffix = PurePosixPath(normalized).suffix.lower()
-        if suffix in {".yaml", ".yml"}:
-            return normalized
-        if suffix == "":
-            return f"{normalized}.yaml"
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="'case_id' должен иметь расширение .yaml/.yml или быть без расширения.",
+def load_settings(config_path: str | None = None) -> AppSettings:
+    path = Path(config_path or os.getenv("APP_CONFIG_PATH", "config.yaml"))
+    if not path.exists():
+        raise ConfigError(
+            f"Файл конфигурации не найден: {path}. "
+            "Укажите путь в APP_CONFIG_PATH или создайте config.yaml."
         )
 
-    @staticmethod
-    def _as_iso_datetime(storage_obj: StorageObject) -> str | None:
-        if storage_obj.last_modified is None:
-            return None
-        return storage_obj.last_modified.isoformat()
+    try:
+        raw_data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"Некорректный YAML в файле {path}.") from exc
 
-    def _storage_call(self, fn, *args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except StorageError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Ошибка хранилища: {exc}",
-            ) from exc
+    if not isinstance(raw_data, dict):
+        raise ConfigError("Корневой YAML-объект должен быть объектом.")
 
-    def _relative_key(self, full_key: str, uri_prefix: str) -> str | None:
-        _, prefix_key = parse_s3_uri(uri_prefix)
-        normalized_prefix = prefix_key.rstrip("/") + "/"
-        if not full_key.startswith(normalized_prefix):
-            return None
-        return full_key[len(normalized_prefix) :]
+    minio_section = _require_section(raw_data, "minio")
+    paths_section = _require_section(raw_data, "paths")
+    auth_section = _require_section(raw_data, "auth")
 
-    def _list_yaml_entities(self, uri_prefix: str, *, require_uuid: bool) -> list[dict]:
-        objects = self._storage_call(self.storage.list, uri_prefix)
-        result: list[dict] = []
-        for obj in objects:
-            relative_key = self._relative_key(obj.key, uri_prefix)
-            if not relative_key or "/" in relative_key:
-                continue
-            if not relative_key.endswith((".yaml", ".yml")):
-                continue
-            entity_id: str
-            if require_uuid:
-                entity_id = PurePosixPath(relative_key).stem
-                if not self._is_uuid(entity_id):
-                    continue
-            else:
-                entity_id = relative_key
-            result.append(
-                {
-                    "id": entity_id,
-                    "file_name": relative_key,
-                    "size": obj.size,
-                    "last_modified": self._as_iso_datetime(obj),
-                }
-            )
-        result.sort(key=lambda item: item["id"])
-        return result
+    minio_settings = MinioSettings(
+        endpoint=_require_non_empty_str(minio_section.get("endpoint"), "minio.endpoint"),
+        access_key=_require_non_empty_str(minio_section.get("access_key"), "minio.access_key"),
+        secret_key=_require_non_empty_str(minio_section.get("secret_key"), "minio.secret_key"),
+        secure=_read_bool(minio_section.get("secure", False), "minio.secure"),
+        region=(
+            _require_non_empty_str(minio_section["region"], "minio.region")
+            if minio_section.get("region") is not None
+            else None
+        ),
+    )
 
-    def _create_yaml_entity(self, uri_prefix: str, raw_yaml: str) -> dict:
-        self._validate_yaml(raw_yaml)
-        entity_id = str(uuid4())
-        uri = self._join_uri(uri_prefix, f"{entity_id}.yaml")
-        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
-        return {"id": entity_id, "uri": uri}
+    paths_settings = PathsSettings(
+        cases=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("cases"), "paths.cases"),
+            "paths.cases",
+        ),
+        profiles=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("profiles"), "paths.profiles"),
+            "paths.profiles",
+        ),
+        sessions=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("sessions"), "paths.sessions"),
+            "paths.sessions",
+        ),
+        scores=_normalize_s3_prefix(
+            _require_non_empty_str(paths_section.get("scores"), "paths.scores"),
+            "paths.scores",
+        ),
+    )
 
-    def _get_yaml_entity(self, uri_prefix: str, entity_id: str, entity_name: str) -> dict:
-        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
-        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{entity_name.capitalize()} не найден.",
-            )
-        payload = self._storage_call(self.storage.get, uri)
-        return {"id": valid_id, "yaml": self._safe_decode(payload)}
+    auth_settings = AuthSettings(
+        api_key=_require_non_empty_str(auth_section.get("api_key"), "auth.api_key")
+    )
 
-    def _update_yaml_entity(
-        self, uri_prefix: str, entity_id: str, raw_yaml: str, entity_name: str
-    ) -> dict:
-        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
-        self._validate_yaml(raw_yaml)
-        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{entity_name.capitalize()} не найден.",
-            )
-        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
-        return {"id": valid_id, "uri": uri}
+    return AppSettings(minio=minio_settings, paths=paths_settings, auth=auth_settings)
 
-    def _delete_yaml_entity(self, uri_prefix: str, entity_id: str, entity_name: str) -> dict:
-        valid_id = self._validate_uuid(entity_id, f"{entity_name}_id")
-        uri = self._join_uri(uri_prefix, f"{valid_id}.yaml")
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{entity_name.capitalize()} не найден.",
-            )
-        self._storage_call(self.storage.delete, uri)
-        return {"id": valid_id, "deleted": True}
 
-    def list_cases(self) -> list[dict]:
-        return self._list_yaml_entities(self.paths.cases, require_uuid=False)
-
-    def create_case(self, raw_yaml: str, case_id: str | None = None) -> dict:
-        self._validate_yaml(raw_yaml)
-        file_name = (
-            self._normalize_case_file_name(case_id)
-            if case_id is not None
-            else f"case_{uuid4().hex}.yaml"
-        )
-        uri = self._join_uri(self.paths.cases, file_name)
-        if self._storage_call(self.storage.exists, uri):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Кейс с таким именем уже существует.",
-            )
-        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
-        return {"id": file_name, "file_name": file_name, "uri": uri}
-
-    def get_case(self, case_id: str) -> dict:
-        file_name = self._normalize_case_file_name(case_id)
-        uri = self._join_uri(self.paths.cases, file_name)
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Кейс не найден.",
-            )
-        payload = self._storage_call(self.storage.get, uri)
-        return {"id": file_name, "file_name": file_name, "yaml": self._safe_decode(payload)}
-
-    def update_case(self, case_id: str, raw_yaml: str) -> dict:
-        file_name = self._normalize_case_file_name(case_id)
-        self._validate_yaml(raw_yaml)
-        uri = self._join_uri(self.paths.cases, file_name)
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Кейс не найден.",
-            )
-        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
-        return {"id": file_name, "file_name": file_name, "uri": uri}
-
-    def delete_case(self, case_id: str) -> dict:
-        file_name = self._normalize_case_file_name(case_id)
-        uri = self._join_uri(self.paths.cases, file_name)
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Кейс не найден.",
-            )
-        self._storage_call(self.storage.delete, uri)
-        return {"id": file_name, "file_name": file_name, "deleted": True}
-
-    def _profiles_uri(self) -> str:
-        return self._join_uri(self.paths.profiles, self.PROFILES_FILE_NAME)
-
-    def get_profiles(self) -> dict:
-        uri = self._profiles_uri()
-        exists = self._storage_call(self.storage.exists, uri)
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Файл профилей не найден.",
-            )
-        payload = self._storage_call(self.storage.get, uri)
-        return {
-            "file_name": self.PROFILES_FILE_NAME,
-            "uri": uri,
-            "yaml": self._safe_decode(payload),
-        }
-
-    def update_profiles(self, raw_yaml: str) -> dict:
-        self._validate_yaml(raw_yaml)
-        uri = self._profiles_uri()
-        existed = self._storage_call(self.storage.exists, uri)
-        self._storage_call(self.storage.put, uri, raw_yaml.encode("utf-8"))
-        return {
-            "file_name": self.PROFILES_FILE_NAME,
-            "uri": uri,
-            "updated": True,
-            "created": not existed,
-        }
-
-    def list_sessions(self) -> list[dict]:
-        objects = self._storage_call(self.storage.list, self.paths.sessions)
-        result: list[dict] = []
-        for obj in objects:
-            relative_key = self._relative_key(obj.key, self.paths.sessions)
-            if not relative_key:
-                continue
-            file_name = PurePosixPath(relative_key).name
-            if not file_name.startswith("session_") or not file_name.endswith(".jsonl"):
-                continue
-
-            uuid_part = file_name[len("session_") : -len(".jsonl")]
-            session_uuid = uuid_part if self._is_uuid(uuid_part) else None
-            session_id = session_uuid or uuid_part
-
-            result.append(
-                {
-                    "id": session_id,
-                    "session_uuid": session_uuid,
-                    "file_name": relative_key,
-                    "size": obj.size,
-                    "last_modified": self._as_iso_datetime(obj),
-                    "uri": obj.uri,
-                }
-            )
-        result.sort(
-            key=lambda item: (item["last_modified"] is not None, item["last_modified"] or ""),
-            reverse=True,
-        )
-        return result
-
-    def get_score(self, score_id: str) -> dict:
-        if not score_id.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="'score_id' не может быть пустым.",
-            )
-
-        candidates = [score_id]
-        if "." not in score_id:
-            candidates.extend(f"{score_id}{ext}" for ext in (".json", ".yaml", ".yml", ".txt"))
-
-        for file_name in candidates:
-            uri = self._join_uri(self.paths.scores, file_name)
-            if self._storage_call(self.storage.exists, uri):
-                payload = self._storage_call(self.storage.get, uri)
-                return {
-                    "id": score_id,
-                    "file_name": file_name,
-                    "uri": uri,
-                    "content": self._safe_decode(payload),
-                }
-
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Оценка не найдена.",
-        )
+@lru_cache(maxsize=1)
+def get_settings() -> AppSettings:
+    return load_settings()
