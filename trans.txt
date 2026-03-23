@@ -1,4 +1,80 @@
-score_id: 44444444-4444-4444-8444-444444444444
-session_id: 33333333-3333-4333-8333-333333333333
-total_score: 0
-comment: "Демо пример оценки"
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Body, Depends, HTTPException, status
+
+from ..config import AppSettings
+from ..storage import StorageClient
+from .auth import build_api_key_verifier
+from .service import AdminService
+
+
+YamlBody = Annotated[
+    str,
+    Body(
+        ...,
+        media_type="text/plain",
+        description="Сырой YAML как текст.",
+        examples=["name: Example\nsteps:\n  - say_hello"],
+    ),
+]
+
+
+def create_admin_router(settings: AppSettings, storage: StorageClient) -> APIRouter:
+    verify_api_key = build_api_key_verifier(settings.auth.api_key)
+    service = AdminService(storage=storage, paths=settings.paths)
+
+    router = APIRouter(
+        prefix="/api/admin",
+        tags=["admin"],
+        dependencies=[Depends(verify_api_key)],
+    )
+
+    @router.get("/cases")
+    def list_cases():
+        return service.list_cases()
+
+    @router.post("/cases", status_code=status.HTTP_201_CREATED)
+    def create_case(raw_yaml: YamlBody, case_id: str | None = None):
+        return service.create_case(raw_yaml, case_id=case_id)
+
+    @router.get("/cases/{case_id}")
+    def get_case(case_id: str):
+        return service.get_case(case_id)
+
+    @router.put("/cases/{case_id}")
+    def update_case(case_id: str, raw_yaml: YamlBody):
+        return service.update_case(case_id, raw_yaml)
+
+    @router.delete("/cases/{case_id}")
+    def delete_case(case_id: str):
+        return service.delete_case(case_id)
+
+    @router.get("/profiles")
+    def list_profiles():
+        return service.get_profiles()
+
+    @router.post("/profiles", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    def create_profile():
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=(
+                "Создание отдельных профилей временно отключено. "
+                "Используйте PUT /api/admin/profiles для обновления всего файла."
+            ),
+        )
+
+    @router.put("/profiles")
+    def update_profiles(raw_yaml: YamlBody):
+        return service.update_profiles(raw_yaml)
+
+    @router.get("/sessions")
+    def list_sessions():
+        return service.list_sessions()
+
+    @router.get("/scores/{score_id}")
+    def get_score(score_id: str):
+        return service.get_score(score_id)
+
+    return router
