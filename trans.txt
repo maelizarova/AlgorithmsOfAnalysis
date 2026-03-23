@@ -1,9 +1,2 @@
-import urllib.parse
-
-if "?" in path:
-        raw_path, query = path.split("?", 1)
-        encoded_path = urllib.parse.quote(raw_path, safe="/")
-        url = f"{BASE_URL}{encoded_path}?{query}"
-    else:
-        encoded_path = urllib.parse.quote(path, safe="/")
-        url = f"{BASE_URL}{encoded_path}"
+if isinstance(case_id, str) and case_id.endswith(".yaml"):
+        raise AssertionError("cases_create: 'id' должен быть без расширения .yaml")
