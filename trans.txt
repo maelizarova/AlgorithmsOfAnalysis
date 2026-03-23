@@ -1,26 +1,151 @@
 from __future__ import annotations
 
-import hashlib
-from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
+from datetime import datetime
+from io import BytesIO
 
-TZ_UTC_PLUS_3 = timezone(timedelta(hours=3))
+from minio import Minio
+from minio.error import S3Error
+
+from .exceptions import StorageError
+from .utils import parse_s3_uri
 
 
-def now_utc_plus_3_naive():
-    """Возвращает текущий datetime в зоне UTC+3.
-    Это удобно для записи в Oracle DATE.
+@dataclass
+class StorageObject:
+    """Описание объекта в хранилище."""
+
+    uri: str
+    key: str
+    size: int | None = None
+    last_modified: datetime | None = None
+
+
+class StorageClient:
+    """Абстрактный интерфейс хранилища артефактов."""
+
+    def put(self, uri: str, data: bytes) -> None: ...
+    def get(self, uri: str) -> bytes: ...
+    def delete(self, uri: str) -> None: ...
+    def exists(self, uri: str) -> bool: ...
+    def list(self, uri_prefix: str) -> list[StorageObject]: ...
+
+
+@dataclass
+class MinioClient(StorageClient):
     """
-    return datetime.now(tz=TZ_UTC_PLUS_3).replace(tzinfo=None)
+    Клиент для MinIO с использованием официального SDK.
+    Совместим по интерфейсу с S3Client (put/get/delete/exists).
+    """
 
+    def __init__(
+        self,
+        endpoint: str,
+        access_key: str,
+        secret_key: str,
+        secure: bool = False,
+        region: str | None = None,
+    ):
+        self.endpoint = endpoint
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.secure = secure  # False -> http, True -> https
+        self.region = region
 
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    # ленивое создание клиента
+    _client: Minio | None = None
 
+    def _get_client(self) -> Minio:
+        if self._client is None:
+            self._client = Minio(
+                endpoint=self.endpoint,
+                access_key=self.access_key,
+                secret_key=self.secret_key,
+                secure=self.secure,
+                region=self.region,
+            )
+        return self._client
 
-def parse_s3_uri(uri: str) -> tuple[str, str]:
-    """Разбирает bucket/key в (bucket, key)."""
-    parts = uri.split("/", 1)
-    if len(parts) != 2 or not parts[0] or not parts[1]:
-        raise ValueError(f"Некорректный S3 URI: {uri}")
-    bucket, key = parts[0], parts[1]
-    return bucket, key
+    def put(self, uri: str, data: bytes) -> None:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            bio = BytesIO(data)
+            client.put_object(
+                bucket_name=bucket,
+                object_name=key,
+                data=bio,
+                length=len(data),
+                content_type="application/octet-stream",
+            )
+        except S3Error as e:
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
+
+    def get(self, uri: str) -> bytes:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            resp = client.get_object(bucket, key)
+            try:
+                return resp.read()
+            finally:
+                resp.close()
+                resp.release_conn()
+        except S3Error as e:
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
+
+    def delete(self, uri: str) -> None:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            client.remove_object(bucket, key)
+        except S3Error as e:
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
+
+    def exists(self, uri: str) -> bool:
+        bucket, key = parse_s3_uri(uri)
+        client = self._get_client()
+        try:
+            client.stat_object(bucket, key)
+            return True
+        except S3Error as e:
+            if e.code in {"NoSuchKey", "NoSuchObject", "NoSuchEntity", "NotFound"}:
+                return False
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
+
+    def list(self, uri_prefix: str) -> list[StorageObject]:
+        bucket, key_prefix = parse_s3_uri(uri_prefix)
+        client = self._get_client()
+        normalized_prefix = key_prefix.rstrip("/") + "/"
+        try:
+            objects = client.list_objects(
+                bucket_name=bucket,
+                prefix=normalized_prefix,
+                recursive=True,
+            )
+            result: list[StorageObject] = []
+            for obj in objects:
+                object_key = obj.object_name
+                if not object_key:
+                    continue
+                result.append(
+                    StorageObject(
+                        uri=f"{bucket}/{object_key}",
+                        key=object_key,
+                        size=getattr(obj, "size", None),
+                        last_modified=getattr(obj, "last_modified", None),
+                    )
+                )
+            return result
+        except S3Error as e:
+            raise StorageError(f"{e.code}: {e.message}") from e
+        except Exception as e:
+            raise StorageError(str(e)) from e
