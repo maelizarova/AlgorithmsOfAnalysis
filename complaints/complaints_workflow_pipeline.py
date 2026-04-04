@@ -147,8 +147,8 @@ def _resolve_path(path: str | Path, base_dir: str | Path | None = None) -> Path:
     """Разрешает относительные пути относительно директории конфига."""
     p = _ensure_path(path)
     if p.is_absolute() or base_dir is None:
-        return p
-    return _ensure_path(base_dir) / p
+        return p.resolve()
+    return (_ensure_path(base_dir) / p).resolve()
 
 
 def load_pair_config(config_path: str | Path) -> PairConfig:
