@@ -64,6 +64,20 @@ class LegacyJudgeAnswer(BaseModel):
     decision: bool
 
 
+class TaxonomyItem(BaseModel):
+    """Одна строка таксономии: category / sub_category / description."""
+
+    category: str
+    sub_category: str
+    description: str
+
+
+class TaxonomyResult(BaseModel):
+    """Результат этапа 0b: список элементов таксономии."""
+
+    items: list[TaxonomyItem] = Field(default_factory=list)
+
+
 # =========================
 # Конфиг проекта (JSON)
 # =========================
@@ -282,7 +296,7 @@ def build_stage0_taxonomy_chain(
     prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
         product_context=product_context,
     )
-    return prompt | llm
+    return prompt | llm.with_structured_output(TaxonomyResult)
 
 
 def build_stage1_chain(
@@ -450,7 +464,13 @@ def run_stage0_taxonomy(
         retries=retries,
         base_sleep_seconds=base_sleep_seconds,
     )
-    content = result.content if hasattr(result, "content") else str(result)
+    if isinstance(result, TaxonomyResult):
+        items = [item.model_dump() for item in result.items]
+        content = json.dumps(items, ensure_ascii=False, indent=2)
+    elif hasattr(result, "content"):
+        content = result.content
+    else:
+        content = str(result)
     output_path = _ensure_path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")
