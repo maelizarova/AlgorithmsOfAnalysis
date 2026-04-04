@@ -1,0 +1,23 @@
+{
+  "product_id": "debit_card",
+  "product_category": "retail",
+  "input_path": "../data/complaints.parquet",
+  "prompts_dir": "../prompts/debit_card_retail",
+  "taxonomy_issues_path": "../taxonomies/debit_card_retail/issues.json",
+  "taxonomy_requests_path": "../taxonomies/debit_card_retail/requested_actions.json",
+  "text_column": "text",
+  "llm": {
+    "api_key": "PUT_YOUR_API_KEY_HERE",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4.1-mini",
+    "temperature": 0.0,
+    "timeout_seconds": 60,
+    "model_kwargs": {}
+  },
+  "runtime": {
+    "batch_size": 100,
+    "max_concurrency": 5,
+    "retries": 4,
+    "backoff_base_seconds": 2.0
+  }
+}

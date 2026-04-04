@@ -157,6 +157,17 @@ def read_text(path: str | Path) -> str:
     return _ensure_path(path).read_text(encoding="utf-8")
 
 
+def read_product_context(prompts_dir: str | Path) -> str:
+    """Читает product_context.txt из папки промптов.
+
+    Если файла нет — возвращает пустую строку (промпты будут работать без контекста).
+    """
+    ctx_path = _ensure_path(prompts_dir) / "product_context.txt"
+    if ctx_path.exists():
+        return ctx_path.read_text(encoding="utf-8").strip()
+    return ""
+
+
 def read_taxonomy_tables(config: PairConfig) -> tuple[str, str]:
     """Загружает таблицы справочников issues/requested_actions как строки."""
     return read_text(config.taxonomy_issues_path), read_text(config.taxonomy_requests_path)
@@ -250,15 +261,27 @@ def batch_with_backoff(
 # - llm выполняет запрос.
 
 
-def build_stage0_extract_chain(llm: ChatOpenAI, prompt_path: str | Path) -> Any:
+def build_stage0_extract_chain(
+    llm: ChatOpenAI,
+    prompt_path: str | Path,
+    product_context: str = "",
+) -> Any:
     """Этап 0a: извлекаем issues/requested_actions из текста обращения."""
-    prompt = ChatPromptTemplate.from_template(read_text(prompt_path))
+    prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
+        product_context=product_context,
+    )
     return prompt | llm.with_structured_output(Stage0Extraction)
 
 
-def build_stage0_taxonomy_chain(llm: ChatOpenAI, prompt_path: str | Path) -> Any:
+def build_stage0_taxonomy_chain(
+    llm: ChatOpenAI,
+    prompt_path: str | Path,
+    product_context: str = "",
+) -> Any:
     """Этап 0b: агрегируем проблемы в двухуровневую таксономию."""
-    prompt = ChatPromptTemplate.from_template(read_text(prompt_path))
+    prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
+        product_context=product_context,
+    )
     return prompt | llm
 
 
@@ -267,6 +290,7 @@ def build_stage1_chain(
     prompt_path: str | Path,
     issues_table: str,
     requests_table: str,
+    product_context: str = "",
 ) -> Any:
     """Этап 1: классифицируем обращение по утвержденному справочнику.
 
@@ -277,6 +301,7 @@ def build_stage1_chain(
     prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
         issues_table=issues_table,
         requests_table=requests_table,
+        product_context=product_context,
     )
     return prompt | llm.with_structured_output(ClassificationAnswer)
 
@@ -285,10 +310,12 @@ def build_judge_issues_chain(
     llm: ChatOpenAI,
     prompt_path: str | Path,
     issues_table: str,
+    product_context: str = "",
 ) -> Any:
     """Judge-цепочка для проверки корректности разметки issues."""
     prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
-        issues_table=issues_table
+        issues_table=issues_table,
+        product_context=product_context,
     )
     return prompt | llm.with_structured_output(JudgeAnswer)
 
@@ -297,10 +324,12 @@ def build_judge_requests_chain(
     llm: ChatOpenAI,
     prompt_path: str | Path,
     requests_table: str,
+    product_context: str = "",
 ) -> Any:
     """Judge-цепочка для проверки корректности разметки requested_actions."""
     prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
-        requests_table=requests_table
+        requests_table=requests_table,
+        product_context=product_context,
     )
     return prompt | llm.with_structured_output(JudgeAnswer)
 
@@ -413,7 +442,7 @@ def run_stage0_taxonomy(
     retries: int = 4,
     base_sleep_seconds: float = 2.0,
 ) -> str:
-    """Запускает этап 0b и сохраняет markdown-таблицу таксономии."""
+    """Запускает этап 0b и сохраняет JSON-таксономию."""
     prompt_input = {"problems": format_problems_for_prompt(problems)}
     result = invoke_with_backoff(
         chain,
