@@ -123,8 +123,12 @@ class PairConfig(BaseModel):
 
     @property
     def pair_key(self) -> str:
-        """Удобный ключ пары для именования папок результатов."""
-        return f"{self.product_id}_{self.product_category}"
+        """Удобный ключ пары для именования папок результатов.
+
+        Возвращает 'product_id/product_category', чтобы все категории
+        одного продукта хранились в одной родительской папке.
+        """
+        return f"{self.product_id}/{self.product_category}"
 
 
 def _ensure_path(path: str | Path) -> Path:

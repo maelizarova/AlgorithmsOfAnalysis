@@ -2,9 +2,9 @@
   "product_id": "debit_card",
   "product_category": "retail",
   "input_path": "../data/complaints.parquet",
-  "prompts_dir": "../prompts/debit_card_retail",
-  "taxonomy_issues_path": "../taxonomies/debit_card_retail/issues.json",
-  "taxonomy_requests_path": "../taxonomies/debit_card_retail/requested_actions.json",
+  "prompts_dir": "../prompts/debit_card/retail",
+  "taxonomy_issues_path": "../taxonomies/debit_card/retail/issues.json",
+  "taxonomy_requests_path": "../taxonomies/debit_card/retail/requested_actions.json",
   "text_column": "text",
   "llm": {
     "api_key": "PUT_YOUR_API_KEY_HERE",
