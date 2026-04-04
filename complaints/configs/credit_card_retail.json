@@ -11,11 +11,11 @@
     "base_url": "https://gpt.run.fc.uralsibbank.ru/v1",
     "model": "openai/gpt-oss-120b",
     "temperature": 0.5,
-    "timeout_seconds": 60,
+    "timeout_seconds": 180,
     "model_kwargs": {
       "top_p": 0.95,
       "top_k": 20,
-      "max_tokens": 2048
+      "max_tokens": 16384
     }
   },
   "runtime": {

@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 # Ограничение из ТЗ: HTTP timeout не должен превышать 60 секунд.
-MAX_HTTP_TIMEOUT_SECONDS = 60
+MAX_HTTP_TIMEOUT_SECONDS = 180
 
 
 # =========================
@@ -304,6 +304,18 @@ def build_stage0_taxonomy_chain(
     return prompt | llm.with_structured_output(TaxonomyResult)
 
 
+def build_stage0_taxonomy_dedup_chain(
+    llm: ChatOpenAI,
+    prompt_path: str | Path,
+    product_context: str = "",
+) -> Any:
+    """Этап 0b (шаг 2): дедупликация черновой таксономии."""
+    prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
+        product_context=product_context,
+    )
+    return prompt | llm.with_structured_output(TaxonomyResult)
+
+
 def build_stage1_chain(
     llm: ChatOpenAI,
     prompt_path: str | Path,
@@ -454,28 +466,54 @@ def format_problems_for_prompt(problems: Sequence[str]) -> str:
     return "\n".join(f"{ix + 1}. {problem}" for ix, problem in enumerate(problems))
 
 
+def _taxonomy_result_to_json(result: Any) -> str:
+    """Преобразует результат taxonomy-цепочки в JSON-строку."""
+    if isinstance(result, TaxonomyResult):
+        items = [item.model_dump() for item in result.items]
+        return json.dumps(items, ensure_ascii=False, indent=2)
+    if hasattr(result, "content"):
+        return result.content
+    return str(result)
+
+
 def run_stage0_taxonomy(
     chain: Any,
     problems: Sequence[str],
     output_path: str | Path,
     retries: int = 4,
     base_sleep_seconds: float = 2.0,
+    dedup_chain: Any | None = None,
 ) -> str:
-    """Запускает этап 0b и сохраняет JSON-таксономию."""
+    """Запускает этап 0b и сохраняет JSON-таксономию.
+
+    Если передан dedup_chain — после генерации черновика запускается
+    второй вызов LLM для устранения дублей.
+    """
     prompt_input = {"problems": format_problems_for_prompt(problems)}
-    result = invoke_with_backoff(
+    draft = invoke_with_backoff(
         chain,
         prompt_input,
         retries=retries,
         base_sleep_seconds=base_sleep_seconds,
     )
-    if isinstance(result, TaxonomyResult):
-        items = [item.model_dump() for item in result.items]
-        content = json.dumps(items, ensure_ascii=False, indent=2)
-    elif hasattr(result, "content"):
-        content = result.content
+    draft_json = _taxonomy_result_to_json(draft)
+    draft_count = draft_json.count('"sub_category"')
+    print(f"  Черновик: {draft_count} подкатегорий")
+
+    if dedup_chain is not None:
+        dedup_input = {"draft_taxonomy": draft_json}
+        cleaned = invoke_with_backoff(
+            dedup_chain,
+            dedup_input,
+            retries=retries,
+            base_sleep_seconds=base_sleep_seconds,
+        )
+        content = _taxonomy_result_to_json(cleaned)
+        clean_count = content.count('"sub_category"')
+        print(f"  После дедупликации: {clean_count} подкатегорий")
     else:
-        content = str(result)
+        content = draft_json
+
     output_path = _ensure_path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")
