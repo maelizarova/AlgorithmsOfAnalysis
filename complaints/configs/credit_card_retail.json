@@ -1,0 +1,27 @@
+{
+  "product_id": "Кредитная карта",
+  "product_category": "Обслуживание по карте",
+  "input_path": "../data/complaints.parquet",
+  "prompts_dir": "../prompts",
+  "taxonomy_issues_path": "../taxonomies/Кредитная карта/Обслуживание по карте/issues.json",
+  "taxonomy_requests_path": "../taxonomies/Кредитная карта/Обслуживание по карте/requested_actions.json",
+  "text_column": "text",
+  "llm": {
+    "api_key": "PUT_YOUR_API_KEY_HERE",
+    "base_url": "https://gpt.run.fc.uralsibbank.ru/v1",
+    "model": "openai/gpt-oss-120b",
+    "temperature": 0.5,
+    "timeout_seconds": 60,
+    "model_kwargs": {
+      "top_p": 0.95,
+      "top_k": 20,
+      "max_tokens": 2048
+    }
+  },
+  "runtime": {
+    "batch_size": 100,
+    "max_concurrency": 5,
+    "retries": 4,
+    "backoff_base_seconds": 2.0
+  }
+}

@@ -1,10 +1,10 @@
 {
-  "product_id": "debit_card",
-  "product_category": "retail",
+  "product_id": "Дебетовая карта",
+  "product_category": "Обслуживание по карте",
   "input_path": "../data/complaints.parquet",
   "prompts_dir": "../prompts",
-  "taxonomy_issues_path": "../taxonomies/debit_card/retail/issues.json",
-  "taxonomy_requests_path": "../taxonomies/debit_card/retail/requested_actions.json",
+  "taxonomy_issues_path": "../taxonomies/Дебетовая карта/Обслуживание по карте/issues.json",
+  "taxonomy_requests_path": "../taxonomies/Дебетовая карта/Обслуживание по карте/requested_actions.json",
   "text_column": "text",
   "llm": {
     "api_key": "PUT_YOUR_API_KEY_HERE",
