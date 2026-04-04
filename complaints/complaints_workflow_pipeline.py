@@ -201,6 +201,7 @@ def build_llm_from_config(llm_config: LLMConfig) -> ChatOpenAI:
     """
 
     timeout_seconds = min(llm_config.timeout_seconds, MAX_HTTP_TIMEOUT_SECONDS)
+    extra = llm_config.model_kwargs or {}
     return ChatOpenAI(
         model=llm_config.model,
         api_key=llm_config.api_key,
@@ -208,7 +209,7 @@ def build_llm_from_config(llm_config: LLMConfig) -> ChatOpenAI:
         temperature=llm_config.temperature,
         timeout=timeout_seconds,
         max_retries=0,  # ретраи мы контролируем самостоятельно через backoff-функции ниже
-        model_kwargs=llm_config.model_kwargs,
+        model_kwargs={"extra_body": extra} if extra else {},
     )
 
 
