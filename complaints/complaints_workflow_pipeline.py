@@ -175,12 +175,13 @@ def read_text(path: str | Path) -> str:
     return _ensure_path(path).read_text(encoding="utf-8")
 
 
-def read_product_context(prompts_dir: str | Path) -> str:
-    """Читает product_context.txt из папки промптов.
+def read_product_context(config: PairConfig) -> str:
+    """Читает product_context.txt из подпапки пары внутри prompts_dir.
 
+    Путь: prompts_dir / pair_key / product_context.txt
     Если файла нет — возвращает пустую строку (промпты будут работать без контекста).
     """
-    ctx_path = _ensure_path(prompts_dir) / "product_context.txt"
+    ctx_path = _ensure_path(config.prompts_dir) / config.pair_key / "product_context.txt"
     if ctx_path.exists():
         return ctx_path.read_text(encoding="utf-8").strip()
     return ""
