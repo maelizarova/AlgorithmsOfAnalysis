@@ -52,10 +52,27 @@ class ClassificationAnswer(BaseModel):
 
 
 class JudgeAnswer(BaseModel):
-    """Ответ judge-цепочки: корректны ли категория и подкатегория."""
+    """Ответ judge-цепочки: корректны ли категория и подкатегория (старый формат, 1 метка)."""
 
     category: bool
     sub_category: bool
+
+
+class JudgeLabelVerdict(BaseModel):
+    """Вердикт judge по одной метке из массива."""
+
+    category: str
+    sub_category: str
+    judge_category_ok: bool
+    judge_sub_category_ok: bool
+    suggested_category: str = ""
+    suggested_sub_category: str = ""
+
+
+class JudgeArrayAnswer(BaseModel):
+    """Ответ judge-цепочки: массив вердиктов по всем меткам текста."""
+
+    verdicts: list[JudgeLabelVerdict]
 
 
 class LegacyJudgeAnswer(BaseModel):
@@ -239,6 +256,21 @@ def invoke_with_backoff(
     raise RuntimeError("Unreachable state in invoke_with_backoff.")
 
 
+def _safe_invoke(
+    runnable: Any,
+    payload: dict[str, Any],
+    retries: int,
+    base_sleep_seconds: float,
+    idx: int,
+) -> Any:
+    """invoke с backoff; при неустранимой ошибке возвращает None и логирует."""
+    try:
+        return invoke_with_backoff(runnable, payload, retries=retries, base_sleep_seconds=base_sleep_seconds)
+    except Exception as exc:
+        print(f"  [!] Текст #{idx}: пропущен после {retries} попыток — {type(exc).__name__}: {str(exc)[:120]}")
+        return None
+
+
 def batch_with_backoff(
     runnable: Any,
     payloads: Sequence[dict[str, Any]],
@@ -251,6 +283,9 @@ def batch_with_backoff(
     Зачем fallback:
     - если batch падает из-за нестабильности API, мы все равно обрабатываем записи;
     - теряем скорость, но повышаем устойчивость пайплайна.
+
+    Если конкретный текст стабильно вызывает ошибку — он пропускается
+    (возвращается None), а не роняет весь батч.
     """
 
     payloads = list(payloads)
@@ -260,13 +295,8 @@ def batch_with_backoff(
         return runnable.batch(payloads, config={"max_concurrency": max_concurrency})
     except Exception:
         return [
-            invoke_with_backoff(
-                runnable,
-                payload,
-                retries=retries,
-                base_sleep_seconds=base_sleep_seconds,
-            )
-            for payload in payloads
+            _safe_invoke(runnable, payload, retries, base_sleep_seconds, idx)
+            for idx, payload in enumerate(payloads)
         ]
 
 
@@ -343,12 +373,12 @@ def build_judge_issues_chain(
     issues_table: str,
     product_context: str = "",
 ) -> Any:
-    """Judge-цепочка для проверки корректности разметки issues."""
+    """Judge-цепочка для проверки корректности разметки issues (массив меток)."""
     prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
         issues_table=issues_table,
         product_context=product_context,
     )
-    return prompt | llm.with_structured_output(JudgeAnswer)
+    return prompt | llm.with_structured_output(JudgeArrayAnswer)
 
 
 def build_judge_requests_chain(
@@ -357,12 +387,12 @@ def build_judge_requests_chain(
     requests_table: str,
     product_context: str = "",
 ) -> Any:
-    """Judge-цепочка для проверки корректности разметки requested_actions."""
+    """Judge-цепочка для проверки корректности разметки requested_actions (массив меток)."""
     prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
         requests_table=requests_table,
         product_context=product_context,
     )
-    return prompt | llm.with_structured_output(JudgeAnswer)
+    return prompt | llm.with_structured_output(JudgeArrayAnswer)
 
 
 def build_judge_legacy_chain(llm: ChatOpenAI, prompt_path: str | Path) -> Any:
@@ -403,6 +433,9 @@ def run_stage0_extract(
 ) -> pd.DataFrame:
     """Запускает этап 0a батчами и сохраняет каждый батч в parquet.
 
+    Поддерживает продолжение после сбоя: если parquet-файл для батча
+    уже существует, он загружается с диска без повторного вызова LLM.
+
     Выходные колонки:
     - issues_raw
     - requested_actions_raw
@@ -410,7 +443,16 @@ def run_stage0_extract(
 
     out_dir = _ensure_dir(output_dir)
     batches: list[pd.DataFrame] = []
+    total_batches = (len(source_df) + batch_size - 1) // batch_size
+    skipped = 0
     for batch_idx, temp_df in _iter_batches(source_df, batch_size):
+        chunk_path = out_dir / f"stage0_extract_{batch_idx:04d}.parquet"
+        if chunk_path.exists():
+            batches.append(pd.read_parquet(chunk_path))
+            skipped += 1
+            continue
+
+        print(f"  Батч {batch_idx + 1}/{total_batches}...")
         payloads = [{"text": str(text)} for text in temp_df[text_column].fillna("")]
         answers = batch_with_backoff(
             chain,
@@ -423,9 +465,11 @@ def run_stage0_extract(
 
         temp_df["issues_raw"] = [p.get("issues", []) for p in parsed]
         temp_df["requested_actions_raw"] = [p.get("requested_actions", []) for p in parsed]
-        temp_df.to_parquet(out_dir / f"stage0_extract_{batch_idx:04d}.parquet", index=False)
+        temp_df.to_parquet(chunk_path, index=False)
         batches.append(temp_df)
 
+    if skipped:
+        print(f"  Пропущено (уже обработано): {skipped}/{total_batches} батчей")
     return pd.concat(batches, ignore_index=True) if batches else pd.DataFrame()
 
 
@@ -537,6 +581,9 @@ def run_stage1_classification(
 ) -> pd.DataFrame:
     """Запускает классификацию по справочнику и сохраняет чанки parquet.
 
+    Поддерживает продолжение после сбоя: если parquet-файл для батча
+    уже существует, он загружается с диска без повторного вызова LLM.
+
     Выходные колонки:
     - issues_pred
     - requested_actions_pred
@@ -544,7 +591,16 @@ def run_stage1_classification(
 
     out_dir = _ensure_dir(output_dir)
     batches: list[pd.DataFrame] = []
+    total_batches = (len(source_df) + batch_size - 1) // batch_size
+    skipped = 0
     for batch_idx, temp_df in _iter_batches(source_df, batch_size):
+        chunk_path = out_dir / f"stage1_classification_{batch_idx:04d}.parquet"
+        if chunk_path.exists():
+            batches.append(pd.read_parquet(chunk_path))
+            skipped += 1
+            continue
+
+        print(f"  Батч {batch_idx + 1}/{total_batches}...")
         payloads = [{"text": str(text)} for text in temp_df[text_column].fillna("")]
         answers = batch_with_backoff(
             chain,
@@ -557,9 +613,11 @@ def run_stage1_classification(
 
         temp_df["issues_pred"] = [p.get("issues", []) for p in parsed]
         temp_df["requested_actions_pred"] = [p.get("requested_actions", []) for p in parsed]
-        temp_df.to_parquet(out_dir / f"stage1_classification_{batch_idx:04d}.parquet", index=False)
+        temp_df.to_parquet(chunk_path, index=False)
         batches.append(temp_df)
 
+    if skipped:
+        print(f"  Пропущено (уже обработано): {skipped}/{total_batches} батчей")
     return pd.concat(batches, ignore_index=True) if batches else pd.DataFrame()
 
 
@@ -596,33 +654,72 @@ def explode_predictions(
 # =========================
 
 
+def _parse_judge_verdicts(answer: Any, expected_count: int) -> list[dict[str, Any]]:
+    """Извлекает массив вердиктов из ответа judge-цепочки."""
+    fallback_verdict = {
+        "category": "", "sub_category": "",
+        "judge_category_ok": False, "judge_sub_category_ok": False,
+        "suggested_category": "", "suggested_sub_category": "",
+    }
+    if answer is None:
+        return [fallback_verdict.copy() for _ in range(expected_count)]
+    if isinstance(answer, JudgeArrayAnswer):
+        verdicts = [v.model_dump() for v in answer.verdicts]
+    elif isinstance(answer, dict) and "verdicts" in answer:
+        verdicts = answer["verdicts"]
+    elif hasattr(answer, "model_dump"):
+        d = answer.model_dump()
+        verdicts = d.get("verdicts", [])
+    else:
+        return [fallback_verdict.copy() for _ in range(expected_count)]
+    while len(verdicts) < expected_count:
+        verdicts.append(fallback_verdict.copy())
+    return verdicts[:expected_count]
+
+
 def run_judge(
-    labels_df: pd.DataFrame,
+    classified_df: pd.DataFrame,
     chain: Any,
     output_dir: str | Path,
+    labels_column: str,
+    text_column: str = "text",
     batch_size: int = 100,
     max_concurrency: int = 5,
     retries: int = 4,
     base_sleep_seconds: float = 2.0,
     file_prefix: str = "judge",
 ) -> pd.DataFrame:
-    """Проверяет разметку (category/sub_category) через judge-цепочку."""
+    """Проверяет разметку через judge-цепочку (массив меток за один вызов).
+
+    На вход принимает classified_df с list-колонкой labels_column.
+    Для каждой строки передаёт весь массив меток в LLM и получает
+    массив вердиктов. Результат — плоская таблица (одна строка на метку).
+
+    Поддерживает продолжение после сбоя.
+    """
     out_dir = _ensure_dir(output_dir)
     batches: list[pd.DataFrame] = []
+    total_batches = (len(classified_df) + batch_size - 1) // batch_size
+    skipped = 0
 
-    for batch_idx, temp_df in _iter_batches(labels_df, batch_size):
-        payloads = [
-            {
-                "text": str(text),
-                "category": str(category),
-                "sub_category": str(sub_category),
-            }
-            for text, category, sub_category in zip(
-                temp_df["text"].fillna(""),
-                temp_df["category"].fillna(""),
-                temp_df["sub_category"].fillna(""),
-            )
-        ]
+    for batch_idx, temp_df in _iter_batches(classified_df, batch_size):
+        chunk_path = out_dir / f"{file_prefix}_{batch_idx:04d}.parquet"
+        if chunk_path.exists():
+            batches.append(pd.read_parquet(chunk_path))
+            skipped += 1
+            continue
+
+        print(f"  Батч {batch_idx + 1}/{total_batches}...")
+        payloads = []
+        label_counts = []
+        for _, row in temp_df.iterrows():
+            labels = row.get(labels_column, [])
+            if not isinstance(labels, list):
+                labels = []
+            labels_json = json.dumps(labels, ensure_ascii=False)
+            payloads.append({"text": str(row.get(text_column, "")), "labels": labels_json})
+            label_counts.append(len(labels))
+
         answers = batch_with_backoff(
             chain,
             payloads,
@@ -630,13 +727,33 @@ def run_judge(
             retries=retries,
             base_sleep_seconds=base_sleep_seconds,
         )
-        parsed = [_to_plain_dict(a, JudgeAnswer(category=False, sub_category=False)) for a in answers]
 
-        temp_df["judge_category_ok"] = [bool(p.get("category", False)) for p in parsed]
-        temp_df["judge_sub_category_ok"] = [bool(p.get("sub_category", False)) for p in parsed]
-        temp_df.to_parquet(out_dir / f"{file_prefix}_{batch_idx:04d}.parquet", index=False)
-        batches.append(temp_df)
+        rows: list[dict[str, Any]] = []
+        for row_idx, (answer, count) in enumerate(zip(answers, label_counts)):
+            verdicts = _parse_judge_verdicts(answer, count)
+            orig_row = temp_df.iloc[row_idx]
+            for v in verdicts:
+                rows.append(
+                    {
+                        "row_id": temp_df.index[row_idx],
+                        "text": str(orig_row.get(text_column, "")),
+                        "category": v.get("category", ""),
+                        "sub_category": v.get("sub_category", ""),
+                        "judge_category_ok": bool(v.get("judge_category_ok", False)),
+                        "judge_sub_category_ok": bool(v.get("judge_sub_category_ok", False)),
+                        "suggested_category": v.get("suggested_category", ""),
+                        "suggested_sub_category": v.get("suggested_sub_category", ""),
+                        "product_id": str(orig_row.get("product_id", "")),
+                        "product_category": str(orig_row.get("product_category", "")),
+                    }
+                )
 
+        chunk_df = pd.DataFrame(rows)
+        chunk_df.to_parquet(chunk_path, index=False)
+        batches.append(chunk_df)
+
+    if skipped:
+        print(f"  Пропущено (уже обработано): {skipped}/{total_batches} батчей")
     return pd.concat(batches, ignore_index=True) if batches else pd.DataFrame()
 
 
