@@ -455,10 +455,10 @@ def build_judge_legacy_chain(llm: ChatOpenAI, prompt_path: str | Path) -> Any:
 def _to_plain_dict(item: Any, fallback: BaseModel) -> dict[str, Any]:
     """Преобразует результат chain в dict, даже если формат ответа нестабилен."""
     if hasattr(item, "model_dump"):
-        return item.model_dump()
+        return item.model_dump(mode="json")
     if isinstance(item, dict):
         return item
-    return fallback.model_dump()
+    return fallback.model_dump(mode="json")
 
 
 def _iter_batches(df: pd.DataFrame, batch_size: int) -> Iterator[tuple[int, pd.DataFrame]]:
@@ -564,7 +564,7 @@ def format_problems_for_prompt(problems: Sequence[str]) -> str:
 def _taxonomy_result_to_json(result: Any) -> str:
     """Преобразует результат taxonomy-цепочки в JSON-строку."""
     if isinstance(result, TaxonomyResult):
-        items = [item.model_dump() for item in result.items]
+        items = [item.model_dump(mode="json") for item in result.items]
         return json.dumps(items, ensure_ascii=False, indent=2)
     if hasattr(result, "content"):
         return result.content
@@ -715,11 +715,11 @@ def _parse_judge_verdicts(answer: Any, expected_count: int) -> list[dict[str, An
     if answer is None:
         return [fallback_verdict.copy() for _ in range(expected_count)]
     if isinstance(answer, JudgeArrayAnswer):
-        verdicts = [v.model_dump() for v in answer.verdicts]
+        verdicts = [v.model_dump(mode="json") for v in answer.verdicts]
     elif isinstance(answer, dict) and "verdicts" in answer:
         verdicts = answer["verdicts"]
     elif hasattr(answer, "model_dump"):
-        d = answer.model_dump()
+        d = answer.model_dump(mode="json")
         verdicts = d.get("verdicts", [])
     else:
         return [fallback_verdict.copy() for _ in range(expected_count)]
