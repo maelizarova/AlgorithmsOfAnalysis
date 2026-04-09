@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
 import pandas as pd
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
 # Ограничение из ТЗ: HTTP timeout не должен превышать 60 секунд.
 MAX_HTTP_TIMEOUT_SECONDS = 180
@@ -49,6 +50,53 @@ class ClassificationAnswer(BaseModel):
 
     issues: list[ClassificationLabel] = Field(default_factory=list)
     requested_actions: list[ClassificationLabel] = Field(default_factory=list)
+
+
+def _make_str_enum(name: str, values: Sequence[str]) -> type:
+    """Создаёт строковый Enum из списка значений."""
+    members = {f"v{i}": v for i, v in enumerate(values)}
+    return Enum(name, members, type=str)
+
+
+def build_classification_model(
+    issues_taxonomy_path: str | Path,
+    requests_taxonomy_path: str | Path,
+) -> type[BaseModel]:
+    """Создаёт динамическую Pydantic-модель с Enum-ограничениями из справочников.
+
+    Модель гарантирует, что category и sub_category в ответе LLM
+    точно совпадают со строками из справочника.
+    """
+    issues = json.loads(Path(issues_taxonomy_path).read_text(encoding="utf-8"))
+    requests = json.loads(Path(requests_taxonomy_path).read_text(encoding="utf-8"))
+
+    issue_cats = sorted({item["category"] for item in issues})
+    issue_subs = sorted({item["sub_category"] for item in issues})
+    request_cats = sorted({item["category"] for item in requests})
+    request_subs = sorted({item["sub_category"] for item in requests})
+
+    IssueCatEnum = _make_str_enum("IssueCatEnum", issue_cats)
+    IssueSubEnum = _make_str_enum("IssueSubEnum", issue_subs)
+    RequestCatEnum = _make_str_enum("RequestCatEnum", request_cats)
+    RequestSubEnum = _make_str_enum("RequestSubEnum", request_subs)
+
+    IssueLabel = create_model(
+        "IssueLabel",
+        category=(IssueCatEnum, ...),
+        sub_category=(IssueSubEnum, ...),
+        description=(str, ...),
+    )
+    RequestLabel = create_model(
+        "RequestLabel",
+        category=(RequestCatEnum, ...),
+        sub_category=(RequestSubEnum, ...),
+        description=(str, ...),
+    )
+    return create_model(
+        "ClassificationAnswer",
+        issues=(list[IssueLabel], Field(default_factory=list)),
+        requested_actions=(list[RequestLabel], Field(default_factory=list)),
+    )
 
 
 class JudgeAnswer(BaseModel):
@@ -352,11 +400,13 @@ def build_stage1_chain(
     issues_table: str,
     requests_table: str,
     product_context: str = "",
+    output_model: type[BaseModel] | None = None,
 ) -> Any:
     """Этап 1: классифицируем обращение по утвержденному справочнику.
 
-    `.partial(...)` подставляет "постоянные" переменные один раз.
-    После этого на каждый вызов остается передавать только `text`.
+    Если передан output_model (из build_classification_model) — используется
+    динамическая Pydantic-модель с Enum-ограничениями, гарантирующая
+    точное совпадение category/sub_category со справочником.
     """
 
     prompt = ChatPromptTemplate.from_template(read_text(prompt_path)).partial(
@@ -364,7 +414,8 @@ def build_stage1_chain(
         requests_table=requests_table,
         product_context=product_context,
     )
-    return prompt | llm.with_structured_output(ClassificationAnswer)
+    model = output_model or ClassificationAnswer
+    return prompt | llm.with_structured_output(model)
 
 
 def build_judge_issues_chain(
