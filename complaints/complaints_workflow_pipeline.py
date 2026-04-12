@@ -467,6 +467,116 @@ def _iter_batches(df: pd.DataFrame, batch_size: int) -> Iterator[tuple[int, pd.D
         yield batch_idx, df.iloc[start : start + batch_size].copy()
 
 
+def _classification_labels_to_list(val: Any) -> list[dict[str, Any]]:
+    """Нормализует ячейку к списку словарей (list / ndarray / JSON / NA после parquet)."""
+    if val is None:
+        return []
+    try:
+        if pd.isna(val):
+            return []
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, list):
+        return val
+    if isinstance(val, tuple):
+        return list(val)
+    if hasattr(val, "tolist"):
+        return list(val.tolist())
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return []
+        try:
+            return _classification_labels_to_list(json.loads(s))
+        except json.JSONDecodeError:
+            return []
+    if isinstance(val, dict):
+        return [val]
+    return []
+
+
+def flatten_classification_for_excel(
+    df: pd.DataFrame,
+    label_columns: dict[str, str],
+    *,
+    fields: Sequence[str] = ("category", "sub_category", "description"),
+    drop_label_columns: bool = True,
+) -> pd.DataFrame:
+    """Раскладывает списки меток классификации в плоские столбцы (issue_1_category, …).
+
+    label_columns: имя колонки в df → префикс новых имён (например ``issues_pred`` → ``issue``).
+    """
+    out = df.copy()
+    for col, prefix in label_columns.items():
+        if col not in out.columns:
+            print(f"Предупреждение: колонки «{col}» нет в DataFrame, пропуск.")
+            continue
+        lists_series = out[col].apply(_classification_labels_to_list)
+        max_items = int(lists_series.apply(len).max()) if len(out) else 0
+        if max_items == 0:
+            print(
+                f"Предупреждение: в «{prefix}» нет меток для раскладки (колонка «{col}»). "
+                "Проверьте этап классификации и формат ячеек."
+            )
+        for i in range(max_items):
+            for field in fields:
+                out[f"{prefix}_{i + 1}_{field}"] = lists_series.apply(
+                    lambda lst, _i=i, _f=field: (
+                        lst[_i].get(_f, "") if _i < len(lst) and isinstance(lst[_i], dict) else ""
+                    )
+                )
+    if drop_label_columns:
+        to_drop = [c for c in label_columns if c in out.columns]
+        if to_drop:
+            out = out.drop(columns=to_drop)
+    return out
+
+
+def _label_field_to_str(val: Any) -> str:
+    """Приводит поле метки к обычной строке для сравнения со справочником (в т.ч. Enum)."""
+    if val is None:
+        return ""
+    if isinstance(val, Enum):
+        return str(val.value)
+    return str(val)
+
+
+def validate_taxonomy_label_pairs(
+    df: pd.DataFrame,
+    labels_column: str,
+    taxonomy_path: str | Path,
+) -> pd.DataFrame:
+    """Проверяет, что каждая пара (category, sub_category) есть в JSON-справочнике.
+
+    Списки меток нормализуются так же, как при экспорте в Excel (ndarray / JSON / NA).
+    """
+    taxonomy = json.loads(Path(taxonomy_path).read_text(encoding="utf-8"))
+    valid_pairs = {
+        (_label_field_to_str(item["category"]), _label_field_to_str(item["sub_category"]))
+        for item in taxonomy
+    }
+    mismatches: list[dict[str, Any]] = []
+    if labels_column not in df.columns:
+        return pd.DataFrame(mismatches)
+    for row_idx, row in df.iterrows():
+        for label in _classification_labels_to_list(row.get(labels_column)):
+            if not isinstance(label, dict):
+                continue
+            cat = _label_field_to_str(label.get("category", ""))
+            sub = _label_field_to_str(label.get("sub_category", ""))
+            pair = (cat, sub)
+            if pair not in valid_pairs:
+                mismatches.append(
+                    {
+                        "row_idx": row_idx,
+                        "type": labels_column,
+                        "category": cat,
+                        "sub_category": sub,
+                    }
+                )
+    return pd.DataFrame(mismatches)
+
+
 # =========================
 # Этап 0: извлечение и таксономия
 # =========================
