@@ -787,13 +787,10 @@ def explode_predictions(
     labels_column: str,
     text_column: str = "text",
 ) -> pd.DataFrame:
-    """Преобразует list-колонку с метками в "плоскую" таблицу (по 1 метке в строке)."""
+    """Преобразует колонку со списками меток в "плоскую" таблицу (по 1 метке в строке)."""
     rows: list[dict[str, Any]] = []
     for row_idx, row in classified_df.reset_index(drop=True).iterrows():
-        labels = row.get(labels_column, [])
-        if not isinstance(labels, list):
-            continue
-        for item in labels:
+        for item in _classification_labels_to_list(row.get(labels_column)):
             if not isinstance(item, dict):
                 continue
             rows.append(
@@ -852,7 +849,7 @@ def run_judge(
 ) -> pd.DataFrame:
     """Проверяет разметку через judge-цепочку (массив меток за один вызов).
 
-    На вход принимает classified_df с list-колонкой labels_column.
+    На вход принимает classified_df с колонкой labels_column (list / ndarray / json после parquet).
     Для каждой строки передаёт весь массив меток в LLM и получает
     массив вердиктов. Результат — плоская таблица (одна строка на метку).
 
@@ -874,9 +871,7 @@ def run_judge(
         payloads = []
         label_counts = []
         for _, row in temp_df.iterrows():
-            labels = row.get(labels_column, [])
-            if not isinstance(labels, list):
-                labels = []
+            labels = _classification_labels_to_list(row.get(labels_column))
             labels_json = json.dumps(labels, ensure_ascii=False)
             payloads.append({"text": str(row.get(text_column, "")), "labels": labels_json})
             label_counts.append(len(labels))
