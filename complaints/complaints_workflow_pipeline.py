@@ -959,48 +959,28 @@ def read_parquet_chunks(path: str | Path, pattern: str = "*.parquet") -> pd.Data
 
 def compute_judge_metrics(
     judge_df: pd.DataFrame,
-    group_columns: Sequence[str] | None = None,
+    product_id: str,
+    product_category: str,
 ) -> pd.DataFrame:
-    """Считает долю корректных category/sub_category.
-
-    Если group_columns не заданы:
-    - возвращается только одна строка "all".
-    Если заданы:
-    - добавляются групповые строки по этим колонкам.
-    """
-
+    """Оценка качества классификатора по вердиктам judge: одна строка со средними по меткам и парой из конфига."""
+    out_cols = [
+        "product_id",
+        "product_category",
+        "judge_category_ok_rate",
+        "judge_sub_category_ok_rate",
+        "rows",
+    ]
     if judge_df.empty:
-        return pd.DataFrame(
-            columns=[
-                "scope",
-                "judge_category_ok_rate",
-                "judge_sub_category_ok_rate",
-                "rows",
-            ]
-        )
+        return pd.DataFrame(columns=out_cols)
 
-    global_metrics = pd.DataFrame(
+    return pd.DataFrame(
         [
             {
-                "scope": "all",
+                "product_id": product_id,
+                "product_category": product_category,
                 "judge_category_ok_rate": float(judge_df["judge_category_ok"].mean()),
                 "judge_sub_category_ok_rate": float(judge_df["judge_sub_category_ok"].mean()),
                 "rows": int(len(judge_df)),
             }
         ]
     )
-
-    if not group_columns:
-        return global_metrics
-
-    grouped = (
-        judge_df.groupby(list(group_columns), dropna=False)
-        .agg(
-            judge_category_ok_rate=("judge_category_ok", "mean"),
-            judge_sub_category_ok_rate=("judge_sub_category_ok", "mean"),
-            rows=("judge_category_ok", "size"),
-        )
-        .reset_index()
-    )
-    grouped["scope"] = grouped[list(group_columns)].astype(str).agg("|".join, axis=1)
-    return pd.concat([global_metrics, grouped], ignore_index=True)
