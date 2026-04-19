@@ -1,26 +1,50 @@
-CREATE TABLE YOUR_SCHEMA.T_PREMIUM_IDS AS
-SELECT DISTINCT CLIENT_UID
-FROM YOUR_SCHEMA.YOUR_TABLE
-WHERE REPORT_DT >= DATE '2025-07-01'
-  AND IS_ACTIVE_PACK_PREMIUM_FLG = 1;
-
-CREATE TABLE YOUR_SCHEMA.T_PREMIUM_ROWS AS
-SELECT s.*
-FROM YOUR_SCHEMA.YOUR_TABLE s
-JOIN YOUR_SCHEMA.T_PREMIUM_IDS i ON i.CLIENT_UID = s.CLIENT_UID
-WHERE s.REPORT_DT >= DATE '2025-07-01';
-
-CREATE TABLE YOUR_SCHEMA.T_PREMIUM_TARGET AS
-SELECT *
+CREATE TABLE ema_sample_es19682_target0 AS
+WITH months AS (
+  SELECT ADD_MONTHS(DATE '2025-07-01', LEVEL - 1) AS month_start
+  FROM dual
+  CONNECT BY LEVEL <= 9
+)
+SELECT /*+ PARALLEL(4) */
+  client_did,
+  month_start,
+  report_date
 FROM (
   SELECT
-    r.*,
-    LAG(IS_ACTIVE_PACK_PREMIUM_FLG) OVER (
-      PARTITION BY CLIENT_UID
-      ORDER BY REPORT_DT, CLIENT_IBSO_ID
-    ) AS PREV_PREMIUM_FLG
-  FROM YOUR_SCHEMA.T_PREMIUM_ROWS r
+    ac.client_did,
+    ac.month_start,
+    ac.report_date,
+    ROW_NUMBER() OVER (
+      PARTITION BY ac.month_start
+      ORDER BY DBMS_RANDOM.VALUE
+    ) AS rn_month
+  FROM (
+    SELECT
+      client_did,
+      month_start,
+      report_date
+    FROM (
+      SELECT
+        c.client_did,
+        m.month_start,
+        TRUNC(m.month_start)
+          + FLOOR(
+              DBMS_RANDOM.VALUE(
+                0,
+                (LAST_DAY(m.month_start) - m.month_start) + 1
+              )
+            ) AS report_date,
+        ROW_NUMBER() OVER (
+          PARTITION BY c.client_did, m.month_start
+          ORDER BY DBMS_RANDOM.VALUE
+        ) AS rn_client_month
+      FROM DM_MRK.DM_MRK_contract c
+      JOIN months m
+        ON c.open_dt <= LAST_DAY(m.month_start)
+       AND (c.fact_close_dt IS NULL OR c.fact_close_dt >= m.month_start)
+      WHERE c.open_dt <= LAST_DAY(ADD_MONTHS(DATE '2025-07-01', 8))
+        AND (c.fact_close_dt IS NULL OR c.fact_close_dt >= DATE '2025-07-01')
+    )
+    WHERE rn_client_month = 1
+  ) ac
 ) q
-WHERE q.PREV_PREMIUM_FLG = 0
-  AND q.IS_ACTIVE_PACK_PREMIUM_FLG = 1
-  AND q.PORTF_RUB_AMT > 2500000;
+WHERE rn_month <= 66000;
