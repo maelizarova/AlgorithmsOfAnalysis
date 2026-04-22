@@ -1,50 +1,47 @@
-CREATE TABLE ema_sample_es19682_target0 AS
-WITH months AS (
-  SELECT ADD_MONTHS(DATE '2025-07-01', LEVEL - 1) AS month_start
-  FROM dual
-  CONNECT BY LEVEL <= 9
-)
-SELECT /*+ PARALLEL(4) */
-  client_did,
-  month_start,
-  report_date
-FROM (
-  SELECT
-    ac.client_did,
-    ac.month_start,
-    ac.report_date,
-    ROW_NUMBER() OVER (
-      PARTITION BY ac.month_start
-      ORDER BY DBMS_RANDOM.VALUE
-    ) AS rn_month
+-- Клиенты, у которых с 2025-07-01 РП впервые стал > 2_500_000 и 7 календарных дней подряд оставался таким
+-- (на каждый из дней D..D+6 есть строка в источнике и везде PORTF_RUB_AMT > 2500000).
+-- Предполагается одна запись на клиента в день — без агрегации по дню.
+-- Условие «стал» (накануне не было РП > 2_500_000) отсекается в T_RP_STARTS до проверки 7 дней.
+
+CREATE TABLE YOUR_SCHEMA.T_RP_BASE AS
+SELECT
+  t.CLIENT_UID,
+  t.REPORT_DT,
+  t.PORTF_RUB_AMT
+FROM YOUR_SCHEMA.YOUR_TABLE t
+WHERE t.REPORT_DT >= DATE '2025-07-01';
+
+CREATE TABLE YOUR_SCHEMA.T_RP_STARTS AS
+SELECT b.CLIENT_UID, b.REPORT_DT AS start_dt
+FROM YOUR_SCHEMA.T_RP_BASE b
+WHERE b.PORTF_RUB_AMT > 2500000
+  AND NOT EXISTS (
+    SELECT 1
+    FROM YOUR_SCHEMA.T_RP_BASE p
+    WHERE p.CLIENT_UID = b.CLIENT_UID
+      AND p.REPORT_DT = b.REPORT_DT - 1
+      AND p.PORTF_RUB_AMT > 2500000
+  );
+
+CREATE TABLE YOUR_SCHEMA.T_RP_SEVEN_OK AS
+SELECT s.CLIENT_UID, s.start_dt
+FROM YOUR_SCHEMA.T_RP_STARTS s
+WHERE (
+  SELECT COUNT(*)
   FROM (
-    SELECT
-      client_did,
-      month_start,
-      report_date
-    FROM (
-      SELECT
-        c.client_did,
-        m.month_start,
-        TRUNC(m.month_start)
-          + FLOOR(
-              DBMS_RANDOM.VALUE(
-                0,
-                (LAST_DAY(m.month_start) - m.month_start) + 1
-              )
-            ) AS report_date,
-        ROW_NUMBER() OVER (
-          PARTITION BY c.client_did, m.month_start
-          ORDER BY DBMS_RANDOM.VALUE
-        ) AS rn_client_month
-      FROM DM_MRK.DM_MRK_contract c
-      JOIN months m
-        ON c.open_dt <= LAST_DAY(m.month_start)
-       AND (c.fact_close_dt IS NULL OR c.fact_close_dt >= m.month_start)
-      WHERE c.open_dt <= LAST_DAY(ADD_MONTHS(DATE '2025-07-01', 8))
-        AND (c.fact_close_dt IS NULL OR c.fact_close_dt >= DATE '2025-07-01')
-    )
-    WHERE rn_client_month = 1
-  ) ac
-) q
-WHERE rn_month <= 66000;
+    SELECT s.start_dt + LEVEL - 1 AS day_dt
+    FROM dual
+    CONNECT BY LEVEL <= 7
+  ) w
+  JOIN YOUR_SCHEMA.T_RP_BASE dd
+    ON dd.CLIENT_UID = s.CLIENT_UID
+   AND dd.REPORT_DT = w.day_dt
+   AND dd.PORTF_RUB_AMT > 2500000
+) = 7;
+
+CREATE TABLE YOUR_SCHEMA.T_RP_FIRST_DATE AS
+SELECT
+  k.CLIENT_UID,
+  MIN(k.start_dt) AS dt_rp_stalo_bolshe_2_5m
+FROM YOUR_SCHEMA.T_RP_SEVEN_OK k
+GROUP BY k.CLIENT_UID;
