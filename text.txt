@@ -1,7 +1,55 @@
-fig, ax = plt.subplots()
-for t in (0, 1):
-    df.loc[df["target"] == t, "feature_name"].hist(
-        bins=30, alpha=0.5, label=f"target={t}", ax=ax, density=True
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def plot_target_vs_features_hist(
+    df,
+    features,
+    target_col="target",
+    bins=30,
+    ncols=3,
+    figsize_per_plot=(4, 3),
+    density=True,
+):
+    """
+    Нормализованные гистограммы признака по классам target 0/1.
+    features: str или последовательность имён колонок.
+    """
+    if isinstance(features, str):
+        features = [features]
+
+    n = len(features)
+    ncols = min(ncols, n)
+    nrows = int(np.ceil(n / ncols))
+
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(figsize_per_plot[0] * ncols, figsize_per_plot[1] * nrows),
+        squeeze=False,
     )
-ax.legend()
-plt.show()
+
+    for idx, feat in enumerate(features):
+        r, c = divmod(idx, ncols)
+        ax = axes[r][c]
+
+        for t in (0, 1):
+            subset = df.loc[df[target_col] == t, feat]
+            subset.hist(bins=bins, alpha=0.5, label=f"{target_col}={t}", ax=ax, density=density)
+
+        ax.legend()
+        ax.set_ylabel("density" if density else "count")
+        ax.set_xlabel(feat)  # название переменной под графиком
+
+    # пустые ячейки скрыть
+    for j in range(n, nrows * ncols):
+        r, c = divmod(j, ncols)
+        axes[r][c].set_visible(False)
+
+    plt.tight_layout()
+    plt.show()
+
+
+# пример
+# plot_target_vs_features_hist(df, ["col_a", "col_b", "col_c"])
+# plot_target_vs_features_hist(df, "single_col", ncols=1)
