@@ -7,19 +7,14 @@ def plot_target_vs_features_hist(
     features,
     target_col="target",
     bins=30,
-    ncols=3,
-    figsize_per_plot=(4, 3),
+    figsize_per_plot=(5, 3.5),
     density=True,
 ):
-    """
-    Нормализованные гистограммы признака по классам target 0/1.
-    features: str или последовательность имён колонок.
-    """
     if isinstance(features, str):
         features = [features]
 
     n = len(features)
-    ncols = min(ncols, n)
+    ncols = 1 if n == 1 else 2
     nrows = int(np.ceil(n / ncols))
 
     fig, axes = plt.subplots(
@@ -35,21 +30,21 @@ def plot_target_vs_features_hist(
 
         for t in (0, 1):
             subset = df.loc[df[target_col] == t, feat]
-            subset.hist(bins=bins, alpha=0.5, label=f"{target_col}={t}", ax=ax, density=density)
+            subset.hist(
+                bins=bins,
+                alpha=0.5,
+                label=f"{target_col}={t}",
+                ax=ax,
+                density=density,
+            )
 
         ax.legend()
         ax.set_ylabel("density" if density else "count")
-        ax.set_xlabel(feat)  # название переменной под графиком
+        ax.set_xlabel(feat)
 
-    # пустые ячейки скрыть
     for j in range(n, nrows * ncols):
         r, c = divmod(j, ncols)
         axes[r][c].set_visible(False)
 
     plt.tight_layout()
     plt.show()
-
-
-# пример
-# plot_target_vs_features_hist(df, ["col_a", "col_b", "col_c"])
-# plot_target_vs_features_hist(df, "single_col", ncols=1)
