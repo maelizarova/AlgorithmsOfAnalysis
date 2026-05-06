@@ -4,7 +4,7 @@ import json
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Optional, Sequence
 
 import pandas as pd
 from langchain_core.prompts import ChatPromptTemplate
@@ -174,10 +174,17 @@ class RuntimeConfig(BaseModel):
 
 
 class PairConfig(BaseModel):
-    """Полный конфиг для пары (product_id, product_category)."""
+    """Полный конфиг для прогона.
+
+    product_category опционально:
+    - если задано — пайплайн работает по паре (product_id, product_category);
+    - если None или пустая строка — пайплайн работает на уровне продукта,
+      без подразделения по категории (все жалобы одного продукта проходят
+      через одну общую таксономию).
+    """
 
     product_id: str
-    product_category: str
+    product_category: Optional[str] = None
     input_path: Path
     prompts_dir: Path
     taxonomy_issues_path: Path
@@ -187,13 +194,21 @@ class PairConfig(BaseModel):
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
 
     @property
-    def pair_key(self) -> str:
-        """Удобный ключ пары для именования папок результатов.
+    def has_category(self) -> bool:
+        """True, если конфиг работает по паре продукт/категория."""
+        return bool(self.product_category)
 
-        Возвращает 'product_id/product_category', чтобы все категории
-        одного продукта хранились в одной родительской папке.
+    @property
+    def pair_key(self) -> str:
+        """Ключ для именования папок results/ и подпапок с product_context.
+
+        - С категорией: 'product_id/product_category'.
+        - Без категории (продуктовый прогон): просто 'product_id',
+          чтобы продуктовые результаты не пересекались с поразрезными.
         """
-        return f"{self.product_id}/{self.product_category}"
+        if self.has_category:
+            return f"{self.product_id}/{self.product_category}"
+        return self.product_id
 
 
 def _ensure_path(path: str | Path) -> Path:
@@ -960,9 +975,13 @@ def read_parquet_chunks(path: str | Path, pattern: str = "*.parquet") -> pd.Data
 def compute_judge_metrics(
     judge_df: pd.DataFrame,
     product_id: str,
-    product_category: str,
+    product_category: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Оценка качества классификатора по вердиктам judge: одна строка со средними по меткам и парой из конфига."""
+    """Оценка качества классификатора по вердиктам judge: одна строка со средними по меткам и парой из конфига.
+
+    product_category может быть None — для продуктового прогона без подразделения по категории.
+    В этом случае в отчете категория сохраняется как пустая строка.
+    """
     out_cols = [
         "product_id",
         "product_category",
@@ -977,7 +996,7 @@ def compute_judge_metrics(
         [
             {
                 "product_id": product_id,
-                "product_category": product_category,
+                "product_category": product_category or "",
                 "judge_category_ok_rate": float(judge_df["judge_category_ok"].mean()),
                 "judge_sub_category_ok_rate": float(judge_df["judge_sub_category_ok"].mean()),
                 "rows": int(len(judge_df)),
