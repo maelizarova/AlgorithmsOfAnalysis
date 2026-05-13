@@ -1,0 +1,126 @@
+-- EDA по таргету: ОСЗ через 6 мес (CURRENT_DEBT_AMT) vs новый лимит (NEW_LIMIT).
+-- Старый лимит в биннинге не используется — только «сколько съели из new_limit».
+-- Все запросы ниже: только status = 'TREATMENT CREATED' (контроль не смотрим).
+-- Имя таблицы с витриной (например ema_clip_base) при необходимости замените везде на своё.
+-- Выполняйте запросы по одному блоку (между комментариями-разделителями), если клиент не режет скрипт по `;`.
+
+-- ------------------------------------------------------------------------------
+-- 1. Объём, пропуски по таргету и по new_limit
+-- ------------------------------------------------------------------------------
+SELECT
+  COUNT(*) AS n_rows,
+  COUNT(current_debt_amt) AS n_target_nonnull,
+  SUM(CASE WHEN current_debt_amt IS NULL THEN 1 ELSE 0 END) AS n_target_null,
+  ROUND(100 * SUM(CASE WHEN current_debt_amt IS NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS pct_target_null,
+  COUNT(new_limit) AS n_new_limit_nonnull,
+  SUM(CASE WHEN new_limit IS NULL THEN 1 ELSE 0 END) AS n_new_limit_null,
+  SUM(CASE WHEN new_limit IS NOT NULL AND new_limit <= 0 THEN 1 ELSE 0 END) AS n_new_limit_le_zero
+FROM ema_clip_base
+WHERE status = 'TREATMENT CREATED';
+
+-- ------------------------------------------------------------------------------
+-- 2. Нули и малые значения по таргету (среди ненулевых new_limit при необходимости сузите WHERE)
+-- ------------------------------------------------------------------------------
+SELECT
+  SUM(CASE WHEN current_debt_amt IS NULL THEN 1 ELSE 0 END) AS n_debt_null,
+  SUM(CASE WHEN current_debt_amt = 0 THEN 1 ELSE 0 END) AS n_debt_zero,
+  SUM(CASE WHEN current_debt_amt > 0 AND current_debt_amt < 100 THEN 1 ELSE 0 END) AS n_debt_tiny_lt_100
+FROM ema_clip_base
+WHERE status = 'TREATMENT CREATED';
+
+-- ------------------------------------------------------------------------------
+-- 3. Квантили таргета (сырой CURRENT_DEBT_AMT)
+-- ------------------------------------------------------------------------------
+SELECT
+  MIN(current_debt_amt) AS min_v,
+  PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY current_debt_amt) AS p05,
+  PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY current_debt_amt) AS p25,
+  MEDIAN(current_debt_amt) AS p50,
+  PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY current_debt_amt) AS p75,
+  PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY current_debt_amt) AS p95,
+  PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY current_debt_amt) AS p99,
+  MAX(current_debt_amt) AS max_v,
+  AVG(current_debt_amt) AS mean_v
+FROM ema_clip_base
+WHERE status = 'TREATMENT CREATED'
+  AND current_debt_amt IS NOT NULL;
+
+-- ------------------------------------------------------------------------------
+-- 4. Сводка таргета (только treatment — одна строка, без разбивки по status)
+-- ------------------------------------------------------------------------------
+SELECT
+  COUNT(*) AS n,
+  ROUND(100 * SUM(CASE WHEN current_debt_amt IS NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS pct_target_null,
+  MEDIAN(current_debt_amt) AS median_debt,
+  AVG(current_debt_amt) AS mean_debt
+FROM ema_clip_base
+WHERE status = 'TREATMENT CREATED';
+
+-- ------------------------------------------------------------------------------
+-- 5. Когорты по месяцу даты клипа
+-- ------------------------------------------------------------------------------
+SELECT
+  TRUNC(create_date, 'MM') AS cohort_month,
+  COUNT(*) AS n,
+  MEDIAN(current_debt_amt) AS median_debt,
+  AVG(current_debt_amt) AS mean_debt,
+  ROUND(100 * AVG(CASE WHEN current_debt_amt = 0 THEN 1 ELSE 0 END), 2) AS pct_debt_zero
+FROM ema_clip_base
+WHERE status = 'TREATMENT CREATED'
+GROUP BY TRUNC(create_date, 'MM')
+ORDER BY cohort_month;
+
+-- ------------------------------------------------------------------------------
+-- 6. Биннинг: доля использованного нового лимита = CURRENT_DEBT_AMT / NEW_LIMIT
+--    (old_limit не участвует). Строки без пригодного new_limit — отдельные вёдра.
+-- ------------------------------------------------------------------------------
+WITH u AS (
+  SELECT
+    current_debt_amt,
+    new_limit,
+    CASE
+      WHEN new_limit IS NULL THEN 'A_new_limit_null'
+      WHEN new_limit <= 0 THEN 'B_new_limit_le_zero'
+      WHEN current_debt_amt IS NULL THEN 'C_debt_null'
+      WHEN current_debt_amt < 0 THEN 'D_debt_negative'
+      WHEN current_debt_amt = 0 THEN 'E_util_0pct'
+      WHEN current_debt_amt / new_limit <= 0.05 THEN 'F_util_gt0_to_5pct'
+      WHEN current_debt_amt / new_limit <= 0.25 THEN 'G_util_5_to_25pct'
+      WHEN current_debt_amt / new_limit <= 0.50 THEN 'H_util_25_to_50pct'
+      WHEN current_debt_amt / new_limit <= 0.75 THEN 'I_util_50_to_75pct'
+      WHEN current_debt_amt / new_limit <= 1.00 THEN 'J_util_75_to_100pct'
+      ELSE 'K_util_over_100pct'
+    END AS util_bucket,
+    CASE
+      WHEN new_limit IS NULL OR new_limit <= 0 THEN NULL
+      ELSE current_debt_amt / new_limit
+    END AS util_ratio
+  FROM ema_clip_base
+  WHERE status = 'TREATMENT CREATED'
+)
+SELECT
+  util_bucket,
+  COUNT(*) AS n,
+  ROUND(100 * COUNT(*) / SUM(COUNT(*)) OVER (), 2) AS pct_of_rows,
+  ROUND(AVG(util_ratio), 6) AS avg_util_ratio,
+  MEDIAN(current_debt_amt) AS median_debt,
+  AVG(current_debt_amt) AS mean_debt,
+  MEDIAN(new_limit) AS median_new_limit,
+  AVG(new_limit) AS mean_new_limit
+FROM u
+GROUP BY util_bucket
+ORDER BY util_bucket;
+
+-- ------------------------------------------------------------------------------
+-- 7. Дубликаты ключа (подставьте свой уникальный ключ клипа)
+-- ------------------------------------------------------------------------------
+SELECT
+  client_did,
+  contract_ibso,
+  create_date,
+  COUNT(*) AS cnt
+FROM ema_clip_base
+WHERE status = 'TREATMENT CREATED'
+GROUP BY client_did, contract_ibso, create_date
+HAVING COUNT(*) > 1
+FETCH FIRST 50 ROWS ONLY;
