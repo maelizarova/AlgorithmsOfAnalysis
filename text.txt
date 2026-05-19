@@ -1,28 +1,49 @@
 import plotly.express as px
+import plotly.graph_objects as go
 
-pt = (
-    sample[sample["year_month"] < "2024-11-01"]
-    .pivot_table(
-        values=["client_did"],
-        index=["year_month"],
-        aggfunc="count",
-        margins=False,
+
+def target_by_month(df, date_col, target_cols, agg="mean", figsize=(12, 4), show=True):
+    """График агрегата таргета по месяцам (agg: 'mean' или 'median')."""
+    if isinstance(target_cols, str):
+        target_cols = [target_cols]
+
+    df = df.copy()
+    df["_month"] = df[date_col].dt.to_period("M")
+    g = df.groupby("_month", observed=True)[target_cols].agg(agg)
+
+    plot_df = g.reset_index()
+    plot_df["_month"] = plot_df["_month"].astype(str)
+
+    fig = px.line(
+        plot_df,
+        x="_month",
+        y=target_cols,
+        title=f"Таргет по месяцам ({agg})",
+        markers=True,
     )
-    .reset_index()
-)
 
-fig_sample = px.bar(
-    pt,
-    y="year_month",
-    x="client_did",
-    orientation="h",
-    title="Количество клиентов по месяцам",
-)
+    fig.update_layout(
+        width=int(figsize[0] * 80),
+        height=int(figsize[1] * 80),
+        yaxis_title=agg,
+        legend=dict(
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02,
+        ),
+        margin=dict(r=120),
+    )
+    fig.update_xaxes(tickangle=45)
 
-# как в pandas barh: месяцы сверху вниз по возрастанию
-fig_sample.update_layout(
-    yaxis=dict(type="category", categoryorder="category ascending"),
-    legend_title_text="",
-)
+    if show:
+        fig.show()
 
-fig_sample.show()  # в ноутбуке — опционально
+    return g, fig
+
+g, fig = target_by_month(sample, "date_col", ["target_1", "target_2"], agg="mean")
+Logger.current_logger().report_plotly(
+    title="Таргет по месяцам",
+    series="mean",
+    figure=fig,
+)
