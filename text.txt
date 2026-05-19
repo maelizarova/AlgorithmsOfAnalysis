@@ -1,49 +1,78 @@
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
-def target_by_month(df, date_col, target_cols, agg="mean", figsize=(12, 4), show=True):
-    """График агрегата таргета по месяцам (agg: 'mean' или 'median')."""
+def target_distribution(df, target_cols, ncols=2, log_scale=False, show=True):
+    """Гистограммы и boxplot по списку таргетов. log_scale – log1p по оси x для гистограммы."""
     if isinstance(target_cols, str):
         target_cols = [target_cols]
 
-    df = df.copy()
-    df["_month"] = df[date_col].dt.to_period("M")
-    g = df.groupby("_month", observed=True)[target_cols].agg(agg)
+    n = len(target_cols)
+    nrows = (n + ncols - 1) // ncols
+    ncols_plot = ncols * 2  # hist + box на каждый таргет
 
-    plot_df = g.reset_index()
-    plot_df["_month"] = plot_df["_month"].astype(str)
-
-    fig = px.line(
-        plot_df,
-        x="_month",
-        y=target_cols,
-        title=f"Таргет по месяцам ({agg})",
-        markers=True,
+    fig = make_subplots(
+        rows=nrows,
+        cols=ncols_plot,
+        subplot_titles=[
+            t
+            for col in target_cols
+            for t in (col, f"{col} (box)")
+        ],
+        horizontal_spacing=0.06,
+        vertical_spacing=0.12,
     )
+
+    for i, col in enumerate(target_cols):
+        r = i // ncols + 1
+        c_hist = (i % ncols) * 2 + 1
+        c_box = c_hist + 1
+
+        x_raw = df[col].dropna().astype(float)  # Decimal → float
+        x_hist = x_raw
+        if log_scale and x_hist.max() > 0:
+            x_hist = np.log1p(x_hist)
+
+        fig.add_trace(
+            go.Histogram(
+                x=x_hist,
+                nbinsx=50,
+                marker=dict(line=dict(color="black", width=0.5)),
+                opacity=0.7,
+                name=col,
+                showlegend=False,
+            ),
+            row=r,
+            col=c_hist,
+        )
+
+        fig.add_trace(
+            go.Box(
+                y=x_raw,
+                name=f"{col} (box)",
+                showlegend=False,
+            ),
+            row=r,
+            col=c_box,
+        )
 
     fig.update_layout(
-        width=int(figsize[0] * 80),
-        height=int(figsize[1] * 80),
-        yaxis_title=agg,
-        legend=dict(
-            yanchor="top",
-            y=1,
-            xanchor="left",
-            x=1.02,
-        ),
-        margin=dict(r=120),
+        width=250 * ncols_plot,
+        height=220 * nrows,
+        title_text="Распределение таргетов",
     )
-    fig.update_xaxes(tickangle=45)
 
     if show:
         fig.show()
 
-    return g, fig
+    return fig
 
-g, fig = target_by_month(sample, "date_col", ["target_1", "target_2"], agg="mean")
+fig = target_distribution(sample, [TARGET], log_scale=True)
+
+from clearml import Logger
 Logger.current_logger().report_plotly(
-    title="Таргет по месяцам",
-    series="mean",
+    title="Распределение таргета",
+    series=TARGET,
     figure=fig,
 )
