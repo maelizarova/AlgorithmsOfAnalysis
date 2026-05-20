@@ -1,84 +1,4 @@
-import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
-
-def _target_grid(n, ncols):
-    nrows = (n + ncols - 1) // ncols
-    return nrows, ncols
-
-
-def _default_figsize(ncols_plot, nrows, aspect=1.2):
-    return (4 * ncols_plot, max(4, 3 * nrows * aspect))
-
-
-def target_histogram(
-    df,
-    target_cols,
-    ncols=2,
-    log_scale=False,
-    bins=30,
-    figsize=None,
-    show=True,
-):
-    """Гистограммы по списку таргетов (отдельная фигура для ClearML)."""
-    if isinstance(target_cols, str):
-        target_cols = [target_cols]
-
-    n = len(target_cols)
-    nrows, ncols_grid = _target_grid(n, ncols)
-
-    if figsize is None:
-        figsize = _default_figsize(ncols, nrows)
-
-    fig = make_subplots(
-        rows=nrows,
-        cols=ncols_grid,
-        subplot_titles=list(target_cols),
-        horizontal_spacing=0.1,
-        vertical_spacing=0.15 if nrows > 1 else 0.12,
-    )
-
-    for i, col in enumerate(target_cols):
-        r = i // ncols + 1
-        c = i % ncols + 1
-
-        x = df[col].dropna().astype(float)
-        x_hist = np.log1p(x) if log_scale and x.max() > 0 else x
-
-        counts, edges = np.histogram(x_hist, bins=bins)
-        centers = (edges[:-1] + edges[1:]) / 2
-        widths = np.diff(edges)
-
-        fig.add_trace(
-            go.Bar(
-                x=centers,
-                y=counts,
-                width=widths,
-                marker=dict(line=dict(color="black", width=0.5)),
-                opacity=0.7,
-                showlegend=False,
-                name=col,
-                hovertemplate="значение: %{x:.4g}<br>число: %{y}<extra></extra>",
-            ),
-            row=r,
-            col=c,
-        )
-
-    fig.update_layout(
-        width=int(figsize[0] * 80),
-        height=int(figsize[1] * 80),
-        autosize=False,
-        title_text="Гистограммы таргетов",
-        margin=dict(l=50, r=30, t=70, b=50),
-        bargap=0,
-    )
-
-    if show:
-        fig.show()
-    return fig
-
-
+# --- Matplotlib: boxplot ---
 def target_boxplot(
     df,
     target_cols,
@@ -86,52 +6,30 @@ def target_boxplot(
     figsize=None,
     show=True,
 ):
-    """Boxplot по списку таргетов (отдельная фигура для ClearML)."""
     if isinstance(target_cols, str):
         target_cols = [target_cols]
-
     n = len(target_cols)
     nrows, ncols_grid = _target_grid(n, ncols)
-
     if figsize is None:
-        figsize = _default_figsize(ncols, nrows)
-
-    fig = make_subplots(
-        rows=nrows,
-        cols=ncols_grid,
-        subplot_titles=[f"{col} (box)" for col in target_cols],
-        horizontal_spacing=0.1,
-        vertical_spacing=0.15 if nrows > 1 else 0.12,
-    )
-
+        figsize = (3 * ncols_grid, max(3.5, 3 * nrows))
+    fig, axes = plt.subplots(nrows, ncols_grid, figsize=figsize, squeeze=False)
     for i, col in enumerate(target_cols):
-        r = i // ncols + 1
-        c = i % ncols + 1
-
+        r, c = i // ncols, i % ncols
         x = df[col].dropna().astype(float)
-
-        fig.add_trace(
-            go.Box(
-                y=x,
-                name=col,
-                showlegend=False,
-                hovertemplate="%{y:.4g}<extra></extra>",
-            ),
-            row=r,
-            col=c,
-        )
-
-    fig.update_layout(
-        width=int(figsize[0] * 80),
-        height=int(figsize[1] * 80),
-        autosize=False,
-        title_text="Boxplot таргетов",
-        margin=dict(l=50, r=30, t=70, b=50),
-    )
-
+        axes[r, c].boxplot(x, vert=True)
+        axes[r, c].set_title(f"{col} (box)")
+        axes[r, c].set_ylabel(col)
+    for j in range(n, nrows * ncols_grid):
+        axes.flat[j].set_visible(False)
+    fig.suptitle("Boxplot таргетов", y=1.02)
+    plt.tight_layout()
     if show:
-        fig.show()
+        plt.show()
     return fig
 
-fig_hist = target_histogram(sample, cols, log_scale=True, figsize=(10, 5), show=True)
-fig_box = target_boxplot(sample, cols, figsize=(8, 5), show=True)
+logger.report_matplotlib_figure(
+    title="Распределение таргетов",
+    series="box",
+    figure=fig_box,
+    iteration=0,
+)
