@@ -1,35 +1,4 @@
-# --- Matplotlib: boxplot ---
-def target_boxplot(
-    df,
-    target_cols,
-    ncols=2,
-    figsize=None,
-    show=True,
-):
-    if isinstance(target_cols, str):
-        target_cols = [target_cols]
-    n = len(target_cols)
-    nrows, ncols_grid = _target_grid(n, ncols)
-    if figsize is None:
-        figsize = (3 * ncols_grid, max(3.5, 3 * nrows))
-    fig, axes = plt.subplots(nrows, ncols_grid, figsize=figsize, squeeze=False)
-    for i, col in enumerate(target_cols):
-        r, c = i // ncols, i % ncols
-        x = df[col].dropna().astype(float)
-        axes[r, c].boxplot(x, vert=True)
-        axes[r, c].set_title(f"{col} (box)")
-        axes[r, c].set_ylabel(col)
-    for j in range(n, nrows * ncols_grid):
-        axes.flat[j].set_visible(False)
-    fig.suptitle("Boxplot таргетов", y=1.02)
-    plt.tight_layout()
-    if show:
-        plt.show()
-    return fig
-
-logger.report_matplotlib_figure(
-    title="Распределение таргетов",
-    series="box",
-    figure=fig_box,
-    iteration=0,
-)
+tbl.columns = [
+    "_".join(map(str, c)).strip("_") if isinstance(c, tuple) else c
+    for c in tbl.columns
+]
