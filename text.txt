@@ -1,4 +1,131 @@
-tbl.columns = [
-    "_".join(map(str, c)).strip("_") if isinstance(c, tuple) else c
-    for c in tbl.columns
-]
+def _aggregate(
+    df: pd.DataFrame,
+    date_col: str,
+    target_col: str,
+    freq: str,
+    agg: str,
+) -> pd.DataFrame:
+    """Сгруппировать по периодам и посчитать count + агрегат таргета."""
+    s = df[[date_col, target_col]].copy()
+    s[date_col] = pd.to_datetime(s[date_col])
+    s[target_col] = pd.to_numeric(s[target_col], errors="coerce")
+
+    s["_period"] = s[date_col].dt.to_period(freq).dt.to_timestamp()
+
+    grouped = (
+        s.groupby("_period", as_index=False)
+        .agg(cnt=(target_col, "size"), target_agg=(target_col, agg))
+        .sort_values("_period")
+        .reset_index(drop=True)
+    )
+    return grouped
+
+
+def plot_sample_target_by_month(
+    train: pd.DataFrame,
+    test: Optional[pd.DataFrame] = None,
+    oot: Optional[pd.DataFrame] = None,
+    date_col: str = "report_date",
+    target_col: str = "target",
+    freq: str = "M",
+    agg: str = "mean",
+    title: str = "Размеры выборок и средний таргет по месяцам",
+    y_left_title: str = "Количество клиентов",
+    y_right_title: Optional[str] = None,
+    width: int = 1100,
+    height: int = 450,
+    barmode: str = "group",
+) -> go.Figure:
+    """График: bar — размеры выборок, line — средний таргет (на второй оси).
+
+    Параметры
+    ---------
+    train, test, oot : DataFrame
+        Датафреймы с колонками `date_col` и `target_col`. test/oot опциональны.
+    date_col : str
+        Колонка с датой (любой формат, конвертируется в datetime).
+    target_col : str
+        Колонка таргета (регрессия — любые числа).
+    freq : str
+        Период группировки pandas: "M" — месяц, "W" — неделя, "D" — день.
+    agg : str
+        Агрегат таргета: "mean", "median", "sum", и т.п.
+    barmode : str
+        "group" — столбцы рядом, "stack" — наложение, "overlay" — поверх.
+    """
+    if y_right_title is None:
+        y_right_title = f"{agg}({target_col})"
+
+    splits = {"train": train, "test": test, "oot": oot}
+    splits = {k: v for k, v in splits.items() if v is not None}
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    for name, df in splits.items():
+        agg_df = _aggregate(df, date_col, target_col, freq, agg)
+
+        fig.add_trace(
+            go.Bar(
+                x=agg_df["_period"],
+                y=agg_df["cnt"],
+                name=f"{name}_cnt",
+                marker_color=SPLIT_COLORS[name],
+                opacity=0.85,
+                hovertemplate=(
+                    f"<b>{name}</b><br>"
+                    "месяц: %{x|%Y-%m}<br>"
+                    "клиентов: %{y:,}<extra></extra>"
+                ),
+            ),
+            secondary_y=False,
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=agg_df["_period"],
+                y=agg_df["target_agg"],
+                name=f"{agg} {name}",
+                mode="lines+markers",
+                line=dict(color=LINE_COLORS[name], width=2),
+                marker=dict(size=7),
+                hovertemplate=(
+                    f"<b>{name}</b><br>"
+                    "месяц: %{x|%Y-%m}<br>"
+                    f"{agg}: " "%{y:.4g}<extra></extra>"
+                ),
+            ),
+            secondary_y=True,
+        )
+
+    fig.update_layout(
+        title=title,
+        width=width,
+        height=height,
+        barmode=barmode,
+        bargap=0.15,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.25,
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(l=70, r=70, t=70, b=80),
+        hovermode="x unified",
+        template="plotly_white",
+    )
+
+    fig.update_xaxes(title_text="Месяц", tickformat="%b %Y")
+    fig.update_yaxes(title_text=y_left_title, secondary_y=False, rangemode="tozero")
+    fig.update_yaxes(title_text=y_right_title, secondary_y=True, rangemode="tozero")
+
+    return fig
+
+fig = plot_sample_target_by_month(
+        train=train_df,
+        test=test_df,
+        oot=oot_df,
+        date_col="report_date",
+        target_col="target",
+    )
+    fig.show()
