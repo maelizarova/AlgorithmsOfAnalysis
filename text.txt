@@ -1,14 +1,4 @@
-# --- fig: подписи и имена линий ---
-fig.update_layout(
-    title="Размеры выборок и утилизация по месяцам",
-    yaxis2=dict(title="Утилизация, %", overlaying="y", side="right"),
-)
-for tr in fig.data:
-    if tr.name and tr.name.startswith("RR "):
-        tr.name = tr.name.replace("RR ", "Утилизация ")
-# --- df: переименовать колонки ---
-df = df.rename(columns={
-    "rr_train": "util_train",
-    "rr_test": "util_test",
-    "rr_oot": "util_oot",
-})
+y = train["target"].astype(float).values
+y_const = np.full_like(y, y.mean())
+print("MAE const:", mean_absolute_error(y, y_const))
+print("R2 model :", r2_score(y, train_pred))
