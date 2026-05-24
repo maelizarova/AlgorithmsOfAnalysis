@@ -1,4 +1,4 @@
-y = train["target"].astype(float).values
-y_const = np.full_like(y, y.mean())
-print("MAE const:", mean_absolute_error(y, y_const))
-print("R2 model :", r2_score(y, train_pred))
+LGBM_KW_TWEEDIE = dict(
+    objective="tweedie",
+    tweedie_variance_power=1.5,
+)
