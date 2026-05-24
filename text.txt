@@ -1,4 +1,95 @@
-LGBM_KW_TWEEDIE = dict(
-    objective="tweedie",
-    tweedie_variance_power=1.5,
+# === Срез: нулевая утилизация и сегмент y>0 (для отчёта / демо) ===
+# Запускать после results[TARGET] и сплитов train / test / oot
+
+from sklearn.metrics import r2_score, mean_absolute_error
+
+ZERO_EPS = 1e-9          # фактический ноль (учёт float)
+THRESHOLDS = [0.03, 0.05, 0.10, 0.15, 0.20]  # пороги pred «низкая утилизация»
+
+model = results[TARGET]["model"]
+feat = results[TARGET]["selected"]
+
+
+def _zero_slice_one(df, name, thresholds=THRESHOLDS):
+  y = df[TARGET].astype(float).values
+  pred = model.predict(df[feat])
+  is_zero = y <= ZERO_EPS
+  n = len(y)
+  n_zero = int(is_zero.sum())
+  nz = ~is_zero
+
+  rows = []
+  for t in thresholds:
+    pred_low = pred < t
+    tp = int((pred_low & is_zero).sum())
+    fp = int((pred_low & ~is_zero).sum())
+    fn = int((~pred_low & is_zero).sum())
+    tn = int((~pred_low & ~is_zero).sum())
+    n_pred_low = int(pred_low.sum())
+    precision = tp / n_pred_low if n_pred_low > 0 else np.nan
+    recall = tp / n_zero if n_zero > 0 else np.nan
+    rows.append({
+      "Dataset": name,
+      "Порог pred": t,
+      "Доля клиентов pred < порог, %": round(100 * n_pred_low / n, 2),
+      "Precision (среди pred<порог — доля реальных нулей), %": round(100 * precision, 2) if pd.notna(precision) else np.nan,
+      "Recall (доля пойманных нулей), %": round(100 * recall, 2) if pd.notna(recall) else np.nan,
+      "TP": tp, "FP": fp, "FN": fn, "TN": tn,
+    })
+
+  summary = pd.DataFrame(rows)
+
+  mae_all = mean_absolute_error(y, pred)
+  mae_nz = mean_absolute_error(y[nz], pred[nz]) if nz.sum() > 0 else np.nan
+  mae_zero = mean_absolute_error(y[is_zero], pred[is_zero]) if n_zero > 0 else np.nan
+  r2 = r2_score(y, pred)
+  mae_const = mean_absolute_error(y, np.full_like(y, y.mean()))
+
+  metrics = pd.DataFrame([{
+    "Dataset": name,
+    "N": n,
+    "Доля факт. нулей, %": round(100 * n_zero / n, 2),
+    "MAE (все)": round(mae_all, 4),
+    "MAE (y=0)": round(mae_zero, 4),
+    "MAE (y>0)": round(mae_nz, 4),
+    "MAE const (baseline)": round(mae_const, 4),
+    "R2": round(r2, 4),
+    "AVG target": round(y.mean(), 4),
+    "AVG pred": round(pred.mean(), 4),
+  }])
+
+  return summary, metrics
+
+
+thresh_tables = []
+metric_tables = []
+for split_name, split_df in [("Train", train), ("Test", test), ("OOT", oot)]:
+  th, mt = _zero_slice_one(split_df, split_name)
+  thresh_tables.append(th)
+  metric_tables.append(mt)
+
+zero_threshold_report = pd.concat(thresh_tables, ignore_index=True)
+zero_metrics_report = pd.concat(metric_tables, ignore_index=True)
+
+print("=== Основные метрики (MAE / R²) — для слайда ===")
+display(zero_metrics_report)
+
+print("\n=== Качество выделения нулевой утилизации по порогу pred ===")
+print("(Precision: среди низкого прогноза — сколько реально нулей; Recall: какую долю всех нулей поймали)")
+display(zero_threshold_report)
+
+print("\n=== OOT: только пороги (фокус для демо) ===")
+display(zero_threshold_report[zero_threshold_report["Dataset"] == "OOT"])
+
+# Опционально: лучший порог на OOT по F1 для класса «ноль»
+oot_rows = zero_threshold_report[zero_threshold_report["Dataset"] == "OOT"].copy()
+prec = oot_rows["TP"] / (oot_rows["TP"] + oot_rows["FP"])
+rec = oot_rows["TP"] / (oot_rows["TP"] + oot_rows["FN"])
+oot_rows["F1 zero, %"] = (200 * prec * rec / (prec + rec)).round(2)
+best_oot = oot_rows.loc[oot_rows["F1 zero, %"].idxmax()]
+print(
+  f"\nНа OOT максимальный F1 по классу «ноль»: порог pred = {best_oot['Порог pred']}, "
+  f"F1 = {best_oot['F1 zero, %']}%, "
+  f"Recall = {best_oot['Recall (доля пойманных нулей), %)']}%, "
+  f"Precision = {best_oot['Precision (среди pred<порог — доля реальных нулей), %)']}%"
 )
