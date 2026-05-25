@@ -1,11 +1,34 @@
-model = results[TARGET]["model"]
-feat = results[TARGET]["selected"]
+# === Случайная выборка из scored_df для демо (train / test / oot) ===
+# Запускать после ячейки со скорингом — используется готовый scored_df
 
-# имена фичей в том же порядке, что у модели
-names = model.feature_name_ or model.feature_names_in_ or feat
+target = TARGET
+pred_col = f"{target}_pred"
+N_PER_SEGMENT = 5   # строк на каждый segment
+SEED = 42
 
-imp = pd.Series(model.feature_importances_, index=names).sort_values(ascending=False)
-imp_df = imp.reset_index()
-imp_df.columns = ["feature", "importance"]
+demo_parts = []
+for seg in ["train", "test", "oot"]:
+    part = scored_df.loc[scored_df["segment"] == seg]
+    n = min(N_PER_SEGMENT, len(part))
+    if n > 0:
+        demo_parts.append(part.sample(n=n, random_state=SEED))
 
-display(imp_df)
+scored_df_demo = pd.concat(demo_parts, ignore_index=True)
+
+if "abs_error" not in scored_df_demo.columns:
+    scored_df_demo["abs_error"] = (
+        scored_df_demo[target].astype(float) - scored_df_demo[pred_col]
+    ).abs()
+
+cols_demo = ["segment"] + PRIMARY_KEY + [target, pred_col, "abs_error"]
+scored_df_demo_view = scored_df_demo[cols_demo].round(4)
+
+print(
+    f"Случайная выборка: {len(scored_df_demo_view)} строк "
+    f"({scored_df_demo_view['segment'].value_counts().to_dict()})"
+)
+display(scored_df_demo_view)
+
+demo_path = f"{REPORTS_FOLDER}/scored_df_demo_sample.xlsx"
+scored_df_demo_view.to_excel(demo_path, index=False)
+print(f"Сохранено: {demo_path}")
