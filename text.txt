@@ -4,7 +4,12 @@
 from sklearn.metrics import r2_score, mean_absolute_error
 
 ZERO_EPS = 1e-9          # фактический ноль (учёт float)
-THRESHOLDS = [0.03, 0.05, 0.10, 0.15, 0.20]  # пороги pred «низкая утилизация»
+THRESHOLD_START = 0.01
+THRESHOLD_END = 0.20
+THRESHOLD_STEP = 0.01
+THRESHOLDS = np.round(
+    np.arange(THRESHOLD_START, THRESHOLD_END + THRESHOLD_STEP / 2, THRESHOLD_STEP), 2
+)  # пороги pred «низкая утилизация», шаг 0.01
 
 model = results[TARGET]["model"]
 feat = results[TARGET]["selected"]
@@ -28,12 +33,17 @@ def _zero_slice_one(df, name, thresholds=THRESHOLDS):
         n_pred_low = int(pred_low.sum())
         precision = tp / n_pred_low if n_pred_low > 0 else np.nan
         recall = tp / n_zero if n_zero > 0 else np.nan
+        if pd.notna(precision) and pd.notna(recall) and (precision + recall) > 0:
+            f1 = 2 * precision * recall / (precision + recall)
+        else:
+            f1 = np.nan
         rows.append({
             "Dataset": name,
             "Порог pred": t,
             "Доля клиентов pred < порог, %": round(100 * n_pred_low / n, 2),
             "Precision (среди pred<порог — доля реальных нулей), %": round(100 * precision, 2) if pd.notna(precision) else np.nan,
             "Recall (доля пойманных нулей), %": round(100 * recall, 2) if pd.notna(recall) else np.nan,
+            "F1 (класс «ноль»), %": round(100 * f1, 2) if pd.notna(f1) else np.nan,
             "TP": tp, "FP": fp, "FN": fn, "TN": tn,
         })
 
@@ -71,25 +81,23 @@ for split_name, split_df in [("Train", train), ("Test", test), ("OOT", oot)]:
 zero_threshold_report = pd.concat(thresh_tables, ignore_index=True)
 zero_metrics_report = pd.concat(metric_tables, ignore_index=True)
 
-print("=== Основные метрики (MAE / R²) — для слайда ===")
+print("=== Основные метрики (MAE / R²) ===")
 display(zero_metrics_report)
 
 print("\n=== Качество выделения нулевой утилизации по порогу pred ===")
 print("(Precision: среди низкого прогноза — сколько реально нулей; Recall: какую долю всех нулей поймали)")
 display(zero_threshold_report)
 
-print("\n=== OOT: только пороги (фокус для демо) ===")
+print("\n=== OOT: только пороги ===")
 display(zero_threshold_report[zero_threshold_report["Dataset"] == "OOT"])
 
-# Опционально: лучший порог на OOT по F1 для класса «ноль»
+# Лучший порог на OOT по F1
 oot_rows = zero_threshold_report[zero_threshold_report["Dataset"] == "OOT"].copy()
-prec = oot_rows["TP"] / (oot_rows["TP"] + oot_rows["FP"]).replace(0, np.nan)
-rec = oot_rows["TP"] / (oot_rows["TP"] + oot_rows["FN"]).replace(0, np.nan)
-oot_rows["F1 zero, %"] = (200 * prec * rec / (prec + rec)).round(2)
-best_oot = oot_rows.loc[oot_rows["F1 zero, %"].idxmax()]
+f1_col = "F1 (класс «ноль»), %"
+best_oot = oot_rows.loc[oot_rows[f1_col].idxmax()]
 print(
-  f"\nНа OOT максимальный F1 по классу «ноль»: порог pred = {best_oot['Порог pred']}, "
-  f"F1 = {best_oot['F1 zero, %']}%, "
-  f"Recall = {best_oot['Recall (доля пойманных нулей), %']}%, "
-  f"Precision = {best_oot['Precision (среди pred<порог — доля реальных нулей), %']}%"
+    f"\nНа OOT максимальный F1 по классу «ноль»: порог pred = {best_oot['Порог pred']}, "
+    f"F1 = {best_oot[f1_col]}%, "
+    f"Recall = {best_oot['Recall (доля пойманных нулей), %']}%, "
+    f"Precision = {best_oot['Precision (среди pred<порог — доля реальных нулей), %']}%"
 )
