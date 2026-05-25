@@ -1,34 +1,33 @@
-# === Случайная выборка из scored_df для демо (train / test / oot) ===
-# Запускать после ячейки со скорингом — используется готовый scored_df
+Цель модели: прогнозировать долю использования нового лимита после clip — target = current_debt / new_limit (от 0 до 1). В данных много нулей (~33–36%): клиенты с нулевой утилизацией. Модель — регрессия LightGBM (loss Tweedie), обучена на истории до июля 2025, проверена на июль–август 2025 (test) и на сентябре 2025 и позже (OOT, out-of-time).
 
-target = TARGET
-pred_col = f"{target}_pred"
-N_PER_SEGMENT = 5   # строк на каждый segment
-SEED = 42
+N
+Размер выборки: train ~227k, test ~21k, OOT ~22k.
+Доля факт. нулей, %
+Доля клиентов с фактической утилизацией ≈ 0; сопоставима между сплитами (~33–36%).
+MAE (все)
+Средняя абсолютная ошибка прогноза по всем клиентам. На OOT 0,30 — основная метрика для сравнения с baseline.
+MAE (y=0) / MAE (y>0)
+Ошибка отдельно на нулевой и ненулевой утилизации; помогает понять, где модель промахивается сильнее.
+MAE const
+Baseline «всегда среднее значение target» (~0,41–0,44). Модель заметно лучше константы.
+R²
+Доля объяснённой дисперсии: train ~0,40, OOT ~0,27. Падение от train к OOT ожидаемо (другой период, меньше переобучения на «свежих» данных).
+AVG target / AVG pred
+Средний факт и средний прогноз близки (~0,40–0,43) — модель в среднем не «завышает» и не «занижает» утилизацию на OOT.
 
-demo_parts = []
-for seg in ["train", "test", "oot"]:
-    part = scored_df.loc[scored_df["segment"] == seg]
-    n = min(N_PER_SEGMENT, len(part))
-    if n > 0:
-        demo_parts.append(part.sample(n=n, random_state=SEED))
+Вывод по таблице 1: на OOT модель стабильно лучше простого среднего (MAE ~0,30 vs ~0,43), средние уровни утилизации совпадают с фактом. Для отчёта менеджменту главные цифры: MAE OOT и R² OOT.
 
-scored_df_demo = pd.concat(demo_parts, ignore_index=True)
+Таблица 2 — «нулевая утилизация» по порогу прогноза (OOT)
+Регрессия выдаёт непрерывный прогноз (0–1). Для задач резервов/сегментации «клиенты с низкой утилизацией» можно считать нулём всех, у кого прогноз < порога (столбец «Порог pred»).
 
-if "abs_error" not in scored_df_demo.columns:
-    scored_df_demo["abs_error"] = (
-        scored_df_demo[target].astype(float) - scored_df_demo[pred_col]
-    ).abs()
-
-cols_demo = ["segment"] + PRIMARY_KEY + [target, pred_col, "abs_error"]
-scored_df_demo_view = scored_df_demo[cols_demo].round(4)
-
-print(
-    f"Случайная выборка: {len(scored_df_demo_view)} строк "
-    f"({scored_df_demo_view['segment'].value_counts().to_dict()})"
-)
-display(scored_df_demo_view)
-
-demo_path = f"{REPORTS_FOLDER}/scored_df_demo_sample.xlsx"
-scored_df_demo_view.to_excel(demo_path, index=False)
-print(f"Сохранено: {demo_path}")
+Метрика	Смысл
+Доля клиентов pred < порог
+Какую долю портфеля мы относим к «низкой утилизации» при этом пороге.
+Precision
+Среди отобранных «низких» — какой % реально имел нулевую утилизацию. Выше порог → обычно ниже precision, больше «ошибочных» ненулевых в выборке.
+Recall
+Какую долю всех фактических нулей мы поймали. Ниже порог → выше recall, но отбор шире.
+F1
+Баланс precision и recall для класса «ноль»; удобно сравнивать пороги.
+TP / FP / FN / TN
+Разбивка по матрице ошибок для правила «pred < порог = низкая утилизация».
