@@ -1,33 +1,126 @@
-Цель модели: прогнозировать долю использования нового лимита после clip — target = current_debt / new_limit (от 0 до 1). В данных много нулей (~33–36%): клиенты с нулевой утилизацией. Модель — регрессия LightGBM (loss Tweedie), обучена на истории до июля 2025, проверена на июль–август 2025 (test) и на сентябре 2025 и позже (OOT, out-of-time).
+# === 1. Агрегат PSI по каждой дате (все фичи) ===
+# Ищем month, когда «плохой» PSI сразу у многих фичей — возможная смена условий выборки
 
-N
-Размер выборки: train ~227k, test ~21k, OOT ~22k.
-Доля факт. нулей, %
-Доля клиентов с фактической утилизацией ≈ 0; сопоставима между сплитами (~33–36%).
-MAE (все)
-Средняя абсолютная ошибка прогноза по всем клиентам. На OOT 0,30 — основная метрика для сравнения с baseline.
-MAE (y=0) / MAE (y>0)
-Ошибка отдельно на нулевой и ненулевой утилизации; помогает понять, где модель промахивается сильнее.
-MAE const
-Baseline «всегда среднее значение target» (~0,41–0,44). Модель заметно лучше константы.
-R²
-Доля объяснённой дисперсии: train ~0,40, OOT ~0,27. Падение от train к OOT ожидаемо (другой период, меньше переобучения на «свежих» данных).
-AVG target / AVG pred
-Средний факт и средний прогноз близки (~0,40–0,43) — модель в среднем не «завышает» и не «занижает» утилизацию на OOT.
+PSI_DATE_THRESHOLDS = [0.10, 0.15, 0.25]
 
-Вывод по таблице 1: на OOT модель стабильно лучше простого среднего (MAE ~0,30 vs ~0,43), средние уровни утилизации совпадают с фактом. Для отчёта менеджменту главные цифры: MAE OOT и R² OOT.
+psi = psi_result.copy()
+psi.index = pd.to_datetime(psi.index)
+psi.index.name = "date"
 
-Таблица 2 — «нулевая утилизация» по порогу прогноза (OOT)
-Регрессия выдаёт непрерывный прогноз (0–1). Для задач резервов/сегментации «клиенты с низкой утилизацией» можно считать нулём всех, у кого прогноз < порога (столбец «Порог pred»).
+# первый month — обычно база для PSI (значения ~0), в аномалиях не участвует
+psi_calc = psi.iloc[1:].copy()
 
-Метрика	Смысл
-Доля клиентов pred < порог
-Какую долю портфеля мы относим к «низкой утилизации» при этом пороге.
-Precision
-Среди отобранных «низких» — какой % реально имел нулевую утилизацию. Выше порог → обычно ниже precision, больше «ошибочных» ненулевых в выборке.
-Recall
-Какую долю всех фактических нулей мы поймали. Ниже порог → выше recall, но отбор шире.
-F1
-Баланс precision и recall для класса «ноль»; удобно сравнивать пороги.
-TP / FP / FN / TN
-Разбивка по матрице ошибок для правила «pred < порог = низкая утилизация».
+date_stats = pd.DataFrame(index=psi_calc.index)
+date_stats.index.name = "date"
+
+arr = psi_calc.to_numpy(dtype=float)
+date_stats["n_features"] = psi_calc.shape[1]
+date_stats["psi_median"] = np.nanmedian(arr, axis=1)
+date_stats["psi_mean"] = np.nanmean(arr, axis=1)
+date_stats["psi_p90"] = np.nanpercentile(arr, 90, axis=1)
+date_stats["psi_max"] = np.nanmax(arr, axis=1)
+
+for thr in PSI_DATE_THRESHOLDS:
+    date_stats[f"share_psi_gt_{thr:.2f}"] = (psi_calc > thr).mean(axis=1)
+    date_stats[f"n_psi_gt_{thr:.2f}"] = (psi_calc > thr).sum(axis=1)
+
+print("Топ дат по доле фичей с PSI > 0.15:")
+display(date_stats.sort_values("share_psi_gt_0.15", ascending=False).round(4).head(15))
+
+
+
+# === 2. Подозрительные даты (robust z-score по системной метрике) ===
+
+METRIC = "share_psi_gt_0.15"   # можно: psi_median, psi_p90, share_psi_gt_0.10
+Z_THRESH = 2.5
+MIN_SHARE = 0.03               # отсечь месяцы, где «всплеск» у крошечной доли фичей
+
+s = date_stats[METRIC]
+med = s.median()
+mad = np.median(np.abs(s - med))
+date_stats["robust_z"] = 0.6745 * (s - med) / mad if mad > 0 else 0.0
+date_stats["is_suspicious"] = (date_stats["robust_z"].abs() >= Z_THRESH) & (s >= MIN_SHARE)
+
+# скачок относительно предыдущего month
+date_stats["delta_share_0.15"] = date_stats["share_psi_gt_0.15"].diff()
+date_stats["delta_psi_median"] = date_stats["psi_median"].diff()
+
+suspicious_dates = date_stats[date_stats["is_suspicious"]].sort_values(METRIC, ascending=False)
+print(f"Подозрительных дат (robust z): {len(suspicious_dates)}")
+display(suspicious_dates.round(4))
+
+print("\nТоп скачков share PSI>0.15 vs прошлый month:")
+display(
+    date_stats.sort_values("delta_share_0.15", ascending=False)[
+        ["share_psi_gt_0.15", "delta_share_0.15", "psi_median", "n_features"]
+    ].round(4).head(10)
+)
+
+
+# === 3. График: системный дрейф по датам ===
+
+fig, axes = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+
+axes[0].plot(date_stats.index, date_stats["share_psi_gt_0.15"], marker="o", label="share PSI>0.15")
+axes[0].axhline(date_stats["share_psi_gt_0.15"].median(), ls="--", color="gray", label="median")
+for d in suspicious_dates.index:
+    axes[0].axvline(d, color="red", alpha=0.35)
+axes[0].set_ylabel("доля фичей")
+axes[0].legend(loc="upper left")
+axes[0].set_title("Системный PSI по month (красные линии — подозрительные даты)")
+
+axes[1].plot(date_stats.index, date_stats["psi_median"], marker="o")
+axes[1].set_ylabel("median PSI")
+
+axes[2].plot(date_stats.index, date_stats["psi_p90"], marker="o")
+axes[2].set_ylabel("p90 PSI")
+axes[2].set_xlabel("date")
+
+plt.tight_layout()
+plt.show()
+
+
+# === 4. Сверка с объёмом выборки по month ===
+# если на дату мало строк — высокий PSI может быть артефактом, а не «сменой условий»
+
+vol = merged_df.groupby("year_month").size().rename("n_rows")
+vol.index = pd.to_datetime(vol.index)
+
+date_check = date_stats.join(vol, how="left")
+cols_show = ["n_rows", "share_psi_gt_0.15", "psi_median", "psi_p90", "robust_z", "is_suspicious"]
+display(date_check[cols_show].sort_values("share_psi_gt_0.15", ascending=False).round(4))
+
+# month с малым N и высоким PSI — проверить вручную
+LOW_N = date_check["n_rows"].quantile(0.10)
+flag_low_n = date_check[(date_check["n_rows"] <= LOW_N) & (date_check["share_psi_gt_0.15"] > date_check["share_psi_gt_0.15"].median())]
+if len(flag_low_n):
+    print(f"\nВнимание: высокий PSI при малом N (ниже p10={LOW_N:.0f}):")
+    display(flag_low_n[cols_show].round(4))
+
+
+# === 5. Детализация по одной дате + оценка эффекта исключения month ===
+
+CHECK_DATE = (
+    suspicious_dates.index[0]
+    if len(suspicious_dates)
+    else date_stats["share_psi_gt_0.15"].idxmax()
+)
+print(f"Детализация для: {CHECK_DATE.date()}")
+
+psi_one = psi_calc.loc[CHECK_DATE].sort_values(ascending=False)
+print(f"Фичей с PSI > 0.15: {(psi_one > 0.15).sum()} / {len(psi_one)}")
+display(psi_one[psi_one > 0.15].head(30).to_frame("PSI").round(4))
+
+# --- кандидаты на исключение (правьте список вручную после ячеек 1–4) ---
+EXCLUDE_CANDIDATES = list(suspicious_dates.index)   # или, например: [pd.Timestamp("2024-01-01")]
+
+PSI_MAX_FOR_PASS = 0.15   # тот же смысл, что PSI_THRESHOLD ниже по ноутбуку
+
+psi_wo = psi_calc.drop(index=EXCLUDE_CANDIDATES, errors="ignore")
+n_pass_if_exclude = (psi_wo.max(axis=0) < PSI_MAX_FOR_PASS).sum()
+n_pass_current = (psi_calc.max(axis=0) < PSI_MAX_FOR_PASS).sum()
+
+print(f"\nКандидаты на исключение из merged_df: {[d.strftime('%Y-%m-%d') for d in EXCLUDE_CANDIDATES]}")
+print(f"Фичей с max PSI < {PSI_MAX_FOR_PASS}: сейчас {n_pass_current}, если выкинуть month — {n_pass_if_exclude} (из {psi_calc.shape[1]})")
+print("Важно: для финального решения пересчитайте psi_result на merged_df без этих month.")
+
