@@ -1,126 +1,20 @@
-# === 1. Агрегат PSI по каждой дате (все фичи) ===
-# Ищем month, когда «плохой» PSI сразу у многих фичей — возможная смена условий выборки
+# === 0. Гранулярность дат: month vs report_date (перед пересчётом PSI) ===
+DATE_COL = TIME_COL   # 'report_date'
 
-PSI_DATE_THRESHOLDS = [0.10, 0.15, 0.25]
+daily_vol = merged_df.groupby(DATE_COL).size()
+monthly_vol = merged_df.groupby("year_month").size()
 
-psi = psi_result.copy()
-psi.index = pd.to_datetime(psi.index)
-psi.index.name = "date"
+print(f"Строк merged_df: {len(merged_df):,}")
+print(f"Уникальных {DATE_COL}: {merged_df[DATE_COL].nunique()}")
+print(f"Уникальных year_month: {merged_df['year_month'].nunique()}")
+print(f"\nN на {DATE_COL} (день):")
+display(daily_vol.describe().to_frame("n_rows").round(0))
 
-# первый month — обычно база для PSI (значения ~0), в аномалиях не участвует
-psi_calc = psi.iloc[1:].copy()
-
-date_stats = pd.DataFrame(index=psi_calc.index)
-date_stats.index.name = "date"
-
-arr = psi_calc.to_numpy(dtype=float)
-date_stats["n_features"] = psi_calc.shape[1]
-date_stats["psi_median"] = np.nanmedian(arr, axis=1)
-date_stats["psi_mean"] = np.nanmean(arr, axis=1)
-date_stats["psi_p90"] = np.nanpercentile(arr, 90, axis=1)
-date_stats["psi_max"] = np.nanmax(arr, axis=1)
-
-for thr in PSI_DATE_THRESHOLDS:
-    date_stats[f"share_psi_gt_{thr:.2f}"] = (psi_calc > thr).mean(axis=1)
-    date_stats[f"n_psi_gt_{thr:.2f}"] = (psi_calc > thr).sum(axis=1)
-
-print("Топ дат по доле фичей с PSI > 0.15:")
-display(date_stats.sort_values("share_psi_gt_0.15", ascending=False).round(4).head(15))
-
-
-
-# === 2. Подозрительные даты (robust z-score по системной метрике) ===
-
-METRIC = "share_psi_gt_0.15"   # можно: psi_median, psi_p90, share_psi_gt_0.10
-Z_THRESH = 2.5
-MIN_SHARE = 0.03               # отсечь месяцы, где «всплеск» у крошечной доли фичей
-
-s = date_stats[METRIC]
-med = s.median()
-mad = np.median(np.abs(s - med))
-date_stats["robust_z"] = 0.6745 * (s - med) / mad if mad > 0 else 0.0
-date_stats["is_suspicious"] = (date_stats["robust_z"].abs() >= Z_THRESH) & (s >= MIN_SHARE)
-
-# скачок относительно предыдущего month
-date_stats["delta_share_0.15"] = date_stats["share_psi_gt_0.15"].diff()
-date_stats["delta_psi_median"] = date_stats["psi_median"].diff()
-
-suspicious_dates = date_stats[date_stats["is_suspicious"]].sort_values(METRIC, ascending=False)
-print(f"Подозрительных дат (robust z): {len(suspicious_dates)}")
-display(suspicious_dates.round(4))
-
-print("\nТоп скачков share PSI>0.15 vs прошлый month:")
-display(
-    date_stats.sort_values("delta_share_0.15", ascending=False)[
-        ["share_psi_gt_0.15", "delta_share_0.15", "psi_median", "n_features"]
-    ].round(4).head(10)
-)
-
-
-# === 3. График: системный дрейф по датам ===
-
-fig, axes = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
-
-axes[0].plot(date_stats.index, date_stats["share_psi_gt_0.15"], marker="o", label="share PSI>0.15")
-axes[0].axhline(date_stats["share_psi_gt_0.15"].median(), ls="--", color="gray", label="median")
-for d in suspicious_dates.index:
-    axes[0].axvline(d, color="red", alpha=0.35)
-axes[0].set_ylabel("доля фичей")
-axes[0].legend(loc="upper left")
-axes[0].set_title("Системный PSI по month (красные линии — подозрительные даты)")
-
-axes[1].plot(date_stats.index, date_stats["psi_median"], marker="o")
-axes[1].set_ylabel("median PSI")
-
-axes[2].plot(date_stats.index, date_stats["psi_p90"], marker="o")
-axes[2].set_ylabel("p90 PSI")
-axes[2].set_xlabel("date")
-
-plt.tight_layout()
-plt.show()
-
-
-# === 4. Сверка с объёмом выборки по month ===
-# если на дату мало строк — высокий PSI может быть артефактом, а не «сменой условий»
-
-vol = merged_df.groupby("year_month").size().rename("n_rows")
-vol.index = pd.to_datetime(vol.index)
-
-date_check = date_stats.join(vol, how="left")
-cols_show = ["n_rows", "share_psi_gt_0.15", "psi_median", "psi_p90", "robust_z", "is_suspicious"]
-display(date_check[cols_show].sort_values("share_psi_gt_0.15", ascending=False).round(4))
-
-# month с малым N и высоким PSI — проверить вручную
-LOW_N = date_check["n_rows"].quantile(0.10)
-flag_low_n = date_check[(date_check["n_rows"] <= LOW_N) & (date_check["share_psi_gt_0.15"] > date_check["share_psi_gt_0.15"].median())]
-if len(flag_low_n):
-    print(f"\nВнимание: высокий PSI при малом N (ниже p10={LOW_N:.0f}):")
-    display(flag_low_n[cols_show].round(4))
-
-
-# === 5. Детализация по одной дате + оценка эффекта исключения month ===
-
-CHECK_DATE = (
-    suspicious_dates.index[0]
-    if len(suspicious_dates)
-    else date_stats["share_psi_gt_0.15"].idxmax()
-)
-print(f"Детализация для: {CHECK_DATE.date()}")
-
-psi_one = psi_calc.loc[CHECK_DATE].sort_values(ascending=False)
-print(f"Фичей с PSI > 0.15: {(psi_one > 0.15).sum()} / {len(psi_one)}")
-display(psi_one[psi_one > 0.15].head(30).to_frame("PSI").round(4))
-
-# --- кандидаты на исключение (правьте список вручную после ячеек 1–4) ---
-EXCLUDE_CANDIDATES = list(suspicious_dates.index)   # или, например: [pd.Timestamp("2024-01-01")]
-
-PSI_MAX_FOR_PASS = 0.15   # тот же смысл, что PSI_THRESHOLD ниже по ноутбуку
-
-psi_wo = psi_calc.drop(index=EXCLUDE_CANDIDATES, errors="ignore")
-n_pass_if_exclude = (psi_wo.max(axis=0) < PSI_MAX_FOR_PASS).sum()
-n_pass_current = (psi_calc.max(axis=0) < PSI_MAX_FOR_PASS).sum()
-
-print(f"\nКандидаты на исключение из merged_df: {[d.strftime('%Y-%m-%d') for d in EXCLUDE_CANDIDATES]}")
-print(f"Фичей с max PSI < {PSI_MAX_FOR_PASS}: сейчас {n_pass_current}, если выкинуть month — {n_pass_if_exclude} (из {psi_calc.shape[1]})")
-print("Важно: для финального решения пересчитайте psi_result на merged_df без этих month.")
-
+MIN_N_FOR_PSI_SLICE = 500   # подстройте под вашу логику бинов в calculate_feat_psi
+if daily_vol.median() < MIN_N_FOR_PSI_SLICE:
+    print(
+        f"\n⚠ median N на день ({daily_vol.median():.0f}) < {MIN_N_FOR_PSI_SLICE}: "
+        "daily PSI часто шумный. Для отбора фичей — month; для поиска «битого дня» — week или daily только в проблемных month."
+    )
+else:
+    print(f"\n✓ median N на день ~{daily_vol.median():.0f} — daily PSI для диагностики допустим (долго по ~4k фичам).")
