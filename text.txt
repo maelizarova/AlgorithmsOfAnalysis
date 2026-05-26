@@ -1,4 +1,5 @@
 # === 0. Гранулярность дат: month vs report_date (перед пересчётом PSI) ===
+# Оффер выдаётся пачками → в month всего несколько report_date — это норма, не «дыры» в календаре.
 DATE_COL = TIME_COL   # 'report_date'
 
 daily_vol = merged_df.groupby(DATE_COL).size()
@@ -7,14 +8,48 @@ monthly_vol = merged_df.groupby("year_month").size()
 print(f"Строк merged_df: {len(merged_df):,}")
 print(f"Уникальных {DATE_COL}: {merged_df[DATE_COL].nunique()}")
 print(f"Уникальных year_month: {merged_df['year_month'].nunique()}")
-print(f"\nN на {DATE_COL} (день):")
+print(f"В среднем report_date на month: {merged_df[DATE_COL].nunique() / merged_df['year_month'].nunique():.1f}")
+print(f"\nN на {DATE_COL} (одна пачка / одна отчётная дата):")
 display(daily_vol.describe().to_frame("n_rows").round(0))
 
-MIN_N_FOR_PSI_SLICE = 500   # подстройте под вашу логику бинов в calculate_feat_psi
+MIN_N_FOR_PSI_SLICE = 500   # подстройте под бины в calculate_feat_psi
 if daily_vol.median() < MIN_N_FOR_PSI_SLICE:
     print(
-        f"\n⚠ median N на день ({daily_vol.median():.0f}) < {MIN_N_FOR_PSI_SLICE}: "
-        "daily PSI часто шумный. Для отбора фичей — month; для поиска «битого дня» — week или daily только в проблемных month."
+        f"\n⚠ median N на дату ({daily_vol.median():.0f}) < {MIN_N_FOR_PSI_SLICE}: "
+        "PSI по report_date шумный — поднимите порог или используйте year_month для отбора фичей."
     )
 else:
-    print(f"\n✓ median N на день ~{daily_vol.median():.0f} — daily PSI для диагностики допустим (долго по ~4k фичам).")
+    print(
+        f"\n✓ median N на дату ~{daily_vol.median():.0f} — PSI по пачкам (report_date) для диагностики ок; "
+        "для отбора ~800 фичей удобнее year_month (агрегация пачек внутри month)."
+    )
+
+# === 0b. Исключить report_date с малым N перед PSI по пачкам ===
+MIN_ROWS_PER_DATE = 500
+
+daily_vol = merged_df.groupby(TIME_COL).size()
+bad_dates = daily_vol[daily_vol < MIN_ROWS_PER_DATE]
+good_dates = daily_vol[daily_vol >= MIN_ROWS_PER_DATE].index
+
+print(f"Порог MIN_ROWS_PER_DATE = {MIN_ROWS_PER_DATE}")
+print(f"Дат всего: {len(daily_vol)}, исключаем: {len(bad_dates)}, остаётся: {len(good_dates)}")
+print(f"Строк до фильтра: {len(merged_df):,}, после: {merged_df[TIME_COL].isin(good_dates).sum():,}")
+
+if len(bad_dates):
+    print("\nИсключаемые report_date (мало строк — PSI ненадёжен):")
+    display(
+        bad_dates.to_frame("n_rows")
+        .join(merged_df.groupby(TIME_COL)["year_month"].first(), how="left")
+        .sort_values("n_rows")
+    )
+
+merged_for_psi_daily = merged_df[merged_df[TIME_COL].isin(good_dates)].copy()
+# merged_df не трогаем — month-PSI и модель по полной выборке
+
+# PSI по пачкам оффера (report_date), без дат с N < MIN_ROWS_PER_DATE
+%%time
+psi_result_daily = preprocessing.calculate_feat_psi(
+    merged_for_psi_daily[list(features) + [TIME_COL]],
+    features,
+    date_col=TIME_COL,
+)
