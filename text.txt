@@ -24,3 +24,39 @@ merged_psi["psi_period"] = merged_psi["year_month"].apply(
 print(f"\nСтрок в синтетическом периоде {PSI_REF_PERIOD.date()}: "
       f"{(merged_psi['psi_period'] == PSI_REF_PERIOD).sum():,}")
 display(merged_psi.groupby("psi_period").size().sort_index().head(12))
+
+
+
+# calculate_feat_psi: 1-й период по дате = референс → все базовые month слились в PSI_REF_PERIOD
+%%time
+psi_result_baseline = preprocessing.calculate_feat_psi(
+    merged_psi[list(features) + ["psi_period"]],
+    features,
+    date_col="psi_period",
+)
+
+# === Сравнение: toolbox (1-й month = ref) vs пул первых N month ===
+PSI_MAX_FOR_PASS = 0.15
+
+pass_toolbox = (psi_result_monthly_full.max(axis=0) < PSI_MAX_FOR_PASS).sum()
+pass_baseline = (psi_result_baseline.max(axis=0) < PSI_MAX_FOR_PASS).sum()
+n_feat = psi_result_baseline.shape[1]
+
+print(f"Фичей: {n_feat}")
+print(f"max PSI < {PSI_MAX_FOR_PASS}:")
+print(f"  toolbox (1-й month как база): {pass_toolbox}")
+print(f"  пул {len(ref_months_set)} базовых month (psi_period): {pass_baseline}")
+print(f"  прирост: +{pass_baseline - pass_toolbox}")
+
+print("\nСредний max PSI по фиче:")
+print(f"  toolbox:  {psi_result_monthly_full.max(axis=0).median():.4f}")
+print(f"  baseline: {psi_result_baseline.max(axis=0).median():.4f}")
+
+display(
+    pd.DataFrame({
+        "max_psi_toolbox": psi_result_monthly_full.max(),
+        "max_psi_baseline": psi_result_baseline.max(),
+    }).describe().round(4)
+)
+
+display(psi_result_baseline.head(10))
