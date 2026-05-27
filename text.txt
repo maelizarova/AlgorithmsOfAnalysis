@@ -1,62 +1,62 @@
-# === PSI с пулом первых N month через preprocessing (без своих функций) ===
-# Идея: всем строкам базовых month ставим одну раннюю дату → toolbox считает их одним периодом-референсом
+# === Фильтр фичей по PSI (исправленный расчёт тренда) ===
+# Используйте эту ячейку вместо предыдущей; в конце перезаписывается to_del_all.
+#
+# Что было не так в linregress(range(len), col)) по всему ряду:
+# 1) Порядок периодов — без sort_index() тренд мог считаться не по времени.
+# 2) Синтетический референс (2000-01-01, пул базовых month) с PSI≈0 тянет slope вверх.
+# 3) NaN в PSI не отбрасывались — регрессия могла сломаться.
+# 4) PSI_TREND=0.05 — это порог max(PSI) для ветки «тренд», не порог наклона (как в шаблоне).
 
-PSI_BASELINE_N_MONTHS = 6
-# альтернатива: PSI_REF_END = "2024-05-01"
+_psi_sorted = _psi_for_filter.sort_index()
 
-PSI_REF_PERIOD = pd.Timestamp("2000-01-01")   # синтетическая «дата» = пул базовых month
+# период-референс toolbox не участвует в тренде (только в max по всему ряду)
+_psi_ref_label = PSI_REF_PERIOD if "PSI_REF_PERIOD" in dir() else _psi_sorted.index[0]
 
-months_sorted = sorted(pd.to_datetime(merged_df["year_month"].unique()))
-if "PSI_REF_END" in dir():
-    ref_months_set = {m for m in months_sorted if m <= pd.Timestamp(PSI_REF_END)}
-else:
-    ref_months_set = set(months_sorted[:PSI_BASELINE_N_MONTHS])
+to_del_fixed = []
+trend_only = []   # ушли только по тренду, max < PSI_THRESHOLD
 
-print(f"Всего month: {len(months_sorted)}, в базе (пул): {len(ref_months_set)}")
-for m in sorted(ref_months_set):
-    print(f"  → {pd.Timestamp(m).date()}  n={(merged_df['year_month'] == m).sum():,}")
+for col in _psi_sorted.columns:
+    full = _psi_sorted[col]
+    max_psi = full.max()
 
-merged_psi = merged_df.copy()
-merged_psi["psi_period"] = merged_psi["year_month"].apply(
-    lambda m: PSI_REF_PERIOD if pd.Timestamp(m) in ref_months_set else pd.Timestamp(m)
-)
+    # фильтр 1: любой период выше жёсткого порога
+    if max_psi >= PSI_THRESHOLD:
+        to_del_fixed.append(col)
+        continue
 
-print(f"\nСтрок в синтетическом периоде {PSI_REF_PERIOD.date()}: "
-      f"{(merged_psi['psi_period'] == PSI_REF_PERIOD).sum():,}")
-display(merged_psi.groupby("psi_period").size().sort_index().head(12))
+    # фильтр 2: значимый рост PSI по month после референса
+    for_trend = full.drop(index=_psi_ref_label, errors="ignore").dropna()
+    if len(for_trend) < 3:
+        continue
 
+    lrgs = linregress(np.arange(len(for_trend)), for_trend.to_numpy())
+    trend_up = (lrgs.slope > 0) and (lrgs.pvalue < 0.05) and (max_psi > PSI_TREND)
+    if trend_up:
+        to_del_fixed.append(col)
+        trend_only.append(col)
 
+to_del_all = to_del_fixed
 
-# calculate_feat_psi: 1-й период по дате = референс → все базовые month слились в PSI_REF_PERIOD
-%%time
-psi_result_baseline = preprocessing.calculate_feat_psi(
-    merged_psi[list(features) + ["psi_period"]],
-    features,
-    date_col="psi_period",
-)
+print(f"Удаляем фичей: {len(to_del_all)} (остаётся {len(features) - len(to_del_all)})")
+print(f"  из них только по тренду (max < {PSI_THRESHOLD}): {len(trend_only)}")
+print(f"  по max >= {PSI_THRESHOLD}: {len(to_del_all) - len(trend_only)}")
 
-# === Сравнение: toolbox (1-й month = ref) vs пул первых N month ===
-PSI_MAX_FOR_PASS = 0.15
+# сравнение со старой формулой (без исправлений)
+to_del_legacy = []
+for col in _psi_for_filter.columns:
+    if _psi_for_filter[col].max() >= PSI_THRESHOLD:
+        to_del_legacy.append(col)
+        continue
+    lrgs = linregress(range(len(_psi_for_filter[col])), _psi_for_filter[col])
+    if ((lrgs.slope > 0) & (lrgs.pvalue < 0.05) & (_psi_for_filter[col].max() > PSI_TREND)):
+        to_del_legacy.append(col)
 
-pass_toolbox = (psi_result_monthly_full.max(axis=0) < PSI_MAX_FOR_PASS).sum()
-pass_baseline = (psi_result_baseline.max(axis=0) < PSI_MAX_FOR_PASS).sum()
-n_feat = psi_result_baseline.shape[1]
-
-print(f"Фичей: {n_feat}")
-print(f"max PSI < {PSI_MAX_FOR_PASS}:")
-print(f"  toolbox (1-й month как база): {pass_toolbox}")
-print(f"  пул {len(ref_months_set)} базовых month (psi_period): {pass_baseline}")
-print(f"  прирост: +{pass_baseline - pass_toolbox}")
-
-print("\nСредний max PSI по фиче:")
-print(f"  toolbox:  {psi_result_monthly_full.max(axis=0).median():.4f}")
-print(f"  baseline: {psi_result_baseline.max(axis=0).median():.4f}")
-
-display(
-    pd.DataFrame({
-        "max_psi_toolbox": psi_result_monthly_full.max(),
-        "max_psi_baseline": psi_result_baseline.max(),
-    }).describe().round(4)
-)
-
-display(psi_result_baseline.head(10))
+only_legacy = set(to_del_legacy) - set(to_del_all)
+only_fixed = set(to_del_all) - set(to_del_legacy)
+print(f"\nСравнение со старой ячейкой:")
+print(f"  только старая удалила бы: {len(only_legacy)}")
+print(f"  только новая удаляет:      {len(only_fixed)}")
+if only_legacy:
+    print("  примеры (лишнее удаление старой):", list(only_legacy)[:5])
+if only_fixed:
+    print("  примеры (новая ловит тренд):", list(only_fixed)[:5])
