@@ -9,3 +9,9 @@ y_clf = (y > ZERO_EPS).astype(int)   # 1 = есть утилизация, 0 = н
 print(y_clf.value_counts(normalize=True).round(4))
 print(f"граница: min y среди класса 1 = {y[y_clf==1].min():.6f}")
 print(f"max y среди класса 0 = {y[y_clf==0].max():.6f}")
+
+y = pd.to_numeric(sample[TARGET], errors="coerce")
+
+for thr in [ZERO_EPS, 0.001, 0.01, 0.02, 0.05]:
+    y_bin = (y > thr).astype(int)
+    print(f"thr={thr:>8}  P(y=1)={y_bin.mean():.2%}  n1={y_bin.sum():,}")
