@@ -1,5 +1,2 @@
-ZERO_EPS = 1e-9
-# CLF_THR = 0.01   # если выберете «осмысленную» утилизацию
-
 y = pd.to_numeric(sample[TARGET], errors="coerce")
-sample["y_clf"] = (y > ZERO_EPS).astype(int)   # или > CLF_THR
+sample["y_clf"] = np.where(y.isna(), np.nan, (y > ZERO_EPS).astype(int))
