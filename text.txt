@@ -1,2 +1,46 @@
-y = pd.to_numeric(sample[TARGET], errors="coerce")
-sample["y_clf"] = np.where(y.isna(), np.nan, (y > ZERO_EPS).astype(int))
+bins = [
+    "0%",
+    "0–0,1%",
+    "0,1–1%",
+    "1–5%",
+    "5–10%",
+    "10–20%",
+    "20–30%",
+    "30–50%",
+    "50–75%",
+    "75–100%",
+    ">100%",
+]
+masks = [
+    y <= 0,
+    (y > 0) & (y <= 0.001),
+    (y > 0.001) & (y <= 0.01),
+    (y > 0.01) & (y <= 0.05),
+    (y > 0.05) & (y <= 0.10),
+    (y > 0.10) & (y <= 0.20),
+    (y > 0.20) & (y <= 0.30),
+    (y > 0.30) & (y <= 0.50),
+    (y > 0.50) & (y <= 0.75),
+    (y > 0.75) & (y <= 1.0),
+    y > 1.0,
+]
+shares = [100 * m.mean() for m in masks]
+
+bucket_df = pd.DataFrame({"Утилизация": bins, "Доля, %": [f"{s:.1f}" for s in shares], "N": [int(m.sum()) for m in masks]})
+display(bucket_df)
+print(f"Сумма долей: {sum(shares):.1f}%")  # должно быть ~100%
+
+fig2 = go.Figure(go.Bar(
+    x=bins, y=shares,
+    text=[f"{s:.1f}%" for s in shares],
+    textposition="outside",
+    marker_color="#1f77b4",
+))
+fig2.update_layout(
+    title="Где лежат клиенты по фактической утилизации",
+    xaxis_title="Утилизация лимита",
+    yaxis_title="Доля клиентов, %",
+    height=450,
+    width=1000,
+)
+fig2.show()
