@@ -1,11 +1,22 @@
 rows = []
 for name, df in [('Train', train), ('Test', test), ('OOT', oot)]:
+    y = pd.to_numeric(df[TARGET], errors='coerce')
     total = len(df)
-    positives = pd.to_numeric(df[TARGET], errors='coerce').sum()
-    rate = positives / total
-    rows.append([name, total, int(positives), f'{rate*100:.2f}%'])
+    above_zero = (y > 0).sum()
+    mean_target = y.mean()
+    rows.append([
+        name,
+        total,
+        int(above_zero),
+        f'{mean_target:.4f}',  # или :.2f — как удобнее
+    ])
 
 cnt_df = pd.DataFrame(
     rows,
-    columns = ['Выборка', 'Количество клиентов, шт.', 'Целевые события - таргет, шт.', 'Доля таргета']
+    columns=[
+        'Выборка',
+        'Количество клиентов, шт.',
+        'Таргет > 0, шт.',
+        'Среднее по таргету',
+    ],
 )
