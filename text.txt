@@ -1,53 +1,79 @@
-def tune_hyperparams(data, target_col, eval_data, max_evals=30, metric="rmse", random_state=42):
-    """
-    Подбор гиперпараметров LGBM через Hyperopt (TPE). 
-    Возвращает (best_model, best_params).
-    """
-    X = data.drop(columns=[target_col])
-    y = data[target_col]
-    X_ev = eval_data.drop(columns=[target_col])
-    y_ev = eval_data[target_col].values
-    fn = mean_squared_error if metric == "rmse" else mean_absolute_error
+target = TARGET
+simple_demo_path = "scored_df_demo_sample.xlsx"
+N_PER_SEGMENT = 30   # строк на каждый segment
+SEED = 42
 
-    space = {
-        "n_estimators": hp.quniform("n_estimators", 50, 300, 25),
-        "max_depth": hp.quniform("max_depth", 3, 10, 1),
-        "learning_rate": hp.loguniform("learning_rate", np.log(0.02), np.log(0.3)),
-        "num_leaves": hp.quniform("num_leaves", 15, 127, 10),
-        "min_child_samples": hp.quniform("min_child_samples", 5, 50, 5),
-        "tweedie_variance_power": hp.uniform("tweedie_variance_power", 1.2, 1.8),
-    }
+scored_hurdle_demo_source = scored_reg_df.copy()
+scored_hurdle_demo_source["passed_to_reg"] = scored_hurdle_demo_source[CLF_SCORE_COL] >= best_threshold
+scored_hurdle_demo_source["error_reg"] = (
+    scored_hurdle_demo_source[target].astype(float) - scored_hurdle_demo_source["reg_pred"].astype(float)
+)
+scored_hurdle_demo_source["error_hurdle"] = (
+    scored_hurdle_demo_source[target].astype(float) - scored_hurdle_demo_source["util_pred"].astype(float)
+)
 
-    def objective(params):
-        p = {
-            "n_estimators": int(params["n_estimators"]),
-            "max_depth": int(params["max_depth"]),
-            "learning_rate": params["learning_rate"],
-            "num_leaves": int(params["num_leaves"]),
-            "min_child_samples": int(params["min_child_samples"]),
-            "objective": "tweedie",
-            "tweedie_variance_power": params["tweedie_variance_power"],
-        }
-        m = lgb.LGBMRegressor(random_state=random_state, verbosity=-1, **p)
-        _fit_lgbm(m, X, y, eval_set=[(X_ev, y_ev)])
-        pred = m.predict(X_ev)
-        score = np.sqrt(fn(y_ev, pred)) if metric == "rmse" else fn(y_ev, pred)
-        return {"loss": score, "status": STATUS_OK}
+key_cols = ["segment"] + PRIMARY_KEY
 
-    trials = Trials()
-    best = fmin(
-        objective, space, algo=tpe.suggest, max_evals=max_evals, trials=trials,
-        rstate=np.random.default_rng(random_state),
+if os.path.exists(simple_demo_path):
+    # Если рядом есть demo из простой регрессии, берём ровно тех же клиентов для сравнения.
+    simple_demo = pd.read_excel(simple_demo_path)
+    demo_keys = simple_demo[key_cols].drop_duplicates()
+    scored_df_demo = demo_keys.merge(
+        scored_hurdle_demo_source,
+        on=key_cols,
+        how="left",
+        validate="one_to_one",
     )
-    best_params = {
-        "n_estimators": int(best["n_estimators"]),
-        "max_depth": int(best["max_depth"]),
-        "learning_rate": best["learning_rate"],
-        "num_leaves": int(best["num_leaves"]),
-        "min_child_samples": int(best["min_child_samples"]),
-        "objective": "tweedie",
-        "tweedie_variance_power": best["tweedie_variance_power"],
-    }
-    best_model = lgb.LGBMRegressor(random_state=random_state, verbosity=-1, **best_params)
-    _fit_lgbm(best_model, X, y, eval_set=[(X_ev, y_ev)])
-    return best_model, best_params
+
+    simple_extra_cols = [c for c in simple_demo.columns if c not in key_cols + [target]]
+    simple_demo_for_merge = simple_demo[key_cols + simple_extra_cols].copy()
+    simple_demo_for_merge = simple_demo_for_merge.rename(columns={
+        f"{target}_pred": "simple_reg_pred",
+        "error": "simple_reg_error",
+    })
+    scored_df_demo = scored_df_demo.merge(
+        simple_demo_for_merge,
+        on=key_cols,
+        how="left",
+        validate="one_to_one",
+    )
+    sample_comment = f"те же клиенты, что в {simple_demo_path}"
+else:
+    # Fallback: такой же random sample по сегментам, если файл простой регрессии ещё не создан.
+    demo_parts = []
+    for seg in ["train", "test", "oot"]:
+        part = scored_hurdle_demo_source.loc[scored_hurdle_demo_source["segment"] == seg]
+        n = min(N_PER_SEGMENT, len(part))
+        if n > 0:
+            demo_parts.append(part.sample(n=n, random_state=SEED))
+
+    scored_df_demo = pd.concat(demo_parts, ignore_index=True)
+    sample_comment = "fallback random sample из hurdle scored_reg_df"
+
+cols_demo = [
+    "segment",
+    *PRIMARY_KEY,
+    target,
+    TARGET_CLF,
+    CLF_SCORE_COL,
+    "passed_to_reg",
+    "reg_pred",
+    "util_pred",
+    "error_reg",
+    "error_hurdle",
+]
+
+optional_cols = ["simple_reg_pred", "simple_reg_error"]
+cols_demo += [c for c in optional_cols if c in scored_df_demo.columns]
+
+scored_df_demo_view = scored_df_demo[cols_demo].round(4)
+
+print(
+    f"Случайная выборка hurdle: {len(scored_df_demo_view)} строк "
+    f"({scored_df_demo_view['segment'].value_counts().to_dict()}), {sample_comment}"
+)
+display(scored_df_demo_view)
+
+demo_path = "scored_df_hurdle_demo_sample.xlsx"
+scored_df_demo_view.to_excel(demo_path, index=False)
+print(f"Сохранено: {demo_path}")
