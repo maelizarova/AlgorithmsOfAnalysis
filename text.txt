@@ -1,1 +1,4 @@
-rate=(target_col, lambda s: round(pd.to_numeric(s, errors="coerce").mean(), 4)),
+psi_scores = preprocessing.calculate_feat_psi(pd.concat([train, test, oot], axis=0)[['pred', 'year_month']], ['pred'], date_col='year_month')
+psi_scores
+
+_, psi_fig = report.psi_plotly(psi_result[best_features].T)
