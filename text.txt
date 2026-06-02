@@ -1,4 +1,16 @@
-psi_scores = preprocessing.calculate_feat_psi(pd.concat([train, test, oot], axis=0)[['pred', 'year_month']], ['pred'], date_col='year_month')
-psi_scores
-
-_, psi_fig = report.psi_plotly(psi_result[best_features].T)
+model = results[TARGET]["model"]
+feat = results[TARGET]["selected"]
+scored_for_psi = pd.concat(
+    [
+        train.assign(pred=model.predict(train[feat])),
+        test.assign(pred=model.predict(test[feat])),
+        oot.assign(pred=model.predict(oot[feat])),
+    ],
+    ignore_index=True,
+)
+psi_scores = preprocessing.calculate_feat_psi(
+    scored_for_psi[["pred", "year_month"]],
+    ["pred"],
+    date_col="year_month",
+)
+_, psi_fig = report.psi_plotly(psi_scores.T, "PSI score")
