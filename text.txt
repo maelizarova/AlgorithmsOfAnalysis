@@ -1,1 +1,1 @@
-above_zero=(target_col, lambda s: (s > 0).sum()),
+rate=(target_col, lambda s: round(pd.to_numeric(s, errors="coerce").mean(), 4)),
