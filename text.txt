@@ -1,2 +1,2 @@
-"mae_nonzero": mean_absolute_error(y[nz], p[nz]) if nz.any() else np.nan,
-            "mae_zero": mean_absolute_error(y[z], p[z]) if z.any() else np.nan,
+nz = y > 0
+        z = y == 0
