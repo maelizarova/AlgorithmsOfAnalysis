@@ -1,33 +1,63 @@
-def regression_metrics_summary(model, train_df, test_df, oot_df, target_col, n_feat=None):
+def regression_metrics_by_month(df, target_col, pred_col, date_col="year_month"):
     """
-    Сводная таблица качества Train / Test / OOT.
-    Аналог блока с ROC / Gini / F1 в классификации.
+    Метрики по месяцам — таблица для графика (аналог Gini по месяцам).
+    df должен содержать pred (см. add_pred).
     """
-    feat = _model_features(model, train_df, target_col)
-    if n_feat is None:
-        n_feat = len(feat)
+    tmp = df[[date_col, target_col, pred_col]].copy()
+    tmp[target_col] = pd.to_numeric(tmp[target_col], errors="coerce")
+    tmp[pred_col] = pd.to_numeric(tmp[pred_col], errors="coerce")
+    tmp[date_col] = pd.to_datetime(tmp[date_col])
 
     rows = []
-    for name, df in [("Train", train_df), ("Test", test_df), ("OOT", oot_df)]:
-        y = pd.to_numeric(df[target_col], errors="coerce").values
-        pred = model.predict(df[feat])
-        nz = y > 0
-        z = y == 0
-        mae_95_mask = y <= np.percentile(y, 95)
-
+    for month, g in tmp.groupby(date_col, sort=True):
+        y = g[target_col].values
+        p = g[pred_col].values
         rows.append({
-            "Dataset": name,
-            "N_samples": len(df),
-            "N_feat": n_feat,
-            "avg_target": round(float(np.nanmean(y)), 6),
-            "avg_pred": round(float(np.mean(pred)), 6),
-            "share_target_gt0": round(float(nz.mean()), 6),
-            "MAE": round(mean_absolute_error(y, pred), 6),
-            "RMSE": round(mean_squared_error(y, pred) ** 0.5, 6),
-            "R2": round(r2_score(y, pred), 6),
-            "MAE_95pct": round(mean_absolute_error(y[mae_95_mask], pred[mae_95_mask]), 6),
-            "MAE_nonzero": round(mean_absolute_error(y[nz], pred[nz]), 6) if nz.any() else np.nan,
-            "MAE_zero": round(mean_absolute_error(y[z], pred[z]), 6) if z.any() else np.nan,
+            "month": month,
+            "cnt": len(g),
+            "avg_target": y.mean(),
+            "avg_pred": p.mean(),
+            "share_gt0": (y > 0).mean(),
+            "mae": mean_absolute_error(y, p),
+            "rmse": mean_squared_error(y, p) ** 0.5,
+            "r2": r2_score(y, p) if len(g) > 1 else np.nan,
         })
 
     return pd.DataFrame(rows)
+
+
+def regression_metrics_by_month_plotly(df_month, metric_col="mae", title="Динамика качества по месяцам"):
+    """Столбцы cnt + линия метрики (MAE / RMSE / R2) — аналог Gini по месяцам."""
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_bar(x=df_month["month"], y=df_month["cnt"], name="cnt", opacity=0.35)
+    fig.add_scatter(
+        x=df_month["month"],
+        y=df_month[metric_col],
+        name=metric_col.upper(),
+        mode="lines+markers",
+        yaxis="y2",
+    )
+    fig.update_layout(
+        title=title,
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    )
+    fig.update_xaxes(title_text="Месяц")
+    fig.update_yaxes(title_text="Количество клиентов", secondary_y=False)
+    fig.update_yaxes(title_text=metric_col.upper(), secondary_y=True)
+    return fig
+
+
+def regression_avg_target_pred_plotly(df_month, title="Средний таргет vs предсказание по месяцам"):
+    """Калибровка уровня во времени: avg_target и avg_pred."""
+    fig = go.Figure()
+    fig.add_scatter(
+        x=df_month["month"], y=df_month["avg_target"],
+        name="avg_target", mode="lines+markers",
+    )
+    fig.add_scatter(
+        x=df_month["month"], y=df_month["avg_pred"],
+        name="avg_pred", mode="lines+markers",
+    )
+    fig.update_layout(title=title, template="plotly_white", xaxis_title="Месяц")
+    return fig
