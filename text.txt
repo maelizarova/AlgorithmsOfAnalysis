@@ -1,44 +1,40 @@
-def regression_calibration_bins(df, pred_col, target_col, n_bins=10):
-    """
-    Калибровка по бинам скора — аналог PR-curve / калибровки вероятностей.
-    """
-    d = df[[target_col, pred_col]].copy()
-    d[target_col] = pd.to_numeric(d[target_col], errors="coerce")
-    d[pred_col] = pd.to_numeric(d[pred_col], errors="coerce")
-    d = d.dropna(subset=[target_col, pred_col])
+# --- Пример: построение отчёта после обучения results[TARGET] ---
 
-    d["bin"] = pd.qcut(
-        d[pred_col].rank(method="first"),
-        q=n_bins,
-        labels=False,
-        duplicates="drop",
-    ) + 1
+model = results[TARGET]["model"]
+feat = results[TARGET]["selected"]
+pred_col = "pred"
+id_col = PRIMARY_KEY[0]
 
-    out = (
-        d.groupby("bin", as_index=False)
-        .agg(
-            n=(target_col, "size"),
-            mean_pred=(pred_col, "mean"),
-            mean_target=(target_col, "mean"),
-        )
-    )
-    out["bias"] = out["mean_pred"] - out["mean_target"]
-    return out
+scored_train = add_pred(train, model, feat, pred_col)
+scored_test = add_pred(test, model, feat, pred_col)
+scored_oot = add_pred(oot, model, feat, pred_col)
+scored_all = pd.concat([scored_train, scored_test, scored_oot], ignore_index=True)
 
+# 1. Сводные метрики (таблица)
+metrics_summary = regression_metrics_summary(
+    model, train, test, oot, TARGET, n_feat=len(feat),
+)
+metrics_summary
 
-def regression_calibration_plotly(cal_df, title="Калибровка по бинам скора"):
-    fig = go.Figure()
-    fig.add_scatter(
-        x=cal_df["bin"], y=cal_df["mean_target"],
-        name="mean_target", mode="lines+markers",
-    )
-    fig.add_scatter(
-        x=cal_df["bin"], y=cal_df["mean_pred"],
-        name="mean_pred", mode="lines+markers",
-    )
-    fig.update_layout(
-        title=title,
-        template="plotly_white",
-        xaxis_title="bin (decile pred)",
-    )
-    return fig
+# 2. Динамика по месяцам
+df_month = regression_metrics_by_month(scored_all, TARGET, pred_col, date_col="year_month")
+fig_month_mae = regression_metrics_by_month_plotly(df_month, metric_col="mae")
+fig_month_avg = regression_avg_target_pred_plotly(df_month)
+
+# 3. Децили / лифт
+train_decile = regression_decile_table(scored_train, pred_col, TARGET, id_col=id_col)
+test_decile = regression_decile_table(scored_test, pred_col, TARGET, id_col=id_col)
+oot_decile = regression_decile_table(scored_oot, pred_col, TARGET, id_col=id_col)
+
+fig_lift_train = regression_decile_lift_plotly(train_decile, title="Лифт train")
+fig_lift_test = regression_decile_lift_plotly(test_decile, title="Лифт test")
+fig_lift_oot = regression_decile_lift_plotly(oot_decile, title="Лифт oot")
+
+# 4. Калибровка по бинам скора
+cal_train = regression_calibration_bins(scored_train, pred_col, TARGET)
+cal_test = regression_calibration_bins(scored_test, pred_col, TARGET)
+cal_oot = regression_calibration_bins(scored_oot, pred_col, TARGET)
+
+fig_cal_train = regression_calibration_plotly(cal_train, title="Калибровка train")
+fig_cal_test = regression_calibration_plotly(cal_test, title="Калибровка test")
+fig_cal_oot = regression_calibration_plotly(cal_oot, title="Калибровка oot")
