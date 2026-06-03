@@ -1,34 +1,27 @@
-def regression_decile_table(df, pred_col, target_col, id_col="client_did", n_bins=10):
-    """
-    Таблица по децилям скора — аналог decile_target в классификации.
-    decile=1 — наименьший pred, decile=10 — наибольший.
-    """
-    d = df[[id_col, target_col, pred_col]].copy()
-    d[target_col] = pd.to_numeric(d[target_col], errors="coerce")
-    d[pred_col] = pd.to_numeric(d[pred_col], errors="coerce")
-    d = d.dropna(subset=[target_col, pred_col])
+def regression_decile_lift_plotly(decile_df, title="Лифт по децилям"):
+    """Dual-axis: lift (bars) + mean_target / mean_pred (lines). Аналог лифт-графика в классификации."""
+    global_mean = decile_df["sum_target"].sum() / decile_df["client_all"].sum()
 
-    d["decile"] = pd.qcut(
-        d[pred_col].rank(method="first"),
-        q=n_bins,
-        labels=False,
-        duplicates="drop",
-    ) + 1
-
-    g_mean = d[target_col].mean()
-    g_sum = d[target_col].sum()
-
-    agg = (
-        d.groupby("decile", as_index=False)
-        .agg(
-            client_all=(id_col, "count"),
-            target_gt0=(target_col, lambda s: (s > 0).sum()),
-            sum_target=(target_col, "sum"),
-            mean_target=(target_col, "mean"),
-            mean_pred=(pred_col, "mean"),
-        )
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_bar(x=decile_df["decile"], y=decile_df["lift"], name="lift", opacity=0.35)
+    fig.add_scatter(
+        x=decile_df["decile"], y=decile_df["mean_target"],
+        name="mean_target", mode="lines+markers", yaxis="y2",
     )
-    agg["lift"] = agg["mean_target"] / g_mean if g_mean else np.nan
-    agg["share_sum_target"] = agg["sum_target"] / g_sum if g_sum else np.nan
-    agg["ratio_gt0"] = agg["target_gt0"] / agg["client_all"]
-    return agg
+    fig.add_scatter(
+        x=decile_df["decile"], y=decile_df["mean_pred"],
+        name="mean_pred", mode="lines+markers", yaxis="y2",
+    )
+    fig.add_hline(
+        y=global_mean, line_dash="dash",
+        annotation_text="avg target", yref="y2",
+    )
+    fig.update_layout(
+        title=title,
+        template="plotly_white",
+        xaxis_title="decile",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    )
+    fig.update_yaxes(title_text="Lift", secondary_y=False)
+    fig.update_yaxes(title_text="Среднее", secondary_y=True)
+    return fig
