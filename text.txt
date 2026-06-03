@@ -20,8 +20,15 @@ max_axis = np.nanpercentile(
 )
 max_axis = max(max_axis, 0.01)
 
+# Стандартная контрастная палитра Plotly: хорошо различима на scatter.
+scatter_colors = {
+    "Train": "#636EFA",
+    "Test": "#EF553B",
+    "OOT": "#00CC96",
+}
+
 fig = go.Figure()
-for dataset, color in hist_colors.items():
+for dataset, color in scatter_colors.items():
     sub = scatter_df[scatter_df["Dataset"] == dataset]
     fig.add_trace(go.Scattergl(
         x=sub["target"],
@@ -31,7 +38,7 @@ for dataset, color in hist_colors.items():
         marker=dict(
             color=color,
             size=5,
-            opacity=0.28,
+            opacity=0.38,
             line=dict(width=0),
         ),
         customdata=np.stack([sub["error"], sub["abs_error"], sub["target_group"]], axis=-1),
@@ -50,7 +57,7 @@ fig.add_trace(go.Scatter(
     y=[0, max_axis],
     mode="lines",
     name="идеальный прогноз",
-    line=dict(color="#333333", width=2, dash="dash"),
+    line=dict(color="#111111", width=2, dash="dash"),
 ))
 
 fig.update_layout(
