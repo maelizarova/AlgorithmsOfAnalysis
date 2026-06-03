@@ -1,1 +1,1 @@
-psi_result = psi_result.join(psi_result_new_lim, how="outer")
+"pct_target_zero": round(100 * float(z.mean()), 2),  # % строк с y=0
