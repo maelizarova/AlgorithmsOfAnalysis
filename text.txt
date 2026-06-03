@@ -1,1 +1,1 @@
-psi_result_new_lim = preprocessing.calculate_feat_psi(merged_df[['new_limit']+ ['year_month']], ['new_limit'], date_col='year_month')
+psi_result = psi_result.join(psi_result_new_lim, how="outer")
