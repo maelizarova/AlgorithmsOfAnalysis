@@ -35,6 +35,23 @@ error_summary = (
 
 display(error_summary.round(4))
 
+hist_colors = {
+    "Train": "#4C78A8",  # спокойный синий
+    "Test": "#B279A2",   # мягкий пурпурный
+    "OOT": "#59A14F",    # приглушённый зелёный
+}
+
+hist_layout = dict(
+    template="plotly_white",
+    barmode="overlay",
+    bargap=0.02,
+    height=500,
+    width=950,
+    legend_title_text="Dataset",
+    font=dict(size=13),
+    hovermode="x unified",
+)
+
 # Обрезаем экстремальные хвосты только для читаемости графика, сами метрики выше считаются без обрезки.
 err_low, err_high = regression_errors["error"].quantile([0.01, 0.99])
 plot_errors = regression_errors[
@@ -42,25 +59,23 @@ plot_errors = regression_errors[
 ].copy()
 
 fig = go.Figure()
-for dataset, color in [("Train", "#1f77b4"), ("Test", "#ff7f0e"), ("OOT", "#2ca02c")]:
+for dataset, color in hist_colors.items():
     sub = plot_errors[plot_errors["Dataset"] == dataset]
     fig.add_trace(go.Histogram(
         x=sub["error"],
         name=dataset,
-        opacity=0.55,
+        opacity=0.42,
         nbinsx=80,
         histnorm="probability density",
-        marker_color=color,
+        marker=dict(color=color, line=dict(color="white", width=0.4)),
     ))
 
-fig.add_vline(x=0, line_dash="dash", line_color="black")
+fig.add_vline(x=0, line_dash="dash", line_color="#333333", line_width=2)
 fig.update_layout(
+    **hist_layout,
     title="Распределение ошибки регрессии: target - reg_pred (обрезаны 1% хвостов для графика)",
     xaxis_title="Ошибка: target - reg_pred",
     yaxis_title="Плотность",
-    barmode="overlay",
-    height=500,
-    width=950,
 )
 fig.show()
 
@@ -68,23 +83,21 @@ abs_high = regression_errors["abs_error"].quantile(0.99)
 plot_abs_errors = regression_errors[regression_errors["abs_error"] <= abs_high].copy()
 
 fig = go.Figure()
-for dataset, color in [("Train", "#1f77b4"), ("Test", "#ff7f0e"), ("OOT", "#2ca02c")]:
+for dataset, color in hist_colors.items():
     sub = plot_abs_errors[plot_abs_errors["Dataset"] == dataset]
     fig.add_trace(go.Histogram(
         x=sub["abs_error"],
         name=dataset,
-        opacity=0.55,
+        opacity=0.42,
         nbinsx=80,
         histnorm="probability density",
-        marker_color=color,
+        marker=dict(color=color, line=dict(color="white", width=0.4)),
     ))
 
 fig.update_layout(
+    **hist_layout,
     title="Распределение абсолютной ошибки регрессии |target - reg_pred| (обрезан 1% хвост для графика)",
     xaxis_title="Абсолютная ошибка",
     yaxis_title="Плотность",
-    barmode="overlay",
-    height=500,
-    width=950,
 )
 fig.show()
