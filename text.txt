@@ -1,27 +1,44 @@
-def regression_decile_lift_plotly(decile_df, title="Лифт по децилям"):
-    """Dual-axis: lift (bars) + mean_target / mean_pred (lines). Аналог лифт-графика в классификации."""
-    global_mean = decile_df["sum_target"].sum() / decile_df["client_all"].sum()
+def regression_calibration_bins(df, pred_col, target_col, n_bins=10):
+    """
+    Калибровка по бинам скора — аналог PR-curve / калибровки вероятностей.
+    """
+    d = df[[target_col, pred_col]].copy()
+    d[target_col] = pd.to_numeric(d[target_col], errors="coerce")
+    d[pred_col] = pd.to_numeric(d[pred_col], errors="coerce")
+    d = d.dropna(subset=[target_col, pred_col])
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_bar(x=decile_df["decile"], y=decile_df["lift"], name="lift", opacity=0.35)
+    d["bin"] = pd.qcut(
+        d[pred_col].rank(method="first"),
+        q=n_bins,
+        labels=False,
+        duplicates="drop",
+    ) + 1
+
+    out = (
+        d.groupby("bin", as_index=False)
+        .agg(
+            n=(target_col, "size"),
+            mean_pred=(pred_col, "mean"),
+            mean_target=(target_col, "mean"),
+        )
+    )
+    out["bias"] = out["mean_pred"] - out["mean_target"]
+    return out
+
+
+def regression_calibration_plotly(cal_df, title="Калибровка по бинам скора"):
+    fig = go.Figure()
     fig.add_scatter(
-        x=decile_df["decile"], y=decile_df["mean_target"],
-        name="mean_target", mode="lines+markers", yaxis="y2",
+        x=cal_df["bin"], y=cal_df["mean_target"],
+        name="mean_target", mode="lines+markers",
     )
     fig.add_scatter(
-        x=decile_df["decile"], y=decile_df["mean_pred"],
-        name="mean_pred", mode="lines+markers", yaxis="y2",
-    )
-    fig.add_hline(
-        y=global_mean, line_dash="dash",
-        annotation_text="avg target", yref="y2",
+        x=cal_df["bin"], y=cal_df["mean_pred"],
+        name="mean_pred", mode="lines+markers",
     )
     fig.update_layout(
         title=title,
         template="plotly_white",
-        xaxis_title="decile",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        xaxis_title="bin (decile pred)",
     )
-    fig.update_yaxes(title_text="Lift", secondary_y=False)
-    fig.update_yaxes(title_text="Среднее", secondary_y=True)
     return fig
