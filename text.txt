@@ -1,16 +1,33 @@
-model = results[TARGET]["model"]
-feat = results[TARGET]["selected"]
-scored_for_psi = pd.concat(
-    [
-        train.assign(pred=model.predict(train[feat])),
-        test.assign(pred=model.predict(test[feat])),
-        oot.assign(pred=model.predict(oot[feat])),
-    ],
-    ignore_index=True,
-)
-psi_scores = preprocessing.calculate_feat_psi(
-    scored_for_psi[["pred", "year_month"]],
-    ["pred"],
-    date_col="year_month",
-)
-_, psi_fig = report.psi_plotly(psi_scores.T, "PSI score")
+def regression_metrics_summary(model, train_df, test_df, oot_df, target_col, n_feat=None):
+    """
+    Сводная таблица качества Train / Test / OOT.
+    Аналог блока с ROC / Gini / F1 в классификации.
+    """
+    feat = _model_features(model, train_df, target_col)
+    if n_feat is None:
+        n_feat = len(feat)
+
+    rows = []
+    for name, df in [("Train", train_df), ("Test", test_df), ("OOT", oot_df)]:
+        y = pd.to_numeric(df[target_col], errors="coerce").values
+        pred = model.predict(df[feat])
+        nz = y > 0
+        z = y == 0
+        mae_95_mask = y <= np.percentile(y, 95)
+
+        rows.append({
+            "Dataset": name,
+            "N_samples": len(df),
+            "N_feat": n_feat,
+            "avg_target": round(float(np.nanmean(y)), 6),
+            "avg_pred": round(float(np.mean(pred)), 6),
+            "share_target_gt0": round(float(nz.mean()), 6),
+            "MAE": round(mean_absolute_error(y, pred), 6),
+            "RMSE": round(mean_squared_error(y, pred) ** 0.5, 6),
+            "R2": round(r2_score(y, pred), 6),
+            "MAE_95pct": round(mean_absolute_error(y[mae_95_mask], pred[mae_95_mask]), 6),
+            "MAE_nonzero": round(mean_absolute_error(y[nz], pred[nz]), 6) if nz.any() else np.nan,
+            "MAE_zero": round(mean_absolute_error(y[z], pred[z]), 6) if z.any() else np.nan,
+        })
+
+    return pd.DataFrame(rows)
