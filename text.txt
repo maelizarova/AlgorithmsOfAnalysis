@@ -1,40 +1,16 @@
-# --- Пример: построение отчёта после обучения results[TARGET] ---
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-model = results[TARGET]["model"]
-feat = results[TARGET]["selected"]
-pred_col = "pred"
-id_col = PRIMARY_KEY[0]
 
-scored_train = add_pred(train, model, feat, pred_col)
-scored_test = add_pred(test, model, feat, pred_col)
-scored_oot = add_pred(oot, model, feat, pred_col)
-scored_all = pd.concat([scored_train, scored_test, scored_oot], ignore_index=True)
+def _model_features(model, train_df, target_col):
+    feat = getattr(model, "feature_name_", None) or getattr(model, "feature_names_in_", None)
+    if feat is None:
+        feat = [c for c in train_df.columns if c != target_col]
+    return list(feat)
 
-# 1. Сводные метрики (таблица)
-metrics_summary = regression_metrics_summary(
-    model, train, test, oot, TARGET, n_feat=len(feat),
-)
-metrics_summary
 
-# 2. Динамика по месяцам
-df_month = regression_metrics_by_month(scored_all, TARGET, pred_col, date_col="year_month")
-fig_month_mae = regression_metrics_by_month_plotly(df_month, metric_col="mae")
-fig_month_avg = regression_avg_target_pred_plotly(df_month)
-
-# 3. Децили / лифт
-train_decile = regression_decile_table(scored_train, pred_col, TARGET, id_col=id_col)
-test_decile = regression_decile_table(scored_test, pred_col, TARGET, id_col=id_col)
-oot_decile = regression_decile_table(scored_oot, pred_col, TARGET, id_col=id_col)
-
-fig_lift_train = regression_decile_lift_plotly(train_decile, title="Лифт train")
-fig_lift_test = regression_decile_lift_plotly(test_decile, title="Лифт test")
-fig_lift_oot = regression_decile_lift_plotly(oot_decile, title="Лифт oot")
-
-# 4. Калибровка по бинам скора
-cal_train = regression_calibration_bins(scored_train, pred_col, TARGET)
-cal_test = regression_calibration_bins(scored_test, pred_col, TARGET)
-cal_oot = regression_calibration_bins(scored_oot, pred_col, TARGET)
-
-fig_cal_train = regression_calibration_plotly(cal_train, title="Калибровка train")
-fig_cal_test = regression_calibration_plotly(cal_test, title="Калибровка test")
-fig_cal_oot = regression_calibration_plotly(cal_oot, title="Калибровка oot")
+def add_pred(df, model, feat, pred_col="pred"):
+    """Добавляет колонку pred к датафрейму."""
+    out = df.copy()
+    out[pred_col] = model.predict(out[feat])
+    return out
