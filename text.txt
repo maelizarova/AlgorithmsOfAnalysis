@@ -1,103 +1,68 @@
-# Распределение ошибок регрессии на срезе, который прошёл во вторую ступень.
-# Это не итоговый hurdle-прогноз, а именно качество reg_pred на train_reg/test_reg/oot_reg.
+# Факт vs прогноз регрессии на срезе, который прошёл во вторую ступень.
+# Диагональ показывает идеальный прогноз: reg_pred = target.
 
-def regression_error_frame(df, dataset_name):
-    pred = best_model.predict(df[best_features])
-    y = df[TARGET].astype(float).values
-    return pd.DataFrame({
-        "Dataset": dataset_name,
-        "target": y,
-        "reg_pred": pred,
-        "error": y - pred,
-        "abs_error": np.abs(y - pred),
-        "target_group": np.where(y > ZERO_EPS, "y>0", "y=0"),
-    })
-
-regression_errors = pd.concat([
-    regression_error_frame(train_reg, "Train"),
-    regression_error_frame(test_reg, "Test"),
-    regression_error_frame(oot_reg, "OOT"),
-], ignore_index=True)
-
-error_summary = (
-    regression_errors
-    .groupby(["Dataset", "target_group"])
-    .agg(
-        N=("error", "size"),
-        mean_error=("error", "mean"),
-        median_error=("error", "median"),
-        mae=("abs_error", "mean"),
-        p90_abs_error=("abs_error", lambda x: x.quantile(0.90)),
-        p95_abs_error=("abs_error", lambda x: x.quantile(0.95)),
+scatter_sample_n = 15000
+scatter_df = regression_errors.copy()
+if len(scatter_df) > scatter_sample_n:
+    scatter_df = (
+        scatter_df
+        .groupby("Dataset", group_keys=False)
+        .apply(lambda x: x.sample(
+            n=min(len(x), max(1, scatter_sample_n // regression_errors["Dataset"].nunique())),
+            random_state=42,
+        ))
+        .reset_index(drop=True)
     )
-    .reset_index()
+
+max_axis = np.nanpercentile(
+    pd.concat([scatter_df["target"], scatter_df["reg_pred"]], ignore_index=True),
+    99,
 )
+max_axis = max(max_axis, 0.01)
 
-display(error_summary.round(4))
+fig = go.Figure()
+for dataset, color in hist_colors.items():
+    sub = scatter_df[scatter_df["Dataset"] == dataset]
+    fig.add_trace(go.Scattergl(
+        x=sub["target"],
+        y=sub["reg_pred"],
+        mode="markers",
+        name=dataset,
+        marker=dict(
+            color=color,
+            size=5,
+            opacity=0.28,
+            line=dict(width=0),
+        ),
+        customdata=np.stack([sub["error"], sub["abs_error"], sub["target_group"]], axis=-1),
+        hovertemplate=(
+            "Dataset=%{fullData.name}<br>"
+            "target=%{x:.4f}<br>"
+            "reg_pred=%{y:.4f}<br>"
+            "error=%{customdata[0]:.4f}<br>"
+            "abs_error=%{customdata[1]:.4f}<br>"
+            "group=%{customdata[2]}<extra></extra>"
+        ),
+    ))
 
-hist_colors = {
-    "Train": "#4C78A8",  # спокойный синий
-    "Test": "#B279A2",   # мягкий пурпурный
-    "OOT": "#59A14F",    # приглушённый зелёный
-}
+fig.add_trace(go.Scatter(
+    x=[0, max_axis],
+    y=[0, max_axis],
+    mode="lines",
+    name="идеальный прогноз",
+    line=dict(color="#333333", width=2, dash="dash"),
+))
 
-hist_layout = dict(
+fig.update_layout(
     template="plotly_white",
-    barmode="overlay",
-    bargap=0.02,
-    height=500,
-    width=950,
+    title="Факт vs прогноз регрессии: target и reg_pred",
+    xaxis_title="Факт: target",
+    yaxis_title="Прогноз: reg_pred",
+    height=650,
+    width=800,
     legend_title_text="Dataset",
     font=dict(size=13),
-    hovermode="x unified",
 )
-
-# Обрезаем экстремальные хвосты только для читаемости графика, сами метрики выше считаются без обрезки.
-err_low, err_high = regression_errors["error"].quantile([0.01, 0.99])
-plot_errors = regression_errors[
-    regression_errors["error"].between(err_low, err_high)
-].copy()
-
-fig = go.Figure()
-for dataset, color in hist_colors.items():
-    sub = plot_errors[plot_errors["Dataset"] == dataset]
-    fig.add_trace(go.Histogram(
-        x=sub["error"],
-        name=dataset,
-        opacity=0.42,
-        nbinsx=80,
-        histnorm="probability density",
-        marker=dict(color=color, line=dict(color="white", width=0.4)),
-    ))
-
-fig.add_vline(x=0, line_dash="dash", line_color="#333333", line_width=2)
-fig.update_layout(
-    **hist_layout,
-    title="Распределение ошибки регрессии: target - reg_pred (обрезаны 1% хвостов для графика)",
-    xaxis_title="Ошибка: target - reg_pred",
-    yaxis_title="Плотность",
-)
-fig.show()
-
-abs_high = regression_errors["abs_error"].quantile(0.99)
-plot_abs_errors = regression_errors[regression_errors["abs_error"] <= abs_high].copy()
-
-fig = go.Figure()
-for dataset, color in hist_colors.items():
-    sub = plot_abs_errors[plot_abs_errors["Dataset"] == dataset]
-    fig.add_trace(go.Histogram(
-        x=sub["abs_error"],
-        name=dataset,
-        opacity=0.42,
-        nbinsx=80,
-        histnorm="probability density",
-        marker=dict(color=color, line=dict(color="white", width=0.4)),
-    ))
-
-fig.update_layout(
-    **hist_layout,
-    title="Распределение абсолютной ошибки регрессии |target - reg_pred| (обрезан 1% хвост для графика)",
-    xaxis_title="Абсолютная ошибка",
-    yaxis_title="Плотность",
-)
+fig.update_xaxes(range=[0, max_axis])
+fig.update_yaxes(range=[0, max_axis], scaleanchor="x", scaleratio=1)
 fig.show()
