@@ -1,1 +1,1 @@
-df_month_t.loc["N_samples"] = df_month_t.loc["N_samples"].astype(int)
+df_month.rename_axis(None).reset_index(names="Month")
