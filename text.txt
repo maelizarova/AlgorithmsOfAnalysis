@@ -1,16 +1,38 @@
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+def evaluate_model(model, train_df, test_df, oot_df, target_col):
+    """
+    Сводка по регрессионной модели на срезе, который прошёл во вторую ступень.
 
-
-def _model_features(model, train_df, target_col):
+    Важно: это не метрики всей двухэтапной модели, а только качество регрессии
+    на клиентах с clf_score >= выбранного порога.
+    """
     feat = getattr(model, "feature_name_", None) or getattr(model, "feature_names_in_", None)
     if feat is None:
         feat = [c for c in train_df.columns if c != target_col]
-    return list(feat)
 
+    rows = []
+    for name, df in [("Train", train_df), ("Test", test_df), ("OOT", oot_df)]:
+        X = df[feat] if all(c in df.columns for c in feat) else df.drop(columns=[target_col])
+        y = df[target_col].astype(float).values
+        pred = model.predict(X)
+        abs_err = np.abs(y - pred)
+        mask_zero = y <= ZERO_EPS
+        mask_pos = y > ZERO_EPS
+        thresh_y = np.percentile(y, 95)
+        mask_95 = y <= thresh_y
 
-def add_pred(df, model, feat, pred_col="pred"):
-    """Добавляет колонку pred к датафрейму."""
-    out = df.copy()
-    out[pred_col] = model.predict(out[feat])
-    return out
+        rows.append({
+            "Target": target_col,
+            "Dataset": name,
+            "N": len(df),
+            "AVG target": y.mean(),
+            "AVG pred": pred.mean(),
+            "MAE": abs_err.mean(),
+            "MAE (y=0)": abs_err[mask_zero].mean() if mask_zero.any() else np.nan,
+            "MAE (y>0)": abs_err[mask_pos].mean() if mask_pos.any() else np.nan,
+            "MAE 95%": abs_err[mask_95].mean() if mask_95.sum() > 0 else np.nan,
+            "RMSE": np.sqrt(np.mean((y - pred) ** 2)),
+            "R2": r2_score(y, pred) if len(np.unique(y)) > 1 else np.nan,
+            "Non Zero": int(mask_pos.sum()),
+            "Zero share": float(mask_zero.mean()),
+        })
+    return pd.DataFrame(rows)
