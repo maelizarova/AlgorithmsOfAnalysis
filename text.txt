@@ -1,56 +1,51 @@
-from prefect import flow, task, Task, get_run_logger
-from prefect.task_runners import ConcurrentTaskRunner
-from models.binary_classification import BinaryClassificationMonitor
-from prefect.blocks.notifications import CustomWebhookNotificationBlock
-from toolbox.prefect.notification import make_email_flow_notifier
-from datetime import datetime
-import json
-import glob
-import os
+import pandas as pd
+import numpy as np
+import oracledb
+import sys
+oracledb.version = "8.3.0"
+sys.modules["cx_Oracle"] = oracledb
+from sqlalchemy import create_engine
+from sqlalchemy import types, text
 
-config_paths = glob.glob(os.path.join('configs', '*.json'))
-execution_date = datetime.now().date().strftime('%Y-%m-%d')
-MAX_WORKERS = 4
-RETRIES = 1
-RETRY_DELAY_SECONDS = 60
+class SQLWriter():
+    """ Класс для записи в Oracle """
+    def __init__(self, df: pd.DataFrame, table_name: str, dtype_dic: dict, model_name: str, execution_date: str):
+        """
+        Args:
+            df - датафрейм, который нужно записать
+            current_data - имя таблицы, в котрую нужно записать наши данные
+            dtype_dic - словарь с типами данных, к
+            model_name - имя модели
+            execution_date - логическая дата
+        """
+        self.df = df
+        self.table_name = table_name
+        self.dtype_dic = dtype_dic
+        self.model_name = model_name
+        self.execution_date = execution_date
 
-custom_webhook_block = CustomWebhookNotificationBlock.load("mail-to-analytics") 
-on_flow_failure = make_email_flow_notifier(custom_webhook_block)
+    def write_data(self, engine):
+        """ Удалем данные для модели на дату, чтобы избежать дублей"""
+        q_del = f""" delete from {self.table_name} 
+                     where report_date = date '{self.execution_date}' 
+                     and model_name = '{self.model_name}'""" 
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(q_del))
+                conn.commit()
+        except:
+            pass
 
-
-def run_single_model(config_path, execution_date):
-    with open(config_path) as f:
-            config = json.load(f)        
-    logger = get_run_logger()
-    logger.info(f"Running monitor for {config['model_name']}")
-    monitor = BinaryClassificationMonitor(config, execution_date)
-    monitor.run(RETRIES, RETRY_DELAY_SECONDS)
-    logger.info(f"Finished monitor for {config['model_name']}")
+        """ Записываем в таблицу Oracle"""
+        try:
+            self.df.to_sql(
+                name = self.table_name, 
+                con = engine, 
+                if_exists = 'append', 
+                index =False,
+                dtype = self.dtype_dic
+            )
+        except Exception as e:
+            print(f"Error while writing {self.model_name} to {self.table_name}: {e}")
     
-
- 
-@flow(name="bianry_clf_monitor", retries=RETRIES, retry_delay_seconds=RETRY_DELAY_SECONDS, task_runner=ConcurrentTaskRunner(max_workers=MAX_WORKERS), on_failure =[make_email_flow_notifier])
-def run_all_models():    
-    task_runs = []
-
-    for config_path in config_paths:
-        with open(config_path) as f:
-            config = json.load(f)
-        model_name = config['model_name']
-        t = Task(fn=run_single_model, 
-                   name = f"run_model_{model_name}", 
-                   task_run_name = f"run_model[{model_name}]",
-                   retries=RETRIES,
-                   retry_delay_seconds=RETRY_DELAY_SECONDS)
-        fut = t.submit(config_path, execution_date)
-        task_runs.append(fut) 
-        
-    _ = [t.result() for t in task_runs]
-
-
-if __name__ == "__main__":
-    run_all_models()
-
-
-
-    
+            pass
