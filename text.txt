@@ -1,115 +1,56 @@
-# Факт vs прогноз итоговой hurdle-модели на полной выборке Train / Test / OOT.
-# util_pred = reg_pred, если clf_score >= best_threshold, иначе 0.
+from prefect import flow, task, Task, get_run_logger
+from prefect.task_runners import ConcurrentTaskRunner
+from models.binary_classification import BinaryClassificationMonitor
+from prefect.blocks.notifications import CustomWebhookNotificationBlock
+from toolbox.prefect.notification import make_email_flow_notifier
+from datetime import datetime
+import json
+import glob
+import os
 
-from plotly.subplots import make_subplots
+config_paths = glob.glob(os.path.join('configs', '*.json'))
+execution_date = datetime.now().date().strftime('%Y-%m-%d')
+MAX_WORKERS = 4
+RETRIES = 1
+RETRY_DELAY_SECONDS = 60
 
-scatter_sample_n_per_dataset = 5000
-scatter_colors = {
-    "Train": "#636EFA",
-    "Test": "#EF553B",
-    "OOT": "#00CC96",
-}
-datasets_order = ["Train", "Test", "OOT"]
-
-
-def hurdle_error_frame(df, dataset_name, threshold):
-    reg_pred = np.clip(best_model.predict(df[best_features]), 0, None)
-    clf_score = df[CLF_SCORE_COL].astype(float).values
-    util_pred = hurdle_predict(clf_score, reg_pred, threshold)
-    y = df[TARGET].astype(float).values
-    return pd.DataFrame({
-        "Dataset": dataset_name,
-        "target": y,
-        "util_pred": util_pred,
-        "reg_pred": reg_pred,
-        "clf_score": clf_score,
-        "error": y - util_pred,
-        "abs_error": np.abs(y - util_pred),
-        "target_group": np.where(y > ZERO_EPS, "y>0", "y=0"),
-        "passed_gate": clf_score >= threshold,
-    })
+custom_webhook_block = CustomWebhookNotificationBlock.load("mail-to-analytics") 
+on_flow_failure = make_email_flow_notifier(custom_webhook_block)
 
 
-hurdle_errors = pd.concat([
-    hurdle_error_frame(train, "Train", best_threshold),
-    hurdle_error_frame(test, "Test", best_threshold),
-    hurdle_error_frame(oot, "OOT", best_threshold),
-], ignore_index=True)
+def run_single_model(config_path, execution_date):
+    with open(config_path) as f:
+            config = json.load(f)        
+    logger = get_run_logger()
+    logger.info(f"Running monitor for {config['model_name']}")
+    monitor = BinaryClassificationMonitor(config, execution_date)
+    monitor.run(RETRIES, RETRY_DELAY_SECONDS)
+    logger.info(f"Finished monitor for {config['model_name']}")
+    
 
-scatter_hurdle_df = (
-    hurdle_errors
-    .groupby("Dataset", group_keys=False)
-    .apply(lambda x: x.sample(n=min(len(x), scatter_sample_n_per_dataset), random_state=42))
-    .reset_index(drop=True)
-)
+ 
+@flow(name="bianry_clf_monitor", retries=RETRIES, retry_delay_seconds=RETRY_DELAY_SECONDS, task_runner=ConcurrentTaskRunner(max_workers=MAX_WORKERS), on_failure =[make_email_flow_notifier])
+def run_all_models():    
+    task_runs = []
 
-max_axis_hurdle = np.nanpercentile(
-    pd.concat([scatter_hurdle_df["target"], scatter_hurdle_df["util_pred"]], ignore_index=True),
-    99,
-)
-max_axis_hurdle = max(max_axis_hurdle, 0.01)
+    for config_path in config_paths:
+        with open(config_path) as f:
+            config = json.load(f)
+        model_name = config['model_name']
+        t = Task(fn=run_single_model, 
+                   name = f"run_model_{model_name}", 
+                   task_run_name = f"run_model[{model_name}]",
+                   retries=RETRIES,
+                   retry_delay_seconds=RETRY_DELAY_SECONDS)
+        fut = t.submit(config_path, execution_date)
+        task_runs.append(fut) 
+        
+    _ = [t.result() for t in task_runs]
 
-fig_hurdle = make_subplots(
-    rows=1,
-    cols=3,
-    subplot_titles=datasets_order,
-    shared_xaxes=True,
-    shared_yaxes=True,
-    horizontal_spacing=0.06,
-)
 
-for col_idx, dataset in enumerate(datasets_order, start=1):
-    sub = scatter_hurdle_df[scatter_hurdle_df["Dataset"] == dataset]
-    fig_hurdle.add_trace(
-        go.Scattergl(
-            x=sub["target"],
-            y=sub["util_pred"],
-            mode="markers",
-            name=dataset,
-            showlegend=False,
-            marker=dict(
-                color=scatter_colors[dataset],
-                size=4,
-                opacity=0.45,
-                line=dict(width=0),
-            ),
-            customdata=np.stack([
-                sub["error"], sub["abs_error"], sub["target_group"], sub["passed_gate"]
-            ], axis=-1),
-            hovertemplate=(
-                f"Dataset={dataset}<br>"
-                "target=%{x:.4f}<br>"
-                "util_pred=%{y:.4f}<br>"
-                "error=%{customdata[0]:.4f}<br>"
-                "abs_error=%{customdata[1]:.4f}<br>"
-                "group=%{customdata[2]}<br>"
-                "passed_gate=%{customdata[3]}<extra></extra>"
-            ),
-        ),
-        row=1,
-        col=col_idx,
-    )
-    fig_hurdle.add_trace(
-        go.Scatter(
-            x=[0, max_axis_hurdle],
-            y=[0, max_axis_hurdle],
-            mode="lines",
-            name="идеальный прогноз",
-            showlegend=(col_idx == 1),
-            line=dict(color="#111111", width=2, dash="dash"),
-            hoverinfo="skip",
-        ),
-        row=1,
-        col=col_idx,
-    )
+if __name__ == "__main__":
+    run_all_models()
 
-fig_hurdle.update_layout(
-    template="plotly_white",
-    title=f"Факт vs итоговый прогноз hurdle: target и util_pred (порог clf={best_threshold:.2f})",
-    height=520,
-    width=1200,
-    font=dict(size=13),
-)
-fig_hurdle.update_xaxes(title_text="Факт: target", range=[0, max_axis_hurdle])
-fig_hurdle.update_yaxes(title_text="Прогноз: util_pred", range=[0, max_axis_hurdle])
-fig_hurdle.show()
+
+
+    
