@@ -1,33 +1,491 @@
-from prefect import flow, task, Task, get_run_logger
-from models.base import BaseModelMonitor
-from tasks.monitor_binary_clf_functions import monitor_binary_clf_score, monitor_binary_clf_feat, monitor_binary_clf_metrics
+""" Основные функции монииторинга моделей бинарной классификации """
 
-class BinaryClassificationMonitor(BaseModelMonitor):
-    def run(self, RETRIES = 1, RETRY_DELAY_SECONDS = 60):
-        task_list = []
-        
-        t1 = Task(fn=monitor_binary_clf_score,
-                   name = f"monitor_binary_clf_score_{self.config['model_name']}", 
-                   task_run_name = f"monitor_binary_clf_score[{self.config['model_name']}]",
-                   retries=RETRIES,
-                   retry_delay_seconds=RETRY_DELAY_SECONDS)
-        
-        t1(self.config, self.execution_date)
-        
-        if self.config['feat_psi_flg']:
-            t2 = Task(fn=monitor_binary_clf_feat, 
-                   name = f"monitor_binary_clf_feat_{self.config['model_name']}", 
-                   task_run_name = f"monitor_binary_clf_feat[{self.config['model_name']}]",
-                   retries=RETRIES,
-                   retry_delay_seconds=RETRY_DELAY_SECONDS)
+from datetime import timedelta, datetime
+import pandas as pd
+import numpy as np
+from sklearn.metrics import  roc_auc_score
+from utils.psi import PSIAnalyzer
+from utils.sql_writer import SQLWriter
+from prefect import task,  get_run_logger
+from prefect.blocks.system import Secret
+from toolbox import oracle
+from sqlalchemy import types, text
+from sqlalchemy.exc import SQLAlchemyError
+
+secret = Secret.load("pass-space")
+USERNAME = "analytics"
+PASSWORD = secret.get()
+engine = oracle.create_engine_space(USERNAME, PASSWORD)
+
+""" HELPING FUNCTIONS """
+
+def calculate_stat_score(data: pd.DataFrame):
+    """ 
+    Вспомогательная функция для расчета статистик по скорам (count, mean, max, min, percentiles)
+    Input:
+        data - датафрейм со скорами
+    Output:
+        таблица со статистиками по скорам
+    
+    """ 
+    base_stat = data['score'].agg(['count', 'mean', 'max', 'min']).reset_index()
+    base_stat.columns =  ['metric_name','metric_value']
+
+    q_dic ={}
+    for q, label in zip([0.1, 0.25, 0.50, 0.75, 0.9], ['p_10', 'p_25', 'p_50', 'p_75', 'p_90']):
+        q_dic[label] = data['score'].quantile(q)
+    q_stat = pd.DataFrame.from_dict(q_dic, orient = 'index').reset_index()
+    q_stat.columns = ['metric_name' , 'metric_value']
+
+    return pd.concat( [base_stat, q_stat], ignore_index =True)
+
+def calculate_na_feat(data: pd.DataFrame, features: list):
+    """ 
+    Вспомогательная функция для расчета пропусков по фичам 
+    Input:
+        data - датафрейм с фичами
+        features - список фичей
+    Output:
+        таблица с пропусками
+    
+    """ 
+    cat_cols = data[features].select_dtypes('object').columns.tolist()
+    num_cols = data[features].select_dtypes('number').columns.tolist()
+
+    if num_cols:
+        df_na_num = pd.DataFrame(data[num_cols].isnull().agg(['sum', 'mean'])).T.reset_index()
+        df_na_num.columns = ['feature_name', 'nan_count', 'nan_share']
+        df_na_num = df_na_num.melt(id_vars = 'feature_name', var_name = 'metric_name' , value_name = 'metric_value')
+        df_na_num['feature_type'] = 'numeric'
+    else:
+        df_na_num = pd.DataFrame()
+    
+    if cat_cols:
+        df_na_cat = pd.DataFrame(data[cat_cols].isnull().agg(['sum', 'mean'])).T.reset_index()
+        df_na_cat.columns = ['feature_name', 'nan_count', 'nan_share']
+        df_na_cat = df_na_cat.melt(id_vars = 'feature_name', var_name = 'metric_name' , value_name = 'metric_value')
+        df_na_cat['feature_type'] = 'categorial'
+    else:
+        df_na_cat = pd.DataFrame()
+    
+    return pd.concat( [df_na_num, df_na_cat], ignore_index =True) 
+
+
+def calculate_metric_by_window(target_dic: dict):
+    """ 
+    Вспомогательная функция для расчета метрик (roc_auc, gini) по разным вызреваниям таргета
+    Input:
+        target_dic - словарь с таргетами
+    Output:
+        таблица с метриками
+    
+    """ 
+    metric_dic = {}
+    for k, v in target_dic.items():
+        if not v.empty:
+            v = v[v.target.notna()]
+            metric_dic[f"TARGET_COUNT@{k}"] = v['target'].sum()
+            metric_dic[f"TARGET_RATE@{k}"] = v['target'].mean()
+            if len(np.unique(v['target']))==2:
+                metric_dic[f"ROC_AUC@{k}"] = roc_auc_score(v['target'], v['score'])
+            else:
+                metric_dic[f"ROC_AUC@{k}"] = np.nan
             
-            t2(self.config, self.execution_date)
+            metric_dic[f"GINI@{k}"] = 2 * metric_dic[f"ROC_AUC@{k}"] - 1
+         
+    return pd.DataFrame.from_dict(metric_dic, orient = 'index', columns = ['metric_value']).reset_index().rename(columns = {'index': 'metric_name'})
+
+
+def calculate_target_share_by_window(target_dic: dict):
+    """ 
+    Вспомогательная функция для расчета доль таргета по бинам скора для разных вызреваний таргета
+    Input:
+        target_dic - словарь с таргетами
+    Output:
+        таблица с долями таргета по бинам скора для разных вызреваний таргета
+    
+    """ 
+    data_list = []
+    for k, v in target_dic.items():
+        if not v.empty:
+            v = v[v.target.notna()].copy()
+            v['ranked_score'] = v['score'].rank(method = 'first')
+            v['decile'] = pd.qcut(v['ranked_score'], 10, labels=range(1,11))
             
-        if self.config['metric_flg']:
-            t3 = Task(fn=monitor_binary_clf_metrics, 
-                   name = f"monitor_binary_clf_metrics_{self.config['model_name']}", 
-                   task_run_name = f"monitor_binary_clf_metrics[{self.config['model_name']}]",
-                   retries=RETRIES,
-                   retry_delay_seconds=RETRY_DELAY_SECONDS)
+            df_group = v.groupby('decile', observed = False)[['target']].sum()
+            df_group['target_share'] = df_group['target'].apply(lambda x: 0 if df_group['target'].sum() == 0 else x/df_group['target'].sum())
             
-            t3(self.config, self.execution_date)
+            mapping = { 10 : '1-10', 9 :'11-20', 8 : '21-30', 7 : '31-40', 6 : '41-50', 
+                                5 : '51-60', 4 : '61-70', 3 : '71-80', 2 : '81-90', 1 : '91-100'}
+            
+            df_group.index = df_group.index.map(mapping)
+            df_group.sort_values(by = 'decile', ascending = False, inplace = True)
+            df_group.columns = [f'TARGET_COUNT@{k}', f'TARGET_SHARE@{k}']
+            df_group = df_group.reset_index()
+            
+            data_list.append(df_group.melt(id_vars = 'decile', var_name = 'metric_name' , value_name = 'metric_value'))
+
+    return pd.concat(data_list, axis =0)
+
+
+""" MAIN FUNCTIONS """
+def monitor_binary_clf_score(config, execution_date):
+    """ 
+    Функция обновления psi и статистик по скорам (count, mean, max, min, percentiles)
+    Input:
+        config - словарь с параметрами модели
+        execution_date - дата расчета (логическя дата, дата выполнения дага) не объязательно равняется текущей дате
+    Output:
+        None    
+    """ 
+    logger = get_run_logger()
+    logger.info(f"Updating score PSI for {config['model_name']}")
+    
+    # скрипты, чтобы вытащить скоры, если необходимы какие-то манипуляции (для онлайн моделей)
+    if config.get('score_script_path'):
+        with open(config['score_script_path'], encoding = 'utf-8') as f:
+            query = f.read()
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(query.format(execution_date=execution_date)))
+                
+        except SQLAlchemyError as e:
+            logger.warning(
+                f"Score collection for {config['model_name']} failed on date {execution_date}."
+                f"Error: {e}"
+            )
+            return None  
+            
+    current_data = pd.read_sql(f"""select /*+ PARALLEL(8) */ * from {config['source_score']} """,  con=engine)       
+    base_data = pd.read_sql(f"""select /*+ PARALLEL(8) */ * from {config['benchmark_score']} """,  con=engine)
+    
+    if current_data.empty:
+        logger.warning(f"No data for {config['model_name']} scores on {execution_date}")
+        return None
+
+    # расчет psi 
+    pa = PSIAnalyzer(base_data, current_data , feature = 'score')
+    psi_value = pa.analyze() 
+    
+    df_psi = pd.DataFrame(columns=['model_name', 'report_date', 'psi'])
+    df_psi.loc[0] = [config['model_name'], execution_date,  psi_value]
+    df_psi['report_date'] = pd.to_datetime(df_psi['report_date'], format ='%Y-%m-%d')
+
+    # кастомный класс для записи в Oracle 
+    writer_1 = SQLWriter(
+        df_psi, 
+        'nao_model_monitor_clf_score_psi_table',
+        {
+            "model_name": types.VARCHAR(100),
+            "report_date": types.Date(),
+            "psi": types.Float()
+        },
+        config['model_name'], 
+        execution_date
+    )
+    writer_1.write_data(engine)
+
+    logger.info(f"Updating score stats for {config['model_name']}")
+
+    week_flg = config.get('week_flg', False)
+    # расчет статистик по скорам
+    # для онлайн моделей считаем на 1 день и неделю
+    if config['is_online'] or week_flg:
+        df_stat_7d = calculate_stat_score(current_data)
+        df_stat_7d['metric_name'] = df_stat_7d['metric_name'] + '_7d'
+        df_stat_1d = calculate_stat_score(current_data[current_data[config['date_col']] == current_data[config['date_col']].max()])
+        df_stat_1d['metric_name'] = df_stat_1d['metric_name'] + '_1d'
+        df_stat = pd.concat([df_stat_7d, df_stat_1d], ignore_index =True)
+    else:    
+        df_stat = calculate_stat_score(current_data)
+        df_stat['metric_name'] = df_stat['metric_name'] + '_1d'
+
+    df_stat['model_name'] = config['model_name']
+    df_stat['report_date'] =  execution_date
+    df_stat['report_date'] = pd.to_datetime(df_stat['report_date'], format = "%Y-%m-%d")
+    df_stat = df_stat[['model_name', 'report_date','metric_name', 'metric_value']]
+    
+    # кастомный класс для записи в Oracle 
+    writer_2 = SQLWriter(
+        df_stat, 
+        'nao_model_monitor_clf_score_stat_table',
+        {
+            "model_name": types.VARCHAR(100),
+            "report_date": types.Date(),
+            "metric_name": types.VARCHAR(100),
+            "metric_value": types.Float()
+        },
+        config['model_name'], 
+        execution_date
+    )
+    writer_2.write_data(engine)
+    logger.info(f"Finished score PSI and stats for {config['model_name']}")
+
+
+def monitor_binary_clf_feat(config, execution_date):
+    """ 
+    Функция обновления psi и пропусков по фичам
+    Input:
+        config - словарь с параметрами модели
+        execution_date - дата расчета (логическя дата, дата выполнения дага) не объязательно равняется текущей дате
+    Output:
+        None    
+    """ 
+    logger = get_run_logger()
+    logger.info(f"Updating feat PSI for {config['model_name']}")
+    
+    # скрипты, чтобы вытащить фичи, если необходимы какие - то манипуляции и/или нужно привести таблицу с фичами к требуемому формату: например, вытащить фичи в столбцы и/или перевести их в числовой формат
+    if config.get('feat_script_path'):
+        with open(config['feat_script_path'], encoding = 'utf-8') as f:
+            query = f.read()
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(query.format(execution_date=execution_date)))
+                
+        except SQLAlchemyError as e:
+            logger.warning(
+                f"Feature collection for {config['model_name']} failed  on date {execution_date}."
+                f"Error: {e}"
+            )
+            return None
+            
+    if config['is_online']: 
+        raw_data = pd.read_sql(f"""select /*+ PARALLEL(8) */ * from {config['source_feature']} """,  con=engine) 
+        df_type = raw_data.groupby(['p_name', 'p_type'], as_index = False).size()[['p_name', 'p_type']]
+        num_cols = df_type[df_type.p_type.isin(['real', 'integer'])].p_name.unique().tolist()
+        current_data = raw_data.pivot(index=[config['id_col'], config['date_col']], columns='p_name', values='p_value').reset_index()
+        current_data[num_cols] = current_data[num_cols].astype('float64')
+
+    else:    
+        current_data = pd.read_sql(f"""select /*+ PARALLEL(8) */ * from {config['source_feature']} """,  con=engine) 
+        
+    base_data = pd.read_sql(f"""select /*+ PARALLEL(8) */ * from {config['benchmark_feature']} """,  con=engine)
+    
+    if current_data.empty:
+        logger.warning(f"No data for {config['model_name']} features on {execution_date}")
+        return None
+
+    features = [col for col in current_data.columns if col not in [config['id_col'], config['date_col']]]
+
+    # расчет psi по фичам 
+    df_psi = pd.DataFrame(index = range(len(features)))
+    df_psi['model_name'] = config['model_name']
+    df_psi['report_date'] =  execution_date
+    df_psi['report_date'] = pd.to_datetime(df_psi['report_date'], format = "%Y-%m-%d")
+    df_psi['feature_name'] = features
+
+    psi_list = []
+    for feat in features:
+        pa = PSIAnalyzer(base_data, current_data , feature = feat)
+        psi_value = pa.analyze() 
+        psi_list.append(psi_value)
+        
+    df_psi['psi'] = psi_list
+
+    # кастомный класс для записи в Oracle 
+    writer_1 = SQLWriter(
+        df_psi, 
+        'nao_model_monitor_clf_feat_psi_table',
+        {
+            "model_name": types.VARCHAR(100),
+            "report_date": types.Date(),
+            "feature_name": types.VARCHAR(500),
+            "psi": types.Float()
+        },
+        config['model_name'], 
+        execution_date
+    )
+    writer_1.write_data(engine)
+
+    logger.info(f"Updating feat stats for {config['model_name']}")
+
+    week_flg = config.get('week_flg', False)
+    # расчет пропусков по фичам
+    # для онлайн моделей считаем на 1 день и неделю
+    if config['is_online'] or week_flg:
+        df_na_7d =  calculate_na_feat(current_data, features)
+        df_na_7d['metric_name'] = df_na_7d['metric_name'] + '_7d'
+        df_na_1d =  calculate_na_feat(current_data[current_data[config['date_col']] == current_data[config['date_col']].max()], features)
+        df_na_1d['metric_name'] = df_na_1d['metric_name'] + '_1d'
+        df_na = pd.concat([df_na_7d, df_na_1d], ignore_index =True)
+    else:
+        # для оффлайн моделей считаем только на 1 день - больше не храним
+        df_na =  calculate_na_feat(current_data, features)
+        df_na['metric_name'] = df_na['metric_name'] + '_1d'
+
+    df_na['model_name'] = config['model_name']
+    df_na['report_date'] =  execution_date
+    df_na['report_date'] = pd.to_datetime(df_na['report_date'], format = "%Y-%m-%d")
+    
+    df_na = df_na[['model_name', 'report_date', 'feature_name', 'metric_name', 'metric_value', 'feature_type']]
+
+    # кастомный класс для записи в Oracle 
+    writer_2 = SQLWriter(
+        df_na, 
+        'nao_model_monitor_clf_feat_stat_table',
+        {
+            "model_name": types.VARCHAR(100),
+            "report_date": types.Date(),
+            "feature_name": types.VARCHAR(500),
+            "metric_name": types.VARCHAR(100),
+            "metric_value": types.Float(),
+            "feature_type": types.VARCHAR(100)
+        },
+        config['model_name'], 
+        execution_date
+    )
+    writer_2.write_data(engine) 
+    logger.info(f"Finished feat PSI and stats for {config['model_name']}")
+
+
+def monitor_binary_clf_metrics(config, execution_date):
+    """ 
+    Функция расчета метрик (roc auc и gini) и доль таргетов по бинам скоров, а также статистик по ним
+    Input:
+        config - словарь с параметрами модели
+        execution_date - дата расчета (логическя дата, дата выполнения дага) не объязательно равняется текущей дате
+    Output:
+        None    
+    """ 
+    logger = get_run_logger()
+    logger.info(f"Updating metrics for {config['model_name']}")
+    
+    windows = config['target_windows']
+    target_dic = {}
+    for window in windows:
+        try:
+            query = f"call {config['target_procedure']}('{execution_date}', {window})"
+            with engine.begin() as conn:
+                conn.execute(text(query))
+            
+            df_tgt = pd.read_sql(f"""select /*+ PARALLEL(8) */ * from {config['source_target']}{window} """,  con=engine)
+            
+        except SQLAlchemyError as e:
+            logger.warning(
+                f"Target collection failed for {config['model_name']} for window = {window} on date {execution_date}."
+                f"Error: {e}"
+            )
+            df_tgt = pd.DataFrame()
+
+        if not df_tgt.empty:
+            target_dic[window] = df_tgt
+
+    if not target_dic:
+        logger.warning(f"No data for {config['model_name']} traget on {execution_date}")
+        return None
+        
+    week_flg = config.get('week_flg', False)    
+    if config['is_online'] or week_flg:
+        df_metric_7d = calculate_metric_by_window(target_dic)
+        df_metric_7d['metric_name'] = df_metric_7d['metric_name'] + '_7d'
+
+        target_dic_last = {k: v[v.score_date == v.score_date.max()] for k, v in target_dic.items()}
+        df_metric_1d = calculate_metric_by_window(target_dic_last)
+        df_metric_1d['metric_name'] = df_metric_1d['metric_name'] + '_1d'
+        
+        df_metric = pd.concat([df_metric_7d, df_metric_1d], ignore_index = True)
+        
+    else:
+        df_metric = calculate_metric_by_window(target_dic)
+        df_metric['metric_name'] = df_metric['metric_name'] + '_1d'
+        
+
+    df_metric['model_name'] = config['model_name']
+    df_metric['report_date'] =  execution_date
+    df_metric['report_date'] = pd.to_datetime(df_metric['report_date'], format = "%Y-%m-%d")
+    df_metric = df_metric[['model_name', 'report_date', 'metric_name', 'metric_value']]
+
+     # кастомный класс для записи в Oracle 
+    writer_1 = SQLWriter(
+        df_metric, 
+        'nao_model_monitor_clf_metric_table',
+        {
+            "model_name": types.VARCHAR(100),
+            "report_date": types.Date(),
+            "metric_name": types.VARCHAR(100),
+            "metric_value": types.Float()
+        },
+        config['model_name'], 
+        execution_date
+    )
+    writer_1.write_data(engine)
+
+    logger.info(f"Updating target shares for {config['model_name']}")
+    
+    if config['is_online'] or week_flg:
+        df_target_7d = calculate_target_share_by_window(target_dic)
+        df_target_7d['metric_name'] = df_target_7d['metric_name'] +'_7d'
+
+        target_dic_last = {k: v[v.score_date == v.score_date.max()] for k, v in target_dic.items()}
+        df_target_1d = calculate_target_share_by_window(target_dic_last)
+        df_target_1d['metric_name'] = df_target_1d['metric_name'] +'_1d'
+
+        df_target_share = pd.concat([df_target_7d, df_target_1d], ignore_index = True)
+        
+    else:
+        df_target_share = calculate_target_share_by_window(target_dic)
+        df_target_share['metric_name'] = df_target_share['metric_name']+'_1d'
+
+    df_target_share['model_name'] = config['model_name']
+    df_target_share['report_date'] =  execution_date
+    df_target_share['report_date'] = pd.to_datetime(df_target_share['report_date'], format = "%Y-%m-%d")
+    df_target_share = df_target_share[['model_name', 'report_date', 'decile', 'metric_name', 'metric_value']]
+
+    # кастомный класс для записи в Oracle 
+    writer_2 = SQLWriter(
+        df_target_share, 
+        'nao_model_monitor_clf_target_share_distribution_table',
+        {
+            "model_name": types.VARCHAR(100),
+            "report_date": types.Date(),
+            "decile": types.VARCHAR(100),
+            "metric_name": types.VARCHAR(100),
+            "metric_value": types.Float()
+        },
+        config['model_name'], 
+        execution_date
+    )
+    writer_2.write_data(engine) 
+
+    # logger.info(f"Updating metrics stats for {config['model_name']}")
+    
+    # df_metric_hist = pd.read_sql(f"""select /*+ PARALLEL(8) */ * from nao_model_monitor_clf_metric_table
+    #                     where model_name = '{config['model_name']}' 
+    #                     and report_date <= date '{execution_date}'
+    #                     and report_date > date '{execution_date}' - 90
+    #                     and metric_name like '%_1d'
+    #                     and metric_name not like '%TARGET%' """, con=engine)
+    
+    # df_metric_hist['metric_name'] = df_metric_hist['metric_name'].str.replace('_1d','')
+    # data_list = []
+    # for delta in [7, 14, 30, 60, 90]:
+    #     end = pd.to_datetime(execution_date ) - timedelta(days = delta)
+    #     df_ = df_metric_hist[(df_metric_hist.report_date > end) & (df_metric_hist.report_date <= pd.to_datetime(execution_date))]
+    #     df_agg = df_.groupby('metric_name')['metric_value'].agg(['mean','max', 'min']) 
+    #     df_agg.columns = df_agg.columns + f'_{delta}d'
+    #     df_agg = df_agg.reset_index().melt(id_vars = 'metric_name', value_name = 'metric_value')
+    #     df_agg['metric_name'] = df_agg['metric_name'] + '_' + df_agg['variable']
+    #     data_list.append(df_agg.drop('variable', axis =1))
+    
+    # df_stat = pd.concat(data_list, ignore_index =True)
+    # df_stat['model_name'] = config['model_name']
+    # df_stat['report_date'] =  execution_date
+    # df_stat['report_date'] = pd.to_datetime(df_stat['report_date'], format = "%Y-%m-%d")
+    # df_stat = df_stat[['model_name', 'report_date', 'metric_name', 'metric_value']]
+
+    # writer_3 = SQLWriter(
+    #     df_stat, 
+    #     'nao_model_monitor_clf_metric_stat_table',
+    #     {
+    #         "model_name": types.VARCHAR(100),
+    #         "report_date": types.Date(),
+    #         "metric_name": types.VARCHAR(100),
+    #         "metric_value": types.Float()
+    #     },
+    #     config['model_name'], 
+    #     execution_date
+    # )
+    # writer_3.write_data(engine)
+    # logger.info(f"Finished metrics and target shares for {config['model_name']}")
+
+    
