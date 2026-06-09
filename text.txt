@@ -1,51 +1,10 @@
-import pandas as pd
-import numpy as np
-import oracledb
-import sys
-oracledb.version = "8.3.0"
-sys.modules["cx_Oracle"] = oracledb
-from sqlalchemy import create_engine
-from sqlalchemy import types, text
+from abc import ABC, abstractmethod
 
-class SQLWriter():
-    """ Класс для записи в Oracle """
-    def __init__(self, df: pd.DataFrame, table_name: str, dtype_dic: dict, model_name: str, execution_date: str):
-        """
-        Args:
-            df - датафрейм, который нужно записать
-            current_data - имя таблицы, в котрую нужно записать наши данные
-            dtype_dic - словарь с типами данных, к
-            model_name - имя модели
-            execution_date - логическая дата
-        """
-        self.df = df
-        self.table_name = table_name
-        self.dtype_dic = dtype_dic
-        self.model_name = model_name
+class BaseModelMonitor(ABC):
+    def __init__(self, config, execution_date):        
+        self.config = config
         self.execution_date = execution_date
-
-    def write_data(self, engine):
-        """ Удалем данные для модели на дату, чтобы избежать дублей"""
-        q_del = f""" delete from {self.table_name} 
-                     where report_date = date '{self.execution_date}' 
-                     and model_name = '{self.model_name}'""" 
-        try:
-            with engine.connect() as conn:
-                conn.execute(text(q_del))
-                conn.commit()
-        except:
-            pass
-
-        """ Записываем в таблицу Oracle"""
-        try:
-            self.df.to_sql(
-                name = self.table_name, 
-                con = engine, 
-                if_exists = 'append', 
-                index =False,
-                dtype = self.dtype_dic
-            )
-        except Exception as e:
-            print(f"Error while writing {self.model_name} to {self.table_name}: {e}")
-    
-            pass
+        
+    @abstractmethod
+    def run(self):
+        pass
