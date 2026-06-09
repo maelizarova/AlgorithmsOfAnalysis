@@ -1,10 +1,33 @@
-from abc import ABC, abstractmethod
+from prefect import flow, task, Task, get_run_logger
+from models.base import BaseModelMonitor
+from tasks.monitor_binary_clf_functions import monitor_binary_clf_score, monitor_binary_clf_feat, monitor_binary_clf_metrics
 
-class BaseModelMonitor(ABC):
-    def __init__(self, config, execution_date):        
-        self.config = config
-        self.execution_date = execution_date
+class BinaryClassificationMonitor(BaseModelMonitor):
+    def run(self, RETRIES = 1, RETRY_DELAY_SECONDS = 60):
+        task_list = []
         
-    @abstractmethod
-    def run(self):
-        pass
+        t1 = Task(fn=monitor_binary_clf_score,
+                   name = f"monitor_binary_clf_score_{self.config['model_name']}", 
+                   task_run_name = f"monitor_binary_clf_score[{self.config['model_name']}]",
+                   retries=RETRIES,
+                   retry_delay_seconds=RETRY_DELAY_SECONDS)
+        
+        t1(self.config, self.execution_date)
+        
+        if self.config['feat_psi_flg']:
+            t2 = Task(fn=monitor_binary_clf_feat, 
+                   name = f"monitor_binary_clf_feat_{self.config['model_name']}", 
+                   task_run_name = f"monitor_binary_clf_feat[{self.config['model_name']}]",
+                   retries=RETRIES,
+                   retry_delay_seconds=RETRY_DELAY_SECONDS)
+            
+            t2(self.config, self.execution_date)
+            
+        if self.config['metric_flg']:
+            t3 = Task(fn=monitor_binary_clf_metrics, 
+                   name = f"monitor_binary_clf_metrics_{self.config['model_name']}", 
+                   task_run_name = f"monitor_binary_clf_metrics[{self.config['model_name']}]",
+                   retries=RETRIES,
+                   retry_delay_seconds=RETRY_DELAY_SECONDS)
+            
+            t3(self.config, self.execution_date)
