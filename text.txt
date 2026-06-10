@@ -1,1 +1,8 @@
-12345
+import pickle
+with open("my_list.pkl", "wb") as f:
+    pickle.dump(my_list, f)
+
+
+import pickle
+with open("my_list.pkl", "rb") as f:
+    my_list = pickle.load(f)
