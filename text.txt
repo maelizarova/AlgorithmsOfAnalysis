@@ -1,1 +1,49 @@
-to_date(regexp_substr(t1.wave, '[a-zA-Z]+ [0-9]{4}$'), 'Month YYYY', 'NLS_DATE_LANGUAGE=ENGLISH')
+import pandas as pd
+
+y3 = df["target_3m"]
+y6 = df["target_6m"]
+
+# Phi coefficient: Pearson correlation для двух бинарных 0/1 таргетов
+phi_corr = y3.corr(y6)
+
+# Таблица переходов в штуках
+cross_counts = pd.crosstab(
+    y3,
+    y6,
+    rownames=["target_3m"],
+    colnames=["target_6m"],
+    margins=True
+)
+
+# Таблица переходов в долях от всей выборки
+cross_share_all = pd.crosstab(
+    y3,
+    y6,
+    rownames=["target_3m"],
+    colnames=["target_6m"],
+    normalize="all"
+)
+
+# Условные вероятности: куда переходит target_3m к 6 месяцу
+cross_share_by_3m = pd.crosstab(
+    y3,
+    y6,
+    rownames=["target_3m"],
+    colnames=["target_6m"],
+    normalize="index"
+)
+
+# Доля полного совпадения таргетов
+same_target_share = (y3 == y6).mean()
+
+print("Phi correlation:", phi_corr)
+print("\nCounts:")
+print(cross_counts)
+
+print("\nShare of all:")
+print(cross_share_all)
+
+print("\nConditional share by target_3m:")
+print(cross_share_by_3m)
+
+print("\nSame target share:", same_target_share)
