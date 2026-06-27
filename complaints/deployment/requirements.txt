@@ -1,0 +1,8 @@
+prefect
+sqlalchemy
+oracledb
+langchain-core
+langchain-openai
+pydantic
+pandas
+pyarrow

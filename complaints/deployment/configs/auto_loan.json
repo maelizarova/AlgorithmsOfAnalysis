@@ -1,0 +1,33 @@
+{
+  "classifier_name": "auto_loan",
+  "product": "Автокредит",
+  "theme": null,
+  "category": null,
+  "text_column": "description_claim",
+  "query_path": "../queries/get_data.sql",
+  "prompts_dir": "../prompts",
+  "taxonomy_issues_path": "auto_loan/issues.json",
+  "taxonomy_requests_path": "auto_loan/requested_actions.json",
+  "output_table": "ema_complaints_classification",
+  "work_dir": "../runs",
+  "oracle_username": "analytics",
+  "oracle_password_secret_block": "pass-space",
+  "llm": {
+    "api_key_secret_block": "llm-api-key",
+    "base_url": "https://gpt.run.fc.uralsibbank.ru/v1",
+    "model": "openai/gpt-oss-120b",
+    "temperature": 0.0,
+    "timeout_seconds": 60,
+    "model_kwargs": {
+      "top_p": 0.95,
+      "top_k": 20,
+      "max_tokens": 16384
+    }
+  },
+  "runtime": {
+    "batch_size": 100,
+    "max_concurrency": 5,
+    "retries": 4,
+    "backoff_base_seconds": 2.0
+  }
+}
