@@ -19,9 +19,16 @@ RETRY_DELAY_SECONDS = 60
 
 def run_single_classifier(config_path: str, score_date: str, start_date: str, end_date: str) -> int:
     logger = get_run_logger()
+    config_dir = Path(config_path).parent.resolve()
+    settings_path = config_dir.parent / "settings.json"
+
+    with open(settings_path, encoding="utf-8") as f:
+        settings = json.load(f)
     with open(config_path, encoding="utf-8") as f:
-        config = json.load(f)
-    config["_config_dir"] = str(Path(config_path).parent.resolve())
+        classifier_config = json.load(f)
+
+    config = _merge_settings(settings, classifier_config)
+    config["_config_dir"] = str(config_dir)
 
     classifier_name = config["classifier_name"]
     logger.info("Running complaints classifier %s", classifier_name)
@@ -66,6 +73,16 @@ def run_all_classifiers(
         task_runs.append(classifier_task.submit(config_path, resolved_score_date, start_date, end_date))
 
     return [task_run.result() for task_run in task_runs]
+
+
+def _merge_settings(settings: dict, classifier_config: dict) -> dict:
+    config = {**settings, **classifier_config}
+    for section in ("llm", "runtime"):
+        config[section] = {
+            **settings.get(section, {}),
+            **classifier_config.get(section, {}),
+        }
+    return config
 
 
 if __name__ == "__main__":

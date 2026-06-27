@@ -75,7 +75,7 @@ def run_classifier_scoring(
 
     llm = build_llm_from_config(_build_llm_config(config))
     product_context = _read_product_context(config)
-    prompts_dir = _resolve_config_path(config, "prompts_dir")
+    prompts_dir = _resolve_config_path(config, "prompts_dir", "../prompts")
     taxonomy_issues_path = _resolve_config_path(config, "taxonomy_issues_path")
     taxonomy_requests_path = _resolve_config_path(config, "taxonomy_requests_path")
     issues_table = taxonomy_issues_path.read_text(encoding="utf-8")
@@ -103,12 +103,10 @@ def run_classifier_scoring(
         product_context=product_context,
     )
 
-    run_dir = _resolve_config_path(config, "work_dir", "../runs") / score_date / _safe_path_name(classifier_name)
     runtime = config.get("runtime", {})
     classified_df = run_stage1_classification(
         source_df,
         classification_chain,
-        run_dir / "stage1_classification",
         text_column=text_column,
         batch_size=runtime.get("batch_size", 100),
         max_concurrency=runtime.get("max_concurrency", 5),
@@ -118,26 +116,22 @@ def run_classifier_scoring(
     judge_issues_df = run_judge(
         classified_df,
         judge_issues_chain,
-        run_dir / "judge_issues",
         labels_column="issues_pred",
         text_column=text_column,
         batch_size=runtime.get("batch_size", 100),
         max_concurrency=runtime.get("max_concurrency", 5),
         retries=runtime.get("retries", 4),
         base_sleep_seconds=runtime.get("backoff_base_seconds", 2.0),
-        file_prefix="judge_issues",
     )
     judge_requests_df = run_judge(
         classified_df,
         judge_requests_chain,
-        run_dir / "judge_requests",
         labels_column="requested_actions_pred",
         text_column=text_column,
         batch_size=runtime.get("batch_size", 100),
         max_concurrency=runtime.get("max_concurrency", 5),
         retries=runtime.get("retries", 4),
         base_sleep_seconds=runtime.get("backoff_base_seconds", 2.0),
-        file_prefix="judge_requests",
     )
 
     result_df = build_result_frame(
@@ -176,7 +170,7 @@ def _build_llm_config(config: dict[str, Any]) -> LLMConfig:
 
 
 def _read_product_context(config: dict[str, Any]) -> str:
-    prompts_dir = _resolve_config_path(config, "prompts_dir")
+    prompts_dir = _resolve_config_path(config, "prompts_dir", "../prompts")
     product = config["product"]
     candidates = []
     if config.get("theme"):
@@ -201,5 +195,3 @@ def _resolve_config_path(config: dict[str, Any], key: str, default: str | None =
     return (Path(config.get("_config_dir", ".")) / path).resolve()
 
 
-def _safe_path_name(value: str) -> str:
-    return "".join(char if char.isalnum() or char in ("-", "_") else "_" for char in value)

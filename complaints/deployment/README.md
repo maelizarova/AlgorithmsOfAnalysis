@@ -7,6 +7,7 @@
 Для деплоймента нужна именно папка `deployment` целиком. Внутри уже лежат:
 
 - `complaints_scoring_flow.py` — основной Prefect flow;
+- `settings.json` — общие настройки Oracle, LLM и runtime;
 - `configs/` — JSON-конфиги классификаторов и пример таксономии;
 - `prompts/` — промпты для классификации и judge;
 - `queries/get_data.sql` — SQL для получения претензий;
@@ -18,6 +19,7 @@ Unit-тесты не нужны для боевого переноса и уда
 
 `complaints_scoring_flow.py` читает все JSON-файлы из `deployment/configs/*.json`.
 Один JSON-конфиг соответствует одному классификатору.
+Общие параметры подключения и батчинга берутся из `deployment/settings.json`, поэтому их не нужно дублировать в каждом классификаторе.
 
 По умолчанию:
 
@@ -58,6 +60,57 @@ Unit-тесты не нужны для боевого переноса и уда
    - `"taxonomy_requests_path": "my_classifier/requested_actions.json"`.
 6. Если нужен отдельный контекст продукта, добавьте файл:
    - `deployment/prompts/<product>/product_context.txt`.
+
+Oracle, LLM и `runtime` обычно менять в каждом классификаторе не нужно. Они лежат в `deployment/settings.json`.
+Если для конкретного классификатора всё-таки нужен другой LLM или другой размер батча, можно добавить секцию `llm` или `runtime` прямо в его JSON — она переопределит общие настройки.
+
+## Что такое `product`, `theme`, `category`
+
+Эти поля приходят из SQL `deployment/queries/get_data.sql`:
+
+```sql
+pr.desc_text as product,
+th.desc_text as theme,
+cat.desc_text as category
+```
+
+- `product` — продукт претензии. Это обязательный фильтр классификатора.
+- `theme` — тема претензии из Siebel-справочника `JET_SR_THEME`. Это опциональный фильтр.
+- `category` — категория претензии из Siebel-справочника `JET_SR_CATEGORY`. Это опциональный фильтр.
+
+Если `theme` или `category` в JSON-конфиге равны `null` или отсутствуют, фильтра по ним не будет.
+Например, текущий `auto_loan.json` скорит все претензии с `product = "Автокредит"` независимо от темы и категории.
+
+## Как подтягивается контекст продукта
+
+Путь к `product_context.txt` в JSON-конфиге не задаётся отдельно.
+Код ищет контекст автоматически внутри `deployment/prompts`.
+
+Для конфига:
+
+```json
+{
+  "product": "Автокредит",
+  "theme": null,
+  "category": null
+}
+```
+
+будет использован файл:
+
+```text
+deployment/prompts/Автокредит/product_context.txt
+```
+
+Если в конфиге заполнены `theme` или `category`, код сначала пробует более детальные пути:
+
+```text
+deployment/prompts/<product>/<theme>/product_context.txt
+deployment/prompts/<product>/<category>/product_context.txt
+deployment/prompts/<product>/product_context.txt
+```
+
+Если файл контекста не найден, flow продолжит работу без контекста продукта.
 
 ## Секреты Prefect
 

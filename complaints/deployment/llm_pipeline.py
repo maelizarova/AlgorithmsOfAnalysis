@@ -143,21 +143,14 @@ def build_judge_requests_chain(
 def run_stage1_classification(
     source_df: pd.DataFrame,
     chain: Any,
-    output_dir: str | Path,
     text_column: str = "description_claim",
     batch_size: int = 100,
     max_concurrency: int = 5,
     retries: int = 4,
     base_sleep_seconds: float = 2.0,
 ) -> pd.DataFrame:
-    out_dir = _ensure_dir(output_dir)
     batches: list[pd.DataFrame] = []
-    for batch_idx, temp_df in _iter_batches(source_df, batch_size):
-        chunk_path = out_dir / f"stage1_classification_{batch_idx:04d}.parquet"
-        if chunk_path.exists():
-            batches.append(pd.read_parquet(chunk_path))
-            continue
-
+    for _, temp_df in _iter_batches(source_df, batch_size):
         payloads = [{"text": str(text)} for text in temp_df[text_column].fillna("")]
         answers = _batch_with_backoff(
             chain,
@@ -169,7 +162,6 @@ def run_stage1_classification(
         parsed = [_to_plain_dict(answer, ClassificationAnswer()) for answer in answers]
         temp_df["issues_pred"] = [item.get("issues", []) for item in parsed]
         temp_df["requested_actions_pred"] = [item.get("requested_actions", []) for item in parsed]
-        temp_df.to_parquet(chunk_path, index=False)
         batches.append(temp_df)
     return pd.concat(batches, ignore_index=True) if batches else pd.DataFrame()
 
@@ -177,23 +169,15 @@ def run_stage1_classification(
 def run_judge(
     classified_df: pd.DataFrame,
     chain: Any,
-    output_dir: str | Path,
     labels_column: str,
     text_column: str = "description_claim",
     batch_size: int = 100,
     max_concurrency: int = 5,
     retries: int = 4,
     base_sleep_seconds: float = 2.0,
-    file_prefix: str = "judge",
 ) -> pd.DataFrame:
-    out_dir = _ensure_dir(output_dir)
     batches: list[pd.DataFrame] = []
-    for batch_idx, temp_df in _iter_batches(classified_df, batch_size):
-        chunk_path = out_dir / f"{file_prefix}_{batch_idx:04d}.parquet"
-        if chunk_path.exists():
-            batches.append(pd.read_parquet(chunk_path))
-            continue
-
+    for _, temp_df in _iter_batches(classified_df, batch_size):
         payloads = []
         label_counts = []
         for _, row in temp_df.iterrows():
@@ -233,7 +217,6 @@ def run_judge(
                 )
 
         chunk_df = pd.DataFrame(rows)
-        chunk_df.to_parquet(chunk_path, index=False)
         batches.append(chunk_df)
     return pd.concat(batches, ignore_index=True) if batches else pd.DataFrame()
 
@@ -245,12 +228,6 @@ def _make_str_enum(name: str, values: Sequence[str]) -> type:
 
 def _read_text(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8")
-
-
-def _ensure_dir(path: str | Path) -> Path:
-    directory = Path(path)
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
 
 
 def _iter_batches(df: pd.DataFrame, batch_size: int):
