@@ -1,14 +1,1 @@
-SELECT
-    count(*) AS rows_count,
-    min(description_len) AS min_len,
-    avg(description_len) AS avg_len,
-    median(description_len) AS median_len,
-    percentile_cont(0.9) WITHIN GROUP (ORDER BY description_len) AS p90_len,
-    percentile_cont(0.95) WITHIN GROUP (ORDER BY description_len) AS p95_len,
-    max(description_len) AS max_len,
-    sum(CASE WHEN description_len > 4000 THEN 1 ELSE 0 END) AS over_4000_count,
-    round(
-        sum(CASE WHEN description_len > 4000 THEN 1 ELSE 0 END) / nullif(count(*), 0),
-        4
-    ) AS over_4000_share
-FROM base
+dbms_lob.getlength(cea.description_claim) AS description_len
