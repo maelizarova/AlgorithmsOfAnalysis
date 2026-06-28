@@ -1,1 +1,15 @@
-dbms_lob.getlength(cea.description_claim) AS description_len
+SELECT *
+FROM (
+    SELECT
+        claim_num,
+        created,
+        product,
+        theme,
+        category,
+        description_len
+    FROM base
+    WHERE product = 'Автокредит'
+      AND description_len > 4000
+    ORDER BY description_len DESC
+)
+WHERE rownum <= 20;
