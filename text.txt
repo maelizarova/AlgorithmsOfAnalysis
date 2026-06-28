@@ -1,49 +1,8 @@
-import pandas as pd
-
-y3 = df["target_3m"]
-y6 = df["target_6m"]
-
-# Phi coefficient: Pearson correlation для двух бинарных 0/1 таргетов
-phi_corr = y3.corr(y6)
-
-# Таблица переходов в штуках
-cross_counts = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    margins=True
-)
-
-# Таблица переходов в долях от всей выборки
-cross_share_all = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="all"
-)
-
-# Условные вероятности: куда переходит target_3m к 6 месяцу
-cross_share_by_3m = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="index"
-)
-
-# Доля полного совпадения таргетов
-same_target_share = (y3 == y6).mean()
-
-print("Phi correlation:", phi_corr)
-print("\nCounts:")
-print(cross_counts)
-
-print("\nShare of all:")
-print(cross_share_all)
-
-print("\nConditional share by target_3m:")
-print(cross_share_by_3m)
-
-print("\nSame target share:", same_target_share)
+print("Проверяю sample 5 строк без поля description_claim...")
+t0 = time.perf_counter()
+query_without_text = query.replace("cea.description_claim,", "")
+sample_without_text_query = f"select * from ({query_without_text}) q where rownum <= 5"
+with engine.connect() as conn:
+    sample_without_text_df = pd.read_sql(text(sample_without_text_query), con=conn)
+print(f"Sample без текста завершён за {time.perf_counter() - t0:.1f} сек. Строк: {len(sample_without_text_df)}")
+display(sample_without_text_df)
