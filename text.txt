@@ -1,8 +1,7 @@
-print("Проверяю sample 5 строк без поля description_claim...")
+print("Проверяю sample 5 строк с полем description_claim...")
 t0 = time.perf_counter()
-query_without_text = query.replace("cea.description_claim,", "")
-sample_without_text_query = f"select * from ({query_without_text}) q where rownum <= 5"
+sample_with_text_query = f"select * from ({query}) q where rownum <= 5"
 with engine.connect() as conn:
-    sample_without_text_df = pd.read_sql(text(sample_without_text_query), con=conn)
-print(f"Sample без текста завершён за {time.perf_counter() - t0:.1f} сек. Строк: {len(sample_without_text_df)}")
-display(sample_without_text_df)
+    source_df = pd.read_sql(text(sample_with_text_query), con=conn)
+print(f"Sample с текстом завершён за {time.perf_counter() - t0:.1f} сек. Строк: {len(source_df)}")
+display(source_df.head(10))
