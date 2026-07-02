@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def decile_target(
     df: pd.DataFrame,
     score_col: str,
@@ -5,6 +8,10 @@ def decile_target(
     id_col: str,
     q: int = 10,
     as_percent: bool = True,
+    current_debt_amt_col: str = "current_debt_amt",
+    current_debt_amt_3m_col: str = "current_debt_amt_3m",
+    old_limit_col: str = "old_limit",
+    new_limit_col: str = "new_limit",
 ) -> pd.DataFrame:
     """
     Анализ таргета по децилям скора.
@@ -23,16 +30,33 @@ def decile_target(
         Количество квантилей (по умолчанию 10)
     as_percent : bool, optional
         Возвращать ratio в процентах (по умолчанию True)
+    current_debt_amt_col : str, optional
+        Название колонки с текущей задолженностью
+    current_debt_amt_3m_col : str, optional
+        Название колонки с задолженностью через 3 месяца
+    old_limit_col : str, optional
+        Название колонки с лимитом до клипа
+    new_limit_col : str, optional
+        Название колонки с лимитом после клипа
 
     Возвращает:
     -----------
     pd.DataFrame
-        DataFrame с колонками: decile, client_all, target_0, target_1, ratio
+        DataFrame с колонками: decile, client_all, target_0, target_1, ratio,
+        avg_debt_growth, avg_old_limit, avg_new_limit
     """
-    d = df[[score_col, target_col] + ([id_col] if id_col else [])].dropna().copy()
+    metric_cols = [
+        current_debt_amt_col,
+        current_debt_amt_3m_col,
+        old_limit_col,
+        new_limit_col,
+    ]
+    base_cols = [score_col, target_col] + ([id_col] if id_col else [])
+    d = df[base_cols + metric_cols].dropna(subset=base_cols).copy()
 
     # Дециль: 1 = максимум score
     d["decile"] = pd.qcut(-d[score_col], q=q, labels=False, duplicates="drop") + 1
+    d["debt_growth"] = d[current_debt_amt_3m_col] - d[current_debt_amt_col]
 
     # target_0 / target_1 по децилям
     pivot = (
@@ -51,6 +75,18 @@ def decile_target(
     total_pos = pivot["target_1"].sum()
     pivot["ratio"] = pivot["target_1"] / total_pos if total_pos > 0 else 0.0
 
+    # средние показатели по децилям
+    metrics = (
+        d.groupby("decile")
+        .agg(
+            avg_debt_growth=("debt_growth", "mean"),
+            avg_old_limit=(old_limit_col, "mean"),
+            avg_new_limit=(new_limit_col, "mean"),
+        )
+        .reset_index()
+    )
+    pivot = pivot.merge(metrics, on="decile", how="left")
+
     # формат процентов по желанию
     if as_percent:
         pivot["ratio"] = (pivot["ratio"] * 100).round(2).astype(str) + "%"
@@ -59,12 +95,19 @@ def decile_target(
     pivot["decile"] = pivot["decile"].astype(int)
 
     # финальные колонки в нужном порядке
-    pivot = pivot[["decile", "client_all", "target_0", "target_1", "ratio"]]
+    pivot = pivot[
+        [
+            "decile",
+            "client_all",
+            "target_0",
+            "target_1",
+            "ratio",
+            "avg_debt_growth",
+            "avg_old_limit",
+            "avg_new_limit",
+        ]
+    ]
     pivot.columns.name = None
     return pivot
 
 oot_decile = report.decile_target(oot, 'pred', TARGET, 'client_did', 100)
-
-средний прирост в каждом бине - avg(current_debt_amt_3m - current_debt_amt)
-средний лимит до клипа - avg(old_limit)
-средний лимит после клипа - avg(new_limit)
