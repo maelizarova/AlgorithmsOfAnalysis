@@ -1,15 +1,70 @@
-SELECT *
-FROM (
-    SELECT
-        claim_num,
-        created,
-        product,
-        theme,
-        category,
-        description_len
-    FROM base
-    WHERE product = 'Автокредит'
-      AND description_len > 4000
-    ORDER BY description_len DESC
-)
-WHERE rownum <= 20;
+def decile_target(
+    df: pd.DataFrame,
+    score_col: str,
+    target_col: str,
+    id_col: str,
+    q: int = 10,
+    as_percent: bool = True,
+) -> pd.DataFrame:
+    """
+    Анализ таргета по децилям скора.
+
+    Параметры:
+    ----------
+    df : pd.DataFrame
+        Исходные данные
+    score_col : str
+        Название колонки со скором/вероятностью
+    target_col : str
+        Название колонки с таргетом (0/1)
+    id_col : str
+        Название колонки с ID клиента
+    q : int, optional
+        Количество квантилей (по умолчанию 10)
+    as_percent : bool, optional
+        Возвращать ratio в процентах (по умолчанию True)
+
+    Возвращает:
+    -----------
+    pd.DataFrame
+        DataFrame с колонками: decile, client_all, target_0, target_1, ratio
+    """
+    d = df[[score_col, target_col] + ([id_col] if id_col else [])].dropna().copy()
+
+    # Дециль: 1 = максимум score
+    d["decile"] = pd.qcut(-d[score_col], q=q, labels=False, duplicates="drop") + 1
+
+    # target_0 / target_1 по децилям
+    pivot = (
+        d.groupby(["decile", target_col])[id_col]
+        .nunique()
+        .unstack(fill_value=0)
+        .rename(columns={0: "target_0", 1: "target_1"})
+        .reset_index()
+        .sort_values("decile")
+    )
+
+    # всего клиентов в дециле
+    pivot["client_all"] = pivot["target_0"] + pivot["target_1"]
+
+    # доля target=1 в дециле от общего числа target=1 по всей выборке
+    total_pos = pivot["target_1"].sum()
+    pivot["ratio"] = pivot["target_1"] / total_pos if total_pos > 0 else 0.0
+
+    # формат процентов по желанию
+    if as_percent:
+        pivot["ratio"] = (pivot["ratio"] * 100).round(2).astype(str) + "%"
+
+    # привести тип decile к int (а не category)
+    pivot["decile"] = pivot["decile"].astype(int)
+
+    # финальные колонки в нужном порядке
+    pivot = pivot[["decile", "client_all", "target_0", "target_1", "ratio"]]
+    pivot.columns.name = None
+    return pivot
+
+oot_decile = report.decile_target(oot, 'pred', TARGET, 'client_did', 100)
+
+средний прирост в каждом бине - avg(current_debt_amt_3m - current_debt_amt)
+средний лимит до клипа - avg(old_limit)
+средний лимит после клипа - avg(new_limit)
