@@ -1,77 +1,70 @@
-retro_batch_eval_df = retro_batch_result_df.assign(
-    error_atdtmco_saldo_turn=lambda df: df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred"],
-    error_atdtmco_ns=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred"],
-    ns_breach=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred"],
-    is_non_working_day=lambda df: (
-        (df["atdtmco_saldo_turn_fact"] == 0)
-        & (df["atdtmco_ns_fact"] == 0)
+PAYDAY_WINDOWS = [(5, 10), (15, 20)]
+
+payday_check_df = retro_batch_result_df[
+    ~(
+        (retro_batch_result_df["atdtmco_saldo_turn_fact"] == 0)
+        & (retro_batch_result_df["atdtmco_ns_fact"] == 0)
+    )
+].assign(
+    day_of_month=lambda df: df["forecast_date"].dt.day,
+    is_payday_window=lambda df: df["forecast_date"].dt.day.isin(
+        [day for start, end in PAYDAY_WINDOWS for day in range(start, end + 1)]
     ),
 )
 
-excluded_zero_fact_rows = int(retro_batch_eval_df["is_non_working_day"].sum())
-retro_batch_eval_df = retro_batch_eval_df[~retro_batch_eval_df["is_non_working_day"]].copy()
-
-retro_batch_metrics_total = pd.DataFrame(
-    [
-        {
-            "rows_total": len(retro_batch_result_df),
-            "rows_used": len(retro_batch_eval_df),
-            "excluded_zero_fact_rows": excluded_zero_fact_rows,
-            "score_dates": retro_batch_eval_df["score_date"].nunique(),
-            "cashdesks": retro_batch_eval_df["atdtmco_cashdesk_name"].nunique(),
-            "fact_saldo_turn_mean": retro_batch_eval_df["atdtmco_saldo_turn_fact"].mean(),
-            "forecast_saldo_turn_mean": retro_batch_eval_df["atdtmco_saldo_turn_pred"].mean(),
-            "saldo_turn_mae": retro_batch_eval_df["error_atdtmco_saldo_turn"].abs().mean(),
-            "fact_ns_mean": retro_batch_eval_df["atdtmco_ns_fact"].mean(),
-            "forecast_ns_mean": retro_batch_eval_df["atdtmco_ns_pred"].mean(),
-            "ns_mae": retro_batch_eval_df["error_atdtmco_ns"].abs().mean(),
-            "ns_breach_rate": retro_batch_eval_df["ns_breach"].mean(),
-        }
-    ]
-)
-
-retro_batch_metrics_by_score_date = (
-    retro_batch_eval_df
-    .groupby("score_date", as_index=False)
+payday_profile_df = (
+    payday_check_df
+    .groupby("day_of_month", as_index=False)
     .agg(
-        rows_used=("score_date", "size"),
-        cashdesks=("atdtmco_cashdesk_name", "nunique"),
+        rows=("day_of_month", "size"),
         fact_saldo_turn_mean=("atdtmco_saldo_turn_fact", "mean"),
-        forecast_saldo_turn_mean=("atdtmco_saldo_turn_pred", "mean"),
-        saldo_turn_mae=("error_atdtmco_saldo_turn", lambda value: value.abs().mean()),
         fact_ns_mean=("atdtmco_ns_fact", "mean"),
-        forecast_ns_mean=("atdtmco_ns_pred", "mean"),
-        ns_mae=("error_atdtmco_ns", lambda value: value.abs().mean()),
-        ns_breach_rate=("ns_breach", "mean"),
     )
-    .sort_values("score_date")
+    .sort_values("day_of_month")
 )
 
-retro_batch_cashdesk_metrics = (
-    retro_batch_eval_df
-    .groupby("atdtmco_cashdesk_name", as_index=False)
+overall_saldo_mean = payday_check_df["atdtmco_saldo_turn_fact"].mean()
+overall_ns_mean = payday_check_df["atdtmco_ns_fact"].mean()
+
+fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+
+axes[0].bar(
+    payday_profile_df["day_of_month"],
+    payday_profile_df["fact_saldo_turn_mean"],
+    color="steelblue",
+)
+axes[0].axhline(overall_saldo_mean, color="red", linestyle="--", label="среднее по рабочим дням")
+for start, end in PAYDAY_WINDOWS:
+    axes[0].axvspan(start - 0.5, end + 0.5, color="orange", alpha=0.2)
+axes[0].set_title("ATDTMCO_SALDO_TURN: средний факт по числу месяца")
+axes[0].legend()
+axes[0].grid(True)
+
+axes[1].bar(
+    payday_profile_df["day_of_month"],
+    payday_profile_df["fact_ns_mean"],
+    color="steelblue",
+)
+axes[1].axhline(overall_ns_mean, color="red", linestyle="--", label="среднее по рабочим дням")
+for start, end in PAYDAY_WINDOWS:
+    axes[1].axvspan(start - 0.5, end + 0.5, color="orange", alpha=0.2)
+axes[1].set_title("ATDTMCO_NS: средний факт по числу месяца")
+axes[1].legend()
+axes[1].grid(True)
+
+plt.xticks(range(1, 32))
+plt.tight_layout()
+plt.show()
+
+payday_window_compare_df = (
+    payday_check_df
+    .groupby("is_payday_window", as_index=False)
     .agg(
-        rows_used=("atdtmco_cashdesk_name", "size"),
+        rows=("is_payday_window", "size"),
         fact_saldo_turn_mean=("atdtmco_saldo_turn_fact", "mean"),
-        forecast_saldo_turn_mean=("atdtmco_saldo_turn_pred", "mean"),
-        saldo_turn_mae=("error_atdtmco_saldo_turn", lambda value: value.abs().mean()),
         fact_ns_mean=("atdtmco_ns_fact", "mean"),
-        forecast_ns_mean=("atdtmco_ns_pred", "mean"),
-        ns_mae=("error_atdtmco_ns", lambda value: value.abs().mean()),
-        ns_breach_rate=("ns_breach", "mean"),
     )
-    .assign(
-        saldo_turn_bias=lambda df: df["fact_saldo_turn_mean"] - df["forecast_saldo_turn_mean"],
-        ns_bias=lambda df: df["fact_ns_mean"] - df["forecast_ns_mean"],
-    )
-    .sort_values(["ns_breach_rate", "ns_mae", "saldo_turn_mae"], ascending=False)
+    .assign(window_label=lambda df: np.where(df["is_payday_window"], "payday_window", "other_days"))
 )
 
-print("Итого по батчу:")
-display(retro_batch_metrics_total)
-
-print("По score_date:")
-display(retro_batch_metrics_by_score_date)
-
-print("Топ-10 касс по ошибке:")
-display(retro_batch_cashdesk_metrics.head(10))
+payday_window_compare_df
