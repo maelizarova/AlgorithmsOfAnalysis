@@ -1,15 +1,27 @@
 PAYDAY_WINDOWS = [(5, 10), (15, 20)]
+PAYDAY_LOOKBACK_MONTHS = 12
 
-payday_check_df = retro_batch_result_df[
-    ~(
-        (retro_batch_result_df["atdtmco_saldo_turn_fact"] == 0)
-        & (retro_batch_result_df["atdtmco_ns_fact"] == 0)
+payday_history_from = MAX_DATA_DATE - pd.DateOffset(months=PAYDAY_LOOKBACK_MONTHS)
+payday_history_to = MAX_DATA_DATE
+
+payday_check_df = (
+    daily_df
+    .loc[
+        (daily_df["calday"] >= payday_history_from)
+        & (daily_df["calday"] <= payday_history_to)
+    ]
+    .loc[
+        ~(
+            (daily_df["atdtmco_saldo_turn"] == 0)
+            & (daily_df["atdtmco_ns"] == 0)
+        )
+    ]
+    .assign(
+        day_of_month=lambda df: df["calday"].dt.day,
+        is_payday_window=lambda df: df["calday"].dt.day.isin(
+            [day for start, end in PAYDAY_WINDOWS for day in range(start, end + 1)]
+        ),
     )
-].assign(
-    day_of_month=lambda df: df["forecast_date"].dt.day,
-    is_payday_window=lambda df: df["forecast_date"].dt.day.isin(
-        [day for start, end in PAYDAY_WINDOWS for day in range(start, end + 1)]
-    ),
 )
 
 payday_profile_df = (
@@ -17,14 +29,23 @@ payday_profile_df = (
     .groupby("day_of_month", as_index=False)
     .agg(
         rows=("day_of_month", "size"),
-        fact_saldo_turn_mean=("atdtmco_saldo_turn_fact", "mean"),
-        fact_ns_mean=("atdtmco_ns_fact", "mean"),
+        fact_saldo_turn_mean=("atdtmco_saldo_turn", "mean"),
+        fact_saldo_turn_median=("atdtmco_saldo_turn", "median"),
+        fact_ns_mean=("atdtmco_ns", "mean"),
+        fact_ns_median=("atdtmco_ns", "median"),
     )
     .sort_values("day_of_month")
 )
 
-overall_saldo_mean = payday_check_df["atdtmco_saldo_turn_fact"].mean()
-overall_ns_mean = payday_check_df["atdtmco_ns_fact"].mean()
+overall_saldo_mean = payday_check_df["atdtmco_saldo_turn"].mean()
+overall_saldo_median = payday_check_df["atdtmco_saldo_turn"].median()
+overall_ns_mean = payday_check_df["atdtmco_ns"].mean()
+overall_ns_median = payday_check_df["atdtmco_ns"].median()
+
+print(
+    f"Период: {payday_history_from.date()} — {payday_history_to.date()} "
+    f"({PAYDAY_LOOKBACK_MONTHS} мес.), рабочих строк: {len(payday_check_df):,}"
+)
 
 fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
@@ -32,11 +53,22 @@ axes[0].bar(
     payday_profile_df["day_of_month"],
     payday_profile_df["fact_saldo_turn_mean"],
     color="steelblue",
+    alpha=0.8,
+    label="среднее",
 )
-axes[0].axhline(overall_saldo_mean, color="red", linestyle="--", label="среднее по рабочим дням")
+axes[0].plot(
+    payday_profile_df["day_of_month"],
+    payday_profile_df["fact_saldo_turn_median"],
+    color="green",
+    marker="o",
+    linewidth=1.5,
+    label="медиана",
+)
+axes[0].axhline(overall_saldo_mean, color="red", linestyle="--", label="общее среднее")
+axes[0].axhline(overall_saldo_median, color="green", linestyle=":", label="общая медиана")
 for start, end in PAYDAY_WINDOWS:
     axes[0].axvspan(start - 0.5, end + 0.5, color="orange", alpha=0.2)
-axes[0].set_title("ATDTMCO_SALDO_TURN: средний факт по числу месяца")
+axes[0].set_title("ATDTMCO_SALDO_TURN: профиль по числу месяца (12 мес. истории)")
 axes[0].legend()
 axes[0].grid(True)
 
@@ -44,11 +76,22 @@ axes[1].bar(
     payday_profile_df["day_of_month"],
     payday_profile_df["fact_ns_mean"],
     color="steelblue",
+    alpha=0.8,
+    label="среднее",
 )
-axes[1].axhline(overall_ns_mean, color="red", linestyle="--", label="среднее по рабочим дням")
+axes[1].plot(
+    payday_profile_df["day_of_month"],
+    payday_profile_df["fact_ns_median"],
+    color="green",
+    marker="o",
+    linewidth=1.5,
+    label="медиана",
+)
+axes[1].axhline(overall_ns_mean, color="red", linestyle="--", label="общее среднее")
+axes[1].axhline(overall_ns_median, color="green", linestyle=":", label="общая медиана")
 for start, end in PAYDAY_WINDOWS:
     axes[1].axvspan(start - 0.5, end + 0.5, color="orange", alpha=0.2)
-axes[1].set_title("ATDTMCO_NS: средний факт по числу месяца")
+axes[1].set_title("ATDTMCO_NS: профиль по числу месяца (12 мес. истории)")
 axes[1].legend()
 axes[1].grid(True)
 
@@ -61,8 +104,10 @@ payday_window_compare_df = (
     .groupby("is_payday_window", as_index=False)
     .agg(
         rows=("is_payday_window", "size"),
-        fact_saldo_turn_mean=("atdtmco_saldo_turn_fact", "mean"),
-        fact_ns_mean=("atdtmco_ns_fact", "mean"),
+        fact_saldo_turn_mean=("atdtmco_saldo_turn", "mean"),
+        fact_saldo_turn_median=("atdtmco_saldo_turn", "median"),
+        fact_ns_mean=("atdtmco_ns", "mean"),
+        fact_ns_median=("atdtmco_ns", "median"),
     )
     .assign(window_label=lambda df: np.where(df["is_payday_window"], "payday_window", "other_days"))
 )
