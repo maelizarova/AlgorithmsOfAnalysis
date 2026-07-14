@@ -1,115 +1,232 @@
-PAYDAY_WINDOWS = [(5, 7), (20, 22)]
-PAYDAY_LOOKBACK_MONTHS = 12
-
-payday_history_from = MAX_DATA_DATE - pd.DateOffset(months=PAYDAY_LOOKBACK_MONTHS)
-payday_history_to = MAX_DATA_DATE
-
-payday_check_df = (
-    daily_df
-    .loc[
-        (daily_df["calday"] >= payday_history_from)
-        & (daily_df["calday"] <= payday_history_to)
+RU_PUBLIC_HOLIDAYS = pd.to_datetime(
+    [
+        "2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04", "2025-01-05",
+        "2025-01-06", "2025-01-07", "2025-01-08",
+        "2025-02-23", "2025-03-08", "2025-05-01", "2025-05-09",
+        "2025-06-12", "2025-11-04",
+        "2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05",
+        "2026-01-06", "2026-01-07", "2026-01-08",
+        "2026-02-23", "2026-03-08", "2026-05-01", "2026-05-09",
+        "2026-06-12", "2026-11-04",
     ]
-    .loc[
-        ~(
-            (daily_df["atdtmco_saldo_turn"] == 0)
-            & (daily_df["atdtmco_ns"] == 0)
+).normalize()
+
+RU_HOLIDAY_SET = set(RU_PUBLIC_HOLIDAYS)
+
+
+def build_calendar_exog(
+    dates: pd.DatetimeIndex,
+    is_working_day: Optional[pd.Series] = None,
+) -> pd.DataFrame:
+    normalized_dates = pd.to_datetime(dates).normalize()
+    exog = pd.DataFrame(index=normalized_dates)
+
+    if is_working_day is not None:
+        working_day_series = is_working_day.copy()
+        working_day_series.index = pd.to_datetime(working_day_series.index).normalize()
+        exog["is_working_day"] = working_day_series.reindex(normalized_dates).fillna(0).astype(float)
+    else:
+        exog["is_working_day"] = np.where(
+            (normalized_dates.weekday < 5) & (~normalized_dates.isin(RU_PUBLIC_HOLIDAYS)),
+            1.0,
+            0.0,
         )
-    ]
-    .assign(
-        day_of_month=lambda df: df["calday"].dt.day,
-        is_payday_window=lambda df: df["calday"].dt.day.isin(
-            [day for start, end in PAYDAY_WINDOWS for day in range(start, end + 1)]
-        ),
-    )
-)
 
-payday_profile_df = (
-    payday_check_df
-    .groupby("day_of_month", as_index=False)
+    exog["day_of_week"] = normalized_dates.weekday.astype(float)
+    exog["is_month_start"] = (normalized_dates.day <= 3).astype(float)
+    exog["is_month_end"] = (normalized_dates.day >= (normalized_dates + pd.offsets.MonthEnd(0)).day - 2).astype(float)
+    exog["is_holiday"] = normalized_dates.isin(RU_PUBLIC_HOLIDAYS).astype(float)
+    exog["is_pre_holiday"] = normalized_dates.isin(RU_PUBLIC_HOLIDAYS - pd.Timedelta(days=1)).astype(float)
+    exog["is_post_holiday"] = normalized_dates.isin(RU_PUBLIC_HOLIDAYS + pd.Timedelta(days=1)).astype(float)
+
+    last_business_days = []
+    for month_start in pd.date_range(
+        normalized_dates.min().to_period("M").to_timestamp(),
+        normalized_dates.max().to_period("M").to_timestamp(),
+        freq="MS",
+    ):
+        month_end = month_start + pd.offsets.MonthEnd(0)
+        candidate = month_end
+        while candidate.weekday() >= 5 or candidate.normalize() in RU_HOLIDAY_SET:
+            candidate -= pd.Timedelta(days=1)
+        last_business_days.append(candidate.normalize())
+
+    exog["is_last_business_day_of_month"] = normalized_dates.isin(last_business_days).astype(float)
+
+    payday_days = [day for start, end in PAYDAY_WINDOWS for day in range(start, end + 1)]
+    exog["is_payday_window"] = normalized_dates.day.isin(payday_days).astype(float)
+
+    return exog.astype(float)
+
+
+def fit_sarimax(y: pd.Series, exog: pd.DataFrame, config: SarimaConfig):
+    model = SARIMAX(
+        y,
+        exog=exog,
+        order=config.order,
+        seasonal_order=config.seasonal_order,
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+    )
+    return model.fit(disp=False, maxiter=config.maxiter)
+
+
+def sarimax_point_forecast(
+    y: pd.Series,
+    exog_train: pd.DataFrame,
+    exog_future: pd.DataFrame,
+    config: SarimaConfig,
+    output_col: str,
+) -> pd.DataFrame:
+    aligned_index = y.index.intersection(exog_train.index)
+    y_aligned = y.loc[aligned_index]
+    exog_aligned = exog_train.loc[aligned_index]
+    result = fit_sarimax(y_aligned, exog_aligned, config)
+    forecast_result = result.get_forecast(steps=len(exog_future), exog=exog_future)
+    forecast_mean = forecast_result.predicted_mean
+
+    output = pd.DataFrame(
+        {output_col: forecast_mean.values},
+        index=forecast_mean.index,
+    )
+    output.index.name = "forecast_date"
+    return output.reset_index()
+
+
+def build_cashdesk_train_exog(cashdesk_df: pd.DataFrame) -> pd.DataFrame:
+    working_day_series = (
+        (cashdesk_df.set_index("calday")["atdtmco_saldo_turn"] != 0)
+        | (cashdesk_df.set_index("calday")["atdtmco_ns"] != 0)
+    ).astype(float)
+    return build_calendar_exog(
+        pd.DatetimeIndex(cashdesk_df["calday"]),
+        is_working_day=working_day_series,
+    )
+
+
+SARIMAX_TEST_SCORE_DATE = score_dates[0]
+SARIMAX_TEST_CASHDESK = (
+    retro_batch_result_df["atdtmco_cashdesk_name"].value_counts().index[0]
+)
+SARIMAX_TEST_REPORT_DATE = SARIMAX_TEST_SCORE_DATE - pd.Timedelta(days=DATA_LAG_DAYS)
+SARIMAX_TEST_STEPS = RETRO_BATCH_EVALUATION_DAYS + DATA_LAG_DAYS - 1
+
+sarimax_test_cashdesk_df = (
+    retro_batch_raw_df
+    .assign(calday=lambda df: df["atdtmco_calday"].dt.normalize())
+    .query("atdtmco_cashdesk_name == @SARIMAX_TEST_CASHDESK and calday <= @SARIMAX_TEST_REPORT_DATE")
+    .groupby("calday", as_index=False)
     .agg(
-        rows=("day_of_month", "size"),
-        fact_saldo_turn_mean=("atdtmco_saldo_turn", "mean"),
-        fact_saldo_turn_median=("atdtmco_saldo_turn", "median"),
-        fact_ns_mean=("atdtmco_ns", "mean"),
-        fact_ns_median=("atdtmco_ns", "median"),
+        atdtmco_saldo_turn=("atdtmco_saldo_turn", "sum"),
+        atdtmco_ns=("atdtmco_ns", "min"),
     )
-    .sort_values("day_of_month")
+    .sort_values("calday")
+)
+sarimax_test_cashdesk_df["atdtmco_ns"] = sarimax_test_cashdesk_df["atdtmco_ns"].clip(upper=0)
+sarimax_test_cashdesk_df = extend_cashdesk_to_report_date(
+    sarimax_test_cashdesk_df,
+    SARIMAX_TEST_REPORT_DATE,
 )
 
-overall_saldo_mean = payday_check_df["atdtmco_saldo_turn"].mean()
-overall_saldo_median = payday_check_df["atdtmco_saldo_turn"].median()
-overall_ns_mean = payday_check_df["atdtmco_ns"].mean()
-overall_ns_median = payday_check_df["atdtmco_ns"].median()
+saldo_series = make_regular_daily_series(sarimax_test_cashdesk_df, "atdtmco_saldo_turn", "zero")
+exog_train = build_cashdesk_train_exog(sarimax_test_cashdesk_df)
+future_index = make_future_index(saldo_series, SARIMAX_TEST_STEPS)
+exog_future = build_calendar_exog(future_index)
 
-print(
-    f"Период: {payday_history_from.date()} — {payday_history_to.date()} "
-    f"({PAYDAY_LOOKBACK_MONTHS} мес.), рабочих строк: {len(payday_check_df):,}"
+sarima_saldo_forecast_df = sarima_point_forecast(
+    y=saldo_series,
+    steps=SARIMAX_TEST_STEPS,
+    config=SARIMA_CONFIG,
+    output_col="atdtmco_saldo_turn_pred",
+)
+sarimax_saldo_forecast_df = sarimax_point_forecast(
+    y=saldo_series,
+    exog_train=exog_train,
+    exog_future=exog_future,
+    config=SARIMA_CONFIG,
+    output_col="atdtmco_saldo_turn_pred",
 )
 
-fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+sarimax_eval_start = SARIMAX_TEST_SCORE_DATE
+sarimax_eval_end = SARIMAX_TEST_SCORE_DATE + pd.Timedelta(days=RETRO_BATCH_EVALUATION_DAYS)
 
-axes[0].bar(
-    payday_profile_df["day_of_month"],
-    payday_profile_df["fact_saldo_turn_mean"],
-    color="steelblue",
-    alpha=0.8,
-    label="среднее",
+sarimax_fact_df = (
+    retro_batch_raw_df
+    .assign(calday=lambda df: df["atdtmco_calday"].dt.normalize())
+    .query(
+        "atdtmco_cashdesk_name == @SARIMAX_TEST_CASHDESK "
+        "and calday >= @sarimax_eval_start and calday < @sarimax_eval_end"
+    )
+    .groupby("calday", as_index=False)
+    .agg(atdtmco_saldo_turn_fact=("atdtmco_saldo_turn", "sum"))
+    .rename(columns={"calday": "forecast_date"})
 )
-axes[0].plot(
-    payday_profile_df["day_of_month"],
-    payday_profile_df["fact_saldo_turn_median"],
-    color="green",
-    marker="o",
-    linewidth=1.5,
-    label="медиана",
-)
-axes[0].axhline(overall_saldo_mean, color="red", linestyle="--", label="общее среднее")
-axes[0].axhline(overall_saldo_median, color="green", linestyle=":", label="общая медиана")
-for start, end in PAYDAY_WINDOWS:
-    axes[0].axvspan(start - 0.5, end + 0.5, color="orange", alpha=0.2)
-axes[0].set_title("ATDTMCO_SALDO_TURN: профиль по числу месяца (12 мес. истории)")
-axes[0].legend()
-axes[0].grid(True)
 
-axes[1].bar(
-    payday_profile_df["day_of_month"],
-    payday_profile_df["fact_ns_mean"],
-    color="steelblue",
-    alpha=0.8,
-    label="среднее",
+sarimax_compare_df = sarimax_fact_df.merge(
+    sarima_saldo_forecast_df.rename(columns={"atdtmco_saldo_turn_pred": "sarima_pred"}),
+    on="forecast_date",
+    how="left",
+).merge(
+    sarimax_saldo_forecast_df.rename(columns={"atdtmco_saldo_turn_pred": "sarimax_pred"}),
+    on="forecast_date",
+    how="left",
 )
-axes[1].plot(
-    payday_profile_df["day_of_month"],
-    payday_profile_df["fact_ns_median"],
-    color="green",
-    marker="o",
-    linewidth=1.5,
-    label="медиана",
-)
-axes[1].axhline(overall_ns_mean, color="red", linestyle="--", label="общее среднее")
-axes[1].axhline(overall_ns_median, color="green", linestyle=":", label="общая медиана")
-for start, end in PAYDAY_WINDOWS:
-    axes[1].axvspan(start - 0.5, end + 0.5, color="orange", alpha=0.2)
-axes[1].set_title("ATDTMCO_NS: профиль по числу месяца (12 мес. истории)")
-axes[1].legend()
-axes[1].grid(True)
+sarimax_compare_df = sarimax_compare_df[
+    sarimax_compare_df["atdtmco_saldo_turn_fact"] != 0
+].copy()
+sarimax_compare_df["sarima_error"] = sarimax_compare_df["atdtmco_saldo_turn_fact"] - sarimax_compare_df["sarima_pred"]
+sarimax_compare_df["sarimax_error"] = sarimax_compare_df["atdtmco_saldo_turn_fact"] - sarimax_compare_df["sarimax_pred"]
 
-plt.xticks(range(1, 32))
+sarimax_model_compare_df = pd.DataFrame(
+    [
+        {
+            "cashdesk": SARIMAX_TEST_CASHDESK,
+            "score_date": SARIMAX_TEST_SCORE_DATE,
+            "rows_used": len(sarimax_compare_df),
+            "sarima_mae": sarimax_compare_df["sarima_error"].abs().mean(),
+            "sarimax_mae": sarimax_compare_df["sarimax_error"].abs().mean(),
+            "fact_mean": sarimax_compare_df["atdtmco_saldo_turn_fact"].mean(),
+            "sarima_pred_mean": sarimax_compare_df["sarima_pred"].mean(),
+            "sarimax_pred_mean": sarimax_compare_df["sarimax_pred"].mean(),
+        }
+    ]
+)
+
+print(f"Тестовая касса: {SARIMAX_TEST_CASHDESK}")
+print(f"score_date: {SARIMAX_TEST_SCORE_DATE.date()}")
+sarimax_model_compare_df
+
+
+
+
+
+
+fig, ax = plt.subplots(figsize=(14, 5))
+
+plot_compare_df = sarimax_compare_df.sort_values("forecast_date")
+ax.plot(
+    plot_compare_df["forecast_date"],
+    plot_compare_df["atdtmco_saldo_turn_fact"],
+    label="факт",
+    linewidth=2,
+)
+ax.plot(
+    plot_compare_df["forecast_date"],
+    plot_compare_df["sarima_pred"],
+    label="SARIMA",
+    linestyle="--",
+)
+ax.plot(
+    plot_compare_df["forecast_date"],
+    plot_compare_df["sarimax_pred"],
+    label="SARIMAX + календарь",
+    linestyle=":",
+)
+ax.set_title(f"SALDO_TURN: SARIMA vs SARIMAX ({SARIMAX_TEST_CASHDESK})")
+ax.legend()
+ax.grid(True)
+plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
 
-payday_window_compare_df = (
-    payday_check_df
-    .groupby("is_payday_window", as_index=False)
-    .agg(
-        rows=("is_payday_window", "size"),
-        fact_saldo_turn_mean=("atdtmco_saldo_turn", "mean"),
-        fact_saldo_turn_median=("atdtmco_saldo_turn", "median"),
-        fact_ns_mean=("atdtmco_ns", "mean"),
-        fact_ns_median=("atdtmco_ns", "median"),
-    )
-    .assign(window_label=lambda df: np.where(df["is_payday_window"], "payday_window", "other_days"))
-)
-
-payday_window_compare_df
+build_calendar_exog(pd.DatetimeIndex([SARIMAX_TEST_SCORE_DATE])).T
