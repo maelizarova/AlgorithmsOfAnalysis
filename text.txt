@@ -1,4 +1,4 @@
-PAYDAY_WINDOWS = [(5, 10), (15, 20)]
+PAYDAY_WINDOWS = [(5, 7), (20, 22)]
 PAYDAY_LOOKBACK_MONTHS = 12
 
 payday_history_from = MAX_DATA_DATE - pd.DateOffset(months=PAYDAY_LOOKBACK_MONTHS)
