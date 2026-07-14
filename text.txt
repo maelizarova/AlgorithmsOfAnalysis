@@ -104,129 +104,173 @@ def build_cashdesk_train_exog(cashdesk_df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-SARIMAX_TEST_SCORE_DATE = score_dates[0]
-SARIMAX_TEST_CASHDESK = (
-    retro_batch_result_df["atdtmco_cashdesk_name"].value_counts().index[0]
-)
-SARIMAX_TEST_REPORT_DATE = SARIMAX_TEST_SCORE_DATE - pd.Timedelta(days=DATA_LAG_DAYS)
-SARIMAX_TEST_STEPS = RETRO_BATCH_EVALUATION_DAYS + DATA_LAG_DAYS - 1
+def compare_sarima_sarimax_batch(retro_run_date: pd.Timestamp, retro_raw_df: pd.DataFrame) -> pd.DataFrame:
+    retro_max_data_date = retro_run_date - pd.Timedelta(days=DATA_LAG_DAYS)
+    retro_fact_date_to_exclusive = retro_run_date + pd.Timedelta(days=RETRO_BATCH_EVALUATION_DAYS)
+    retro_model_steps = RETRO_BATCH_EVALUATION_DAYS + DATA_LAG_DAYS - 1
 
-sarimax_test_cashdesk_df = (
-    retro_batch_raw_df
-    .assign(calday=lambda df: df["atdtmco_calday"].dt.normalize())
-    .query("atdtmco_cashdesk_name == @SARIMAX_TEST_CASHDESK and calday <= @SARIMAX_TEST_REPORT_DATE")
-    .groupby("calday", as_index=False)
-    .agg(
-        atdtmco_saldo_turn=("atdtmco_saldo_turn", "sum"),
-        atdtmco_ns=("atdtmco_ns", "min"),
+    retro_daily_df = (
+        retro_raw_df
+        .assign(calday=lambda df: df["atdtmco_calday"].dt.normalize())
+        .groupby(["atdtmco_cashdesk_name", "calday"], as_index=False)
+        .agg(
+            atdtmco_saldo_turn=("atdtmco_saldo_turn", "sum"),
+            atdtmco_ns=("atdtmco_ns", "min"),
+        )
     )
-    .sort_values("calday")
-)
-sarimax_test_cashdesk_df["atdtmco_ns"] = sarimax_test_cashdesk_df["atdtmco_ns"].clip(upper=0)
-sarimax_test_cashdesk_df = extend_cashdesk_to_report_date(
-    sarimax_test_cashdesk_df,
-    SARIMAX_TEST_REPORT_DATE,
-)
+    retro_daily_df["atdtmco_ns"] = retro_daily_df["atdtmco_ns"].clip(upper=0)
+    retro_daily_df = retro_daily_df.sort_values(["atdtmco_cashdesk_name", "calday"]).reset_index(drop=True)
 
-saldo_series = make_regular_daily_series(sarimax_test_cashdesk_df, "atdtmco_saldo_turn", "zero")
-exog_train = build_cashdesk_train_exog(sarimax_test_cashdesk_df)
-future_index = make_future_index(saldo_series, SARIMAX_TEST_STEPS)
-exog_future = build_calendar_exog(future_index)
+    retro_active_date_from = retro_max_data_date - pd.DateOffset(months=ACTIVE_LOOKBACK_MONTHS)
+    retro_active_cashdesks = retro_daily_df.loc[
+        (retro_daily_df["calday"] >= retro_active_date_from)
+        & (retro_daily_df["calday"] <= retro_max_data_date),
+        "atdtmco_cashdesk_name",
+    ].drop_duplicates()
 
-sarima_saldo_forecast_df = sarima_point_forecast(
-    y=saldo_series,
-    steps=SARIMAX_TEST_STEPS,
-    config=SARIMA_CONFIG,
-    output_col="atdtmco_saldo_turn_pred",
-)
-sarimax_saldo_forecast_df = sarimax_point_forecast(
-    y=saldo_series,
-    exog_train=exog_train,
-    exog_future=exog_future,
-    config=SARIMA_CONFIG,
-    output_col="atdtmco_saldo_turn_pred",
-)
+    retro_train_df = retro_daily_df[
+        retro_daily_df["atdtmco_cashdesk_name"].isin(retro_active_cashdesks)
+        & (retro_daily_df["calday"] <= retro_max_data_date)
+    ].copy()
 
-sarimax_eval_start = SARIMAX_TEST_SCORE_DATE
-sarimax_eval_end = SARIMAX_TEST_SCORE_DATE + pd.Timedelta(days=RETRO_BATCH_EVALUATION_DAYS)
-
-sarimax_fact_df = (
-    retro_batch_raw_df
-    .assign(calday=lambda df: df["atdtmco_calday"].dt.normalize())
-    .query(
-        "atdtmco_cashdesk_name == @SARIMAX_TEST_CASHDESK "
-        "and calday >= @sarimax_eval_start and calday < @sarimax_eval_end"
+    retro_actual_df = (
+        retro_daily_df[
+            retro_daily_df["atdtmco_cashdesk_name"].isin(retro_active_cashdesks)
+            & (retro_daily_df["calday"] >= retro_run_date)
+            & (retro_daily_df["calday"] < retro_fact_date_to_exclusive)
+        ]
+        .assign(
+            forecast_date=lambda df: df["calday"],
+            atdtmco_saldo_turn_fact=lambda df: df["atdtmco_saldo_turn"],
+            atdtmco_ns_fact=lambda df: df["atdtmco_ns"],
+        )
+        [["atdtmco_cashdesk_name", "forecast_date", "atdtmco_saldo_turn_fact", "atdtmco_ns_fact"]]
     )
-    .groupby("calday", as_index=False)
-    .agg(atdtmco_saldo_turn_fact=("atdtmco_saldo_turn", "sum"))
-    .rename(columns={"calday": "forecast_date"})
-)
 
-sarimax_compare_df = sarimax_fact_df.merge(
-    sarima_saldo_forecast_df.rename(columns={"atdtmco_saldo_turn_pred": "sarima_pred"}),
-    on="forecast_date",
-    how="left",
-).merge(
-    sarimax_saldo_forecast_df.rename(columns={"atdtmco_saldo_turn_pred": "sarimax_pred"}),
-    on="forecast_date",
-    how="left",
-)
-sarimax_compare_df = sarimax_compare_df[
-    sarimax_compare_df["atdtmco_saldo_turn_fact"] != 0
-].copy()
-sarimax_compare_df["sarima_error"] = sarimax_compare_df["atdtmco_saldo_turn_fact"] - sarimax_compare_df["sarima_pred"]
-sarimax_compare_df["sarimax_error"] = sarimax_compare_df["atdtmco_saldo_turn_fact"] - sarimax_compare_df["sarimax_pred"]
+    compare_chunks = []
+    n_cashdesks = retro_train_df["atdtmco_cashdesk_name"].nunique()
 
-sarimax_model_compare_df = pd.DataFrame(
+    for idx, (atdtmco_cashdesk_name, cashdesk_df) in enumerate(
+        retro_train_df.groupby("atdtmco_cashdesk_name", sort=True), start=1
+    ):
+        print(f"  [{idx}/{n_cashdesks}] {atdtmco_cashdesk_name}")
+        cashdesk_df = extend_cashdesk_to_report_date(cashdesk_df.copy(), retro_max_data_date)
+        saldo_series = make_regular_daily_series(cashdesk_df, "atdtmco_saldo_turn", "zero")
+
+        if len(saldo_series) < MIN_OBSERVATIONS:
+            continue
+
+        exog_train = build_cashdesk_train_exog(cashdesk_df)
+        future_index = make_future_index(saldo_series, retro_model_steps)
+        exog_future = build_calendar_exog(future_index)
+
+        try:
+            sarima_forecast = sarima_point_forecast(
+                y=saldo_series,
+                steps=retro_model_steps,
+                config=SARIMA_CONFIG,
+                output_col="sarima_pred",
+            )
+        except Exception:
+            sarima_forecast = weekday_point_forecast(saldo_series, retro_model_steps, "sarima_pred")
+
+        try:
+            sarimax_forecast = sarimax_point_forecast(
+                y=saldo_series,
+                exog_train=exog_train,
+                exog_future=exog_future,
+                config=SARIMA_CONFIG,
+                output_col="sarimax_pred",
+            )
+        except Exception:
+            sarimax_forecast = sarima_forecast.rename(columns={"sarima_pred": "sarimax_pred"})
+
+        cashdesk_compare_df = (
+            retro_actual_df[retro_actual_df["atdtmco_cashdesk_name"] == atdtmco_cashdesk_name]
+            .merge(sarima_forecast, on="forecast_date", how="left")
+            .merge(sarimax_forecast, on="forecast_date", how="left")
+            .assign(score_date=retro_run_date)
+        )
+        compare_chunks.append(cashdesk_compare_df)
+
+    if not compare_chunks:
+        return pd.DataFrame()
+
+    return pd.concat(compare_chunks, ignore_index=True)
+
+
+sarimax_batch_chunks = []
+for score_date in score_dates:
+    print(f"score_date: {score_date.date()}")
+    sarimax_batch_chunks.append(compare_sarima_sarimax_batch(score_date, retro_batch_raw_df))
+
+sarimax_batch_compare_df = pd.concat(sarimax_batch_chunks, ignore_index=True)
+
+sarimax_batch_eval_df = sarimax_batch_compare_df.assign(
+    is_non_working_day=lambda df: (
+        (df["atdtmco_saldo_turn_fact"] == 0) & (df["atdtmco_ns_fact"] == 0)
+    ),
+    sarima_error=lambda df: df["atdtmco_saldo_turn_fact"] - df["sarima_pred"],
+    sarimax_error=lambda df: df["atdtmco_saldo_turn_fact"] - df["sarimax_pred"],
+)
+excluded_zero_fact_rows = int(sarimax_batch_eval_df["is_non_working_day"].sum())
+sarimax_batch_eval_df = sarimax_batch_eval_df[~sarimax_batch_eval_df["is_non_working_day"]].copy()
+
+sarimax_batch_metrics_total = pd.DataFrame(
     [
         {
-            "cashdesk": SARIMAX_TEST_CASHDESK,
-            "score_date": SARIMAX_TEST_SCORE_DATE,
-            "rows_used": len(sarimax_compare_df),
-            "sarima_mae": sarimax_compare_df["sarima_error"].abs().mean(),
-            "sarimax_mae": sarimax_compare_df["sarimax_error"].abs().mean(),
-            "fact_mean": sarimax_compare_df["atdtmco_saldo_turn_fact"].mean(),
-            "sarima_pred_mean": sarimax_compare_df["sarima_pred"].mean(),
-            "sarimax_pred_mean": sarimax_compare_df["sarimax_pred"].mean(),
+            "rows_used": len(sarimax_batch_eval_df),
+            "excluded_non_working_rows": excluded_zero_fact_rows,
+            "cashdesks": sarimax_batch_eval_df["atdtmco_cashdesk_name"].nunique(),
+            "score_dates": sarimax_batch_eval_df["score_date"].nunique(),
+            "sarima_mae": sarimax_batch_eval_df["sarima_error"].abs().mean(),
+            "sarimax_mae": sarimax_batch_eval_df["sarimax_error"].abs().mean(),
+            "mae_delta_sarimax_minus_sarima": (
+                sarimax_batch_eval_df["sarimax_error"].abs().mean()
+                - sarimax_batch_eval_df["sarima_error"].abs().mean()
+            ),
         }
     ]
 )
 
-print(f"Тестовая касса: {SARIMAX_TEST_CASHDESK}")
-print(f"score_date: {SARIMAX_TEST_SCORE_DATE.date()}")
-sarimax_model_compare_df
-
-
-
-
-
-
-fig, ax = plt.subplots(figsize=(14, 5))
-
-plot_compare_df = sarimax_compare_df.sort_values("forecast_date")
-ax.plot(
-    plot_compare_df["forecast_date"],
-    plot_compare_df["atdtmco_saldo_turn_fact"],
-    label="факт",
-    linewidth=2,
+sarimax_batch_metrics_by_cashdesk = (
+    sarimax_batch_eval_df
+    .groupby("atdtmco_cashdesk_name", as_index=False)
+    .agg(
+        rows=("atdtmco_cashdesk_name", "size"),
+        sarima_mae=("sarima_error", lambda s: s.abs().mean()),
+        sarimax_mae=("sarimax_error", lambda s: s.abs().mean()),
+    )
+    .assign(
+        mae_delta=lambda df: df["sarimax_mae"] - df["sarima_mae"],
+        sarimax_better=lambda df: df["sarimax_mae"] < df["sarima_mae"],
+    )
+    .sort_values("mae_delta")
 )
-ax.plot(
-    plot_compare_df["forecast_date"],
-    plot_compare_df["sarima_pred"],
-    label="SARIMA",
-    linestyle="--",
-)
-ax.plot(
-    plot_compare_df["forecast_date"],
-    plot_compare_df["sarimax_pred"],
-    label="SARIMAX + календарь",
-    linestyle=":",
-)
-ax.set_title(f"SALDO_TURN: SARIMA vs SARIMAX ({SARIMAX_TEST_CASHDESK})")
-ax.legend()
-ax.grid(True)
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.show()
 
-build_calendar_exog(pd.DatetimeIndex([SARIMAX_TEST_SCORE_DATE])).T
+sarimax_batch_metrics_by_score_date = (
+    sarimax_batch_eval_df
+    .groupby("score_date", as_index=False)
+    .agg(
+        rows=("score_date", "size"),
+        sarima_mae=("sarima_error", lambda s: s.abs().mean()),
+        sarimax_mae=("sarimax_error", lambda s: s.abs().mean()),
+    )
+    .assign(mae_delta=lambda df: df["sarimax_mae"] - df["sarima_mae"])
+)
+
+print(f"SARIMAX лучше на {sarimax_batch_metrics_by_cashdesk['sarimax_better'].mean():.1%} касс")
+print("Итого:")
+display(sarimax_batch_metrics_total)
+
+print("По score_date:")
+display(sarimax_batch_metrics_by_score_date)
+
+print("Топ-10 касс, где SARIMAX лучше всего:")
+display(sarimax_batch_metrics_by_cashdesk.head(10))
+
+print("Топ-10 касс, где SARIMAX хуже:")
+display(sarimax_batch_metrics_by_cashdesk.tail(10))
+
+print("Пример exog-признаков:")
+build_calendar_exog(pd.DatetimeIndex([score_dates[0]])).T
