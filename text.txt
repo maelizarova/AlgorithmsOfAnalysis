@@ -1,485 +1,64 @@
-RU_PUBLIC_HOLIDAYS = pd.to_datetime(
-    [
-        "2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04", "2025-01-05",
-        "2025-01-06", "2025-01-07", "2025-01-08",
-        "2025-02-23", "2025-03-08", "2025-05-01", "2025-05-09",
-        "2025-06-12", "2025-11-04",
-        "2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05",
-        "2026-01-06", "2026-01-07", "2026-01-08",
-        "2026-02-23", "2026-03-08", "2026-05-01", "2026-05-09",
-        "2026-06-12", "2026-11-04",
-    ]
-).normalize()
+SARIMAX_QUICK_SCORE_DATE = score_dates[0]
 
-RU_HOLIDAY_SET = set(RU_PUBLIC_HOLIDAYS)
+print(f"Быстрый SARIMAX-скоринг: {SARIMAX_QUICK_SCORE_DATE.date()}")
 
+sarimax_quick_batch_df = run_sarimax_scoring_batch(SARIMAX_QUICK_SCORE_DATE, retro_batch_raw_df)
 
-def build_calendar_exog(
-    dates: pd.DatetimeIndex,
-    is_working_day: Optional[pd.Series] = None,
-) -> pd.DataFrame:
-    normalized_dates = pd.to_datetime(dates).normalize()
-    exog = pd.DataFrame(index=normalized_dates)
-
-    if is_working_day is not None:
-        working_day_series = is_working_day.copy()
-        working_day_series.index = pd.to_datetime(working_day_series.index).normalize()
-        exog["is_working_day"] = working_day_series.reindex(normalized_dates).fillna(0).astype(float)
-    else:
-        exog["is_working_day"] = np.where(
-            (normalized_dates.weekday < 5) & (~normalized_dates.isin(RU_PUBLIC_HOLIDAYS)),
-            1.0,
-            0.0,
-        )
-
-    exog["day_of_week"] = normalized_dates.weekday.astype(float)
-    exog["is_month_start"] = (normalized_dates.day <= 3).astype(float)
-    exog["is_month_end"] = (normalized_dates.day >= (normalized_dates + pd.offsets.MonthEnd(0)).day - 2).astype(float)
-    exog["is_holiday"] = normalized_dates.isin(RU_PUBLIC_HOLIDAYS).astype(float)
-    exog["is_pre_holiday"] = normalized_dates.isin(RU_PUBLIC_HOLIDAYS - pd.Timedelta(days=1)).astype(float)
-    exog["is_post_holiday"] = normalized_dates.isin(RU_PUBLIC_HOLIDAYS + pd.Timedelta(days=1)).astype(float)
-
-    last_business_days = []
-    for month_start in pd.date_range(
-        normalized_dates.min().to_period("M").to_timestamp(),
-        normalized_dates.max().to_period("M").to_timestamp(),
-        freq="MS",
-    ):
-        month_end = month_start + pd.offsets.MonthEnd(0)
-        candidate = month_end
-        while candidate.weekday() >= 5 or candidate.normalize() in RU_HOLIDAY_SET:
-            candidate -= pd.Timedelta(days=1)
-        last_business_days.append(candidate.normalize())
-
-    exog["is_last_business_day_of_month"] = normalized_dates.isin(last_business_days).astype(float)
-
-    payday_days = [day for start, end in PAYDAY_WINDOWS for day in range(start, end + 1)]
-    exog["is_payday_window"] = normalized_dates.day.isin(payday_days).astype(float)
-
-    return exog.astype(float)
-
-
-def fit_sarimax(y: pd.Series, exog: pd.DataFrame, config: SarimaConfig):
-    model = SARIMAX(
-        y,
-        exog=exog,
-        order=config.order,
-        seasonal_order=config.seasonal_order,
-        enforce_stationarity=False,
-        enforce_invertibility=False,
-    )
-    return model.fit(disp=False, maxiter=config.maxiter)
-
-
-def sarimax_point_forecast(
-    y: pd.Series,
-    exog_train: pd.DataFrame,
-    exog_future: pd.DataFrame,
-    config: SarimaConfig,
-    output_col: str,
-) -> pd.DataFrame:
-    aligned_index = y.index.intersection(exog_train.index)
-    y_aligned = y.loc[aligned_index]
-    exog_aligned = exog_train.loc[aligned_index]
-    result = fit_sarimax(y_aligned, exog_aligned, config)
-    forecast_result = result.get_forecast(steps=len(exog_future), exog=exog_future)
-    forecast_mean = forecast_result.predicted_mean
-
-    output = pd.DataFrame(
-        {output_col: forecast_mean.values},
-        index=forecast_mean.index,
-    )
-    output.index.name = "forecast_date"
-    return output.reset_index()
-
-
-def build_cashdesk_train_exog(cashdesk_df: pd.DataFrame) -> pd.DataFrame:
-    working_day_series = (
-        (cashdesk_df.set_index("calday")["atdtmco_saldo_turn"] != 0)
-        | (cashdesk_df.set_index("calday")["atdtmco_ns"] != 0)
-    ).astype(float)
-    return build_calendar_exog(
-        pd.DatetimeIndex(cashdesk_df["calday"]),
-        is_working_day=working_day_series,
-    )
-
-
-def collect_backtest_error_blocks_sarimax(
-    y: pd.Series,
-    exog: pd.DataFrame,
-    steps: int,
-    initial_train_days: int,
-    step_days: int,
-    config: SarimaConfig,
-) -> np.ndarray:
-    aligned_index = y.index.intersection(exog.index)
-    y_aligned = y.loc[aligned_index]
-    exog_aligned = exog.loc[aligned_index]
-
-    error_blocks = []
-    max_train_end = len(y_aligned) - steps
-
-    for train_end in range(initial_train_days, max_train_end + 1, step_days):
-        train = y_aligned.iloc[:train_end]
-        test = y_aligned.iloc[train_end:train_end + steps]
-        exog_train = exog_aligned.iloc[:train_end]
-        exog_test = exog_aligned.iloc[train_end:train_end + steps]
-
-        if train.notna().sum() < initial_train_days or len(test) < steps:
-            continue
-
-        try:
-            fitted_model = fit_sarimax(train, exog_train, config)
-            forecast = fitted_model.get_forecast(steps=steps, exog=exog_test).predicted_mean
-            error = test.values - forecast.values
-
-            if np.isfinite(error).all():
-                error_blocks.append(error)
-        except Exception as exc:
-            print(f"SARIMAX backtest iteration failed at train_end={train_end}: {exc}")
-            continue
-
-    if not error_blocks:
-        raise ValueError("Не удалось собрать ни одного блока ошибок SARIMAX backtest.")
-
-    return np.vstack(error_blocks)
-
-
-def forecast_with_error_bootstrap_sarimax(
-    y: pd.Series,
-    exog_train: pd.DataFrame,
-    exog_future: pd.DataFrame,
-    steps: int,
-    initial_train_days: int,
-    step_days: int,
-    bootstrap_iterations: int,
-    quantile: float,
-    config: SarimaConfig,
-    output_col: str,
-    clip_lower: Optional[float] = None,
-    clip_upper: Optional[float] = None,
-) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
-    aligned_index = y.index.intersection(exog_train.index)
-    y_aligned = y.loc[aligned_index]
-    exog_aligned = exog_train.loc[aligned_index]
-
-    try:
-        error_blocks = collect_backtest_error_blocks_sarimax(
-            y=y_aligned,
-            exog=exog_aligned,
-            steps=steps,
-            initial_train_days=initial_train_days,
-            step_days=step_days,
-            config=config,
-        )
-    except ValueError:
-        error_blocks = np.empty((0, steps))
-
-    final_model = fit_sarimax(y_aligned, exog_aligned, config)
-    forecast_result = final_model.get_forecast(steps=steps, exog=exog_future)
-    forecast_mean = forecast_result.predicted_mean
-    forecast_mean_values = forecast_mean.values.copy()
-
-    if clip_lower is not None:
-        forecast_mean_values = np.maximum(forecast_mean_values, clip_lower)
-    if clip_upper is not None:
-        forecast_mean_values = np.minimum(forecast_mean_values, clip_upper)
-
-    if len(error_blocks) < MIN_BACKTEST_ERROR_BLOCKS:
-        forecast_quantile_values = forecast_mean_values * (1 - SARIMA_NO_ERROR_HISTORY_ADJUSTMENT)
-        if clip_lower is not None:
-            forecast_quantile_values = np.maximum(forecast_quantile_values, clip_lower)
-        if clip_upper is not None:
-            forecast_quantile_values = np.minimum(forecast_quantile_values, clip_upper)
-
-        output = pd.DataFrame(
-            {output_col: forecast_quantile_values},
-            index=forecast_mean.index,
-        )
-        output.index.name = "forecast_date"
-        return output.reset_index(), np.empty((0, steps)), error_blocks
-
-    sampled_block_indexes = rng.integers(
-        low=0,
-        high=len(error_blocks),
-        size=bootstrap_iterations,
-    )
-    sampled_errors = error_blocks[sampled_block_indexes]
-    scenarios = forecast_mean_values.reshape(1, -1) + sampled_errors
-
-    if clip_lower is not None:
-        scenarios = np.maximum(scenarios, clip_lower)
-    if clip_upper is not None:
-        scenarios = np.minimum(scenarios, clip_upper)
-
-    output = pd.DataFrame(
-        {output_col: np.quantile(scenarios, quantile, axis=0)},
-        index=forecast_mean.index,
-    )
-    output.index.name = "forecast_date"
-    return output.reset_index(), scenarios, error_blocks
-
-
-def run_sarimax_scoring_batch(retro_run_date: pd.Timestamp, retro_raw_df: pd.DataFrame) -> pd.DataFrame:
-    retro_max_data_date = retro_run_date - pd.Timedelta(days=DATA_LAG_DAYS)
-    retro_fact_date_to_exclusive = retro_run_date + pd.Timedelta(days=RETRO_BATCH_EVALUATION_DAYS)
-    retro_model_steps = RETRO_BATCH_EVALUATION_DAYS + DATA_LAG_DAYS - 1
-
-    retro_daily_df = (
-        retro_raw_df
-        .assign(calday=lambda df: df["atdtmco_calday"].dt.normalize())
-        .groupby(["atdtmco_cashdesk_name", "calday"], as_index=False)
-        .agg(
-            atdtmco_saldo_turn=("atdtmco_saldo_turn", "sum"),
-            atdtmco_ns=("atdtmco_ns", "min"),
-        )
-    )
-    retro_daily_df["atdtmco_ns"] = retro_daily_df["atdtmco_ns"].clip(upper=0)
-    retro_daily_df = retro_daily_df.sort_values(["atdtmco_cashdesk_name", "calday"]).reset_index(drop=True)
-
-    retro_active_date_from = retro_max_data_date - pd.DateOffset(months=ACTIVE_LOOKBACK_MONTHS)
-    retro_active_cashdesks = retro_daily_df.loc[
-        (retro_daily_df["calday"] >= retro_active_date_from)
-        & (retro_daily_df["calday"] <= retro_max_data_date),
-        "atdtmco_cashdesk_name",
-    ].drop_duplicates()
-
-    retro_daily_df = retro_daily_df[
-        retro_daily_df["atdtmco_cashdesk_name"].isin(retro_active_cashdesks)
-    ].reset_index(drop=True)
-
-    retro_train_df = retro_daily_df[retro_daily_df["calday"] <= retro_max_data_date].copy()
-    retro_actual_df = (
-        retro_daily_df[
-            (retro_daily_df["calday"] >= retro_run_date)
-            & (retro_daily_df["calday"] < retro_fact_date_to_exclusive)
-        ]
-        .assign(
-            forecast_date=lambda df: df["calday"],
-            atdtmco_saldo_turn_fact=lambda df: df["atdtmco_saldo_turn"],
-            atdtmco_ns_fact=lambda df: df["atdtmco_ns"],
-        )
-        [["atdtmco_cashdesk_name", "forecast_date", "atdtmco_saldo_turn_fact", "atdtmco_ns_fact"]]
-    )
-
-    retro_saldo_forecasts = []
-    retro_need_forecasts = []
-    n_cashdesks = retro_train_df["atdtmco_cashdesk_name"].nunique()
-
-    for idx, (atdtmco_cashdesk_name, cashdesk_df) in enumerate(
-        retro_train_df.groupby("atdtmco_cashdesk_name", sort=True), start=1
-    ):
-        print(f"  [{idx}/{n_cashdesks}] SARIMAX: {atdtmco_cashdesk_name}")
-        cashdesk_df = extend_cashdesk_to_report_date(cashdesk_df.copy(), retro_max_data_date)
-        saldo_series = make_regular_daily_series(cashdesk_df, "atdtmco_saldo_turn", "zero")
-        need_series = make_regular_daily_series(cashdesk_df, "atdtmco_ns", "zero")
-        exog_train = build_cashdesk_train_exog(cashdesk_df)
-        future_index = make_future_index(saldo_series, retro_model_steps)
-        exog_future = build_calendar_exog(future_index)
-
-        if len(saldo_series) >= MIN_OBSERVATIONS:
-            try:
-                saldo_forecast = sarimax_point_forecast(
-                    y=saldo_series,
-                    exog_train=exog_train,
-                    exog_future=exog_future,
-                    config=SARIMA_CONFIG,
-                    output_col="atdtmco_saldo_turn",
-                )
-            except Exception:
-                saldo_forecast = weekday_point_forecast(saldo_series, retro_model_steps, "atdtmco_saldo_turn")
-        else:
-            saldo_forecast = weekday_point_forecast(saldo_series, retro_model_steps, "atdtmco_saldo_turn")
-        saldo_forecast.insert(0, "atdtmco_cashdesk_name", atdtmco_cashdesk_name)
-
-        if len(need_series) >= MIN_OBSERVATIONS:
-            try:
-                need_forecast, _, _ = forecast_with_error_bootstrap_sarimax(
-                    y=need_series,
-                    exog_train=exog_train,
-                    exog_future=exog_future,
-                    steps=retro_model_steps,
-                    initial_train_days=INITIAL_TRAIN_DAYS,
-                    step_days=BACKTEST_STEP_DAYS,
-                    bootstrap_iterations=BOOTSTRAP_ITERATIONS,
-                    quantile=BOOTSTRAP_QUANTILE,
-                    config=SARIMA_CONFIG,
-                    output_col="atdtmco_ns",
-                    clip_lower=CASH_NEED_CLIP_LOWER,
-                    clip_upper=CASH_NEED_CLIP_UPPER,
-                )
-            except Exception:
-                need_forecast, _, _ = weekday_quantile_forecast(
-                    need_series, retro_model_steps, BOOTSTRAP_QUANTILE, "atdtmco_ns"
-                )
-        else:
-            need_forecast, _, _ = weekday_quantile_forecast(
-                need_series, retro_model_steps, BOOTSTRAP_QUANTILE, "atdtmco_ns"
-            )
-        need_forecast.insert(0, "atdtmco_cashdesk_name", atdtmco_cashdesk_name)
-
-        retro_saldo_forecasts.append(saldo_forecast)
-        retro_need_forecasts.append(need_forecast)
-
-    retro_saldo_forecasts_df = pd.concat(retro_saldo_forecasts, ignore_index=True)
-    retro_need_forecasts_df = pd.concat(retro_need_forecasts, ignore_index=True)
-
-    retro_saldo_forecasts_df = retro_saldo_forecasts_df[
-        (retro_saldo_forecasts_df["forecast_date"] >= retro_run_date)
-        & (retro_saldo_forecasts_df["forecast_date"] < retro_fact_date_to_exclusive)
-    ]
-    retro_need_forecasts_df = retro_need_forecasts_df[
-        (retro_need_forecasts_df["forecast_date"] >= retro_run_date)
-        & (retro_need_forecasts_df["forecast_date"] < retro_fact_date_to_exclusive)
-    ]
-
-    retro_forecast_table_df = (
-        retro_saldo_forecasts_df[["atdtmco_cashdesk_name", "forecast_date", "atdtmco_saldo_turn"]]
-        .rename(columns={"atdtmco_saldo_turn": "atdtmco_saldo_turn_pred_sarimax"})
-        .merge(
-            retro_need_forecasts_df[["atdtmco_cashdesk_name", "forecast_date", "atdtmco_ns"]]
-            .rename(columns={"atdtmco_ns": "atdtmco_ns_pred_sarimax"}),
-            on=["atdtmco_cashdesk_name", "forecast_date"],
-            how="outer",
-        )
-    )
-
-    retro_result_df = retro_forecast_table_df.merge(
-        retro_actual_df,
-        on=["atdtmco_cashdesk_name", "forecast_date"],
+retro_sarimax_quick_result_df = (
+    retro_batch_result_df[retro_batch_result_df["score_date"] == SARIMAX_QUICK_SCORE_DATE]
+    .merge(
+        sarimax_quick_batch_df[
+            [
+                "score_date",
+                "atdtmco_cashdesk_name",
+                "forecast_date",
+                "atdtmco_saldo_turn_pred_sarimax",
+                "atdtmco_ns_pred_sarimax",
+            ]
+        ],
+        on=["score_date", "atdtmco_cashdesk_name", "forecast_date"],
         how="left",
     )
-    retro_result_df[["atdtmco_saldo_turn_fact", "atdtmco_ns_fact"]] = retro_result_df[
-        ["atdtmco_saldo_turn_fact", "atdtmco_ns_fact"]
-    ].fillna(0)
-    retro_result_df.insert(0, "score_date", retro_run_date)
-    retro_result_df.insert(1, "report_date", retro_max_data_date)
-
-    for date_col in ["score_date", "report_date", "forecast_date"]:
-        retro_result_df[date_col] = pd.to_datetime(retro_result_df[date_col]).dt.normalize()
-
-    return retro_result_df[
-        [
-            "score_date",
-            "report_date",
-            "atdtmco_cashdesk_name",
-            "forecast_date",
-            "atdtmco_saldo_turn_pred_sarimax",
-            "atdtmco_ns_pred_sarimax",
-            "atdtmco_saldo_turn_fact",
-            "atdtmco_ns_fact",
-        ]
-    ]
-
-
-sarimax_batch_results = []
-for retro_run_date in score_dates:
-    print(f"SARIMAX-скоринг: {retro_run_date.date()}")
-    sarimax_batch_results.append(run_sarimax_scoring_batch(retro_run_date, retro_batch_raw_df))
-
-sarimax_batch_result_df = pd.concat(sarimax_batch_results, ignore_index=True)
-
-retro_sarimax_compare_result_df = retro_batch_result_df.merge(
-    sarimax_batch_result_df[
-        [
-            "score_date",
-            "atdtmco_cashdesk_name",
-            "forecast_date",
-            "atdtmco_saldo_turn_pred_sarimax",
-            "atdtmco_ns_pred_sarimax",
-        ]
-    ],
-    on=["score_date", "atdtmco_cashdesk_name", "forecast_date"],
-    how="left",
+    .assign(
+        error_atdtmco_saldo_turn=lambda df: df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred"],
+        error_atdtmco_ns=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred"],
+        error_atdtmco_saldo_turn_sarimax=lambda df: (
+            df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred_sarimax"]
+        ),
+        error_atdtmco_ns_sarimax=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred_sarimax"],
+        ns_breach=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred"],
+        ns_breach_sarimax=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred_sarimax"],
+    )
 )
 
-retro_sarimax_compare_result_df = retro_sarimax_compare_result_df.assign(
-    error_atdtmco_saldo_turn=lambda df: df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred"],
-    error_atdtmco_ns=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred"],
-    error_atdtmco_saldo_turn_sarimax=lambda df: (
-        df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred_sarimax"]
-    ),
-    error_atdtmco_ns_sarimax=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred_sarimax"],
-    ns_breach=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred"],
-    ns_breach_sarimax=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred_sarimax"],
-)
+sarimax_quick_eval_df = retro_sarimax_quick_result_df.loc[
+    ~(
+        (retro_sarimax_quick_result_df["atdtmco_saldo_turn_fact"] == 0)
+        & (retro_sarimax_quick_result_df["atdtmco_ns_fact"] == 0)
+    )
+].copy()
 
-sarimax_compare_eval_df = retro_sarimax_compare_result_df.assign(
-    is_non_working_day=lambda df: (
-        (df["atdtmco_saldo_turn_fact"] == 0) & (df["atdtmco_ns_fact"] == 0)
-    ),
-)
-excluded_zero_fact_rows = int(sarimax_compare_eval_df["is_non_working_day"].sum())
-sarimax_compare_eval_df = sarimax_compare_eval_df[~sarimax_compare_eval_df["is_non_working_day"]].copy()
-
-sarimax_compare_metrics_total = pd.DataFrame(
+sarimax_quick_metrics_total = pd.DataFrame(
     [
         {
             "target": "atdtmco_saldo_turn",
-            "rows_used": len(sarimax_compare_eval_df),
-            "excluded_non_working_rows": excluded_zero_fact_rows,
-            "sarima_mae": sarimax_compare_eval_df["error_atdtmco_saldo_turn"].abs().mean(),
-            "sarimax_mae": sarimax_compare_eval_df["error_atdtmco_saldo_turn_sarimax"].abs().mean(),
-            "mae_delta_sarimax_minus_sarima": (
-                sarimax_compare_eval_df["error_atdtmco_saldo_turn_sarimax"].abs().mean()
-                - sarimax_compare_eval_df["error_atdtmco_saldo_turn"].abs().mean()
-            ),
+            "score_date": SARIMAX_QUICK_SCORE_DATE,
+            "rows_used": len(sarimax_quick_eval_df),
+            "sarima_mae": sarimax_quick_eval_df["error_atdtmco_saldo_turn"].abs().mean(),
+            "sarimax_mae": sarimax_quick_eval_df["error_atdtmco_saldo_turn_sarimax"].abs().mean(),
         },
         {
             "target": "atdtmco_ns",
-            "rows_used": len(sarimax_compare_eval_df),
-            "excluded_non_working_rows": excluded_zero_fact_rows,
-            "sarima_mae": sarimax_compare_eval_df["error_atdtmco_ns"].abs().mean(),
-            "sarimax_mae": sarimax_compare_eval_df["error_atdtmco_ns_sarimax"].abs().mean(),
-            "mae_delta_sarimax_minus_sarima": (
-                sarimax_compare_eval_df["error_atdtmco_ns_sarimax"].abs().mean()
-                - sarimax_compare_eval_df["error_atdtmco_ns"].abs().mean()
-            ),
-            "sarima_breach_rate": sarimax_compare_eval_df["ns_breach"].mean(),
-            "sarimax_breach_rate": sarimax_compare_eval_df["ns_breach_sarimax"].mean(),
+            "score_date": SARIMAX_QUICK_SCORE_DATE,
+            "rows_used": len(sarimax_quick_eval_df),
+            "sarima_mae": sarimax_quick_eval_df["error_atdtmco_ns"].abs().mean(),
+            "sarimax_mae": sarimax_quick_eval_df["error_atdtmco_ns_sarimax"].abs().mean(),
+            "sarima_breach_rate": sarimax_quick_eval_df["ns_breach"].mean(),
+            "sarimax_breach_rate": sarimax_quick_eval_df["ns_breach_sarimax"].mean(),
         },
     ]
 )
 
-sarimax_compare_metrics_by_cashdesk = (
-    sarimax_compare_eval_df
-    .groupby("atdtmco_cashdesk_name", as_index=False)
-    .agg(
-        rows=("atdtmco_cashdesk_name", "size"),
-        saldo_turn_mae_sarima=("error_atdtmco_saldo_turn", lambda s: s.abs().mean()),
-        saldo_turn_mae_sarimax=("error_atdtmco_saldo_turn_sarimax", lambda s: s.abs().mean()),
-        ns_mae_sarima=("error_atdtmco_ns", lambda s: s.abs().mean()),
-        ns_mae_sarimax=("error_atdtmco_ns_sarimax", lambda s: s.abs().mean()),
-        ns_breach_rate_sarima=("ns_breach", "mean"),
-        ns_breach_rate_sarimax=("ns_breach_sarimax", "mean"),
-    )
-    .assign(
-        saldo_turn_mae_delta=lambda df: df["saldo_turn_mae_sarimax"] - df["saldo_turn_mae_sarima"],
-        ns_mae_delta=lambda df: df["ns_mae_sarimax"] - df["ns_mae_sarima"],
-        sarimax_better_saldo_turn=lambda df: df["saldo_turn_mae_sarimax"] < df["saldo_turn_mae_sarima"],
-        sarimax_better_ns=lambda df: df["ns_mae_sarimax"] < df["ns_mae_sarima"],
-    )
-    .sort_values("saldo_turn_mae_delta")
-)
-
-print(
-    "SARIMAX лучше: "
-    f"atdtmco_saldo_turn {sarimax_compare_metrics_by_cashdesk['sarimax_better_saldo_turn'].mean():.1%}, "
-    f"atdtmco_ns {sarimax_compare_metrics_by_cashdesk['sarimax_better_ns'].mean():.1%}"
-)
-print("Итого:")
-display(sarimax_compare_metrics_total)
-print("Топ-10 касс, где SARIMAX лучше по atdtmco_saldo_turn:")
-display(
-    sarimax_compare_metrics_by_cashdesk.nsmallest(10, "saldo_turn_mae_delta")[
-        ["atdtmco_cashdesk_name", "saldo_turn_mae_sarima", "saldo_turn_mae_sarimax", "saldo_turn_mae_delta"]
-    ]
-)
-print("Топ-10 касс, где SARIMAX лучше по atdtmco_ns:")
-display(
-    sarimax_compare_metrics_by_cashdesk.nsmallest(10, "ns_mae_delta")[
-        ["atdtmco_cashdesk_name", "ns_mae_sarima", "ns_mae_sarimax", "ns_mae_delta"]
-    ]
-)
-
-retro_sarimax_compare_result_df.head()
+print(f"Строк: {len(retro_sarimax_quick_result_df)}, касс: {retro_sarimax_quick_result_df['atdtmco_cashdesk_name'].nunique()}")
+display(sarimax_quick_metrics_total)
+retro_sarimax_quick_result_df.head()
