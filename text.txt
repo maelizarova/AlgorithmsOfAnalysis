@@ -1,64 +1,29 @@
-SARIMAX_QUICK_SCORE_DATE = score_dates[0]
-
-print(f"Быстрый SARIMAX-скоринг: {SARIMAX_QUICK_SCORE_DATE.date()}")
-
-sarimax_quick_batch_df = run_sarimax_scoring_batch(SARIMAX_QUICK_SCORE_DATE, retro_batch_raw_df)
-
-retro_sarimax_quick_result_df = (
-    retro_batch_result_df[retro_batch_result_df["score_date"] == SARIMAX_QUICK_SCORE_DATE]
-    .merge(
-        sarimax_quick_batch_df[
-            [
-                "score_date",
-                "atdtmco_cashdesk_name",
-                "forecast_date",
-                "atdtmco_saldo_turn_pred_sarimax",
-                "atdtmco_ns_pred_sarimax",
-            ]
-        ],
-        on=["score_date", "atdtmco_cashdesk_name", "forecast_date"],
-        how="left",
-    )
-    .assign(
-        error_atdtmco_saldo_turn=lambda df: df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred"],
-        error_atdtmco_ns=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred"],
-        error_atdtmco_saldo_turn_sarimax=lambda df: (
-            df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred_sarimax"]
-        ),
-        error_atdtmco_ns_sarimax=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred_sarimax"],
-        ns_breach=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred"],
-        ns_breach_sarimax=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred_sarimax"],
-    )
-)
-
-sarimax_quick_eval_df = retro_sarimax_quick_result_df.loc[
-    ~(
-        (retro_sarimax_quick_result_df["atdtmco_saldo_turn_fact"] == 0)
-        & (retro_sarimax_quick_result_df["atdtmco_ns_fact"] == 0)
-    )
-].copy()
-
-sarimax_quick_metrics_total = pd.DataFrame(
+sarimax_quick_means_compare_df = pd.DataFrame(
     [
         {
             "target": "atdtmco_saldo_turn",
             "score_date": SARIMAX_QUICK_SCORE_DATE,
             "rows_used": len(sarimax_quick_eval_df),
-            "sarima_mae": sarimax_quick_eval_df["error_atdtmco_saldo_turn"].abs().mean(),
-            "sarimax_mae": sarimax_quick_eval_df["error_atdtmco_saldo_turn_sarimax"].abs().mean(),
+            "fact_mean": sarimax_quick_eval_df["atdtmco_saldo_turn_fact"].mean(),
+            "sarima_pred_mean": sarimax_quick_eval_df["atdtmco_saldo_turn_pred"].mean(),
+            "sarimax_pred_mean": sarimax_quick_eval_df["atdtmco_saldo_turn_pred_sarimax"].mean(),
+            "mae_sarima": sarimax_quick_eval_df["error_atdtmco_saldo_turn"].abs().mean(),
+            "mae_sarimax": sarimax_quick_eval_df["error_atdtmco_saldo_turn_sarimax"].abs().mean(),
         },
         {
             "target": "atdtmco_ns",
             "score_date": SARIMAX_QUICK_SCORE_DATE,
             "rows_used": len(sarimax_quick_eval_df),
-            "sarima_mae": sarimax_quick_eval_df["error_atdtmco_ns"].abs().mean(),
-            "sarimax_mae": sarimax_quick_eval_df["error_atdtmco_ns_sarimax"].abs().mean(),
-            "sarima_breach_rate": sarimax_quick_eval_df["ns_breach"].mean(),
-            "sarimax_breach_rate": sarimax_quick_eval_df["ns_breach_sarimax"].mean(),
+            "fact_mean": sarimax_quick_eval_df["atdtmco_ns_fact"].mean(),
+            "sarima_pred_mean": sarimax_quick_eval_df["atdtmco_ns_pred"].mean(),
+            "sarimax_pred_mean": sarimax_quick_eval_df["atdtmco_ns_pred_sarimax"].mean(),
+            "mae_sarima": sarimax_quick_eval_df["error_atdtmco_ns"].abs().mean(),
+            "mae_sarimax": sarimax_quick_eval_df["error_atdtmco_ns_sarimax"].abs().mean(),
+            "breach_rate_sarima": sarimax_quick_eval_df["ns_breach"].mean(),
+            "breach_rate_sarimax": sarimax_quick_eval_df["ns_breach_sarimax"].mean(),
         },
     ]
 )
 
-print(f"Строк: {len(retro_sarimax_quick_result_df)}, касс: {retro_sarimax_quick_result_df['atdtmco_cashdesk_name'].nunique()}")
-display(sarimax_quick_metrics_total)
-retro_sarimax_quick_result_df.head()
+print(f"Сравнение на {SARIMAX_QUICK_SCORE_DATE.date()} (без нулевых дней):")
+display(sarimax_quick_means_compare_df)
