@@ -1,49 +1,68 @@
-import pandas as pd
-
-y3 = df["target_3m"]
-y6 = df["target_6m"]
-
-# Phi coefficient: Pearson correlation для двух бинарных 0/1 таргетов
-phi_corr = y3.corr(y6)
-
-# Таблица переходов в штуках
-cross_counts = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    margins=True
+retro_batch_eval_df = retro_batch_result_df.assign(
+    error_atdtmco_saldo_turn=lambda df: df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred"],
+    error_atdtmco_ns=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred"],
+    ns_breach=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred"],
 )
 
-# Таблица переходов в долях от всей выборки
-cross_share_all = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="all"
+retro_batch_metrics_total = pd.DataFrame(
+    [
+        {
+            "rows": len(retro_batch_eval_df),
+            "score_dates": retro_batch_eval_df["score_date"].nunique(),
+            "cashdesks": retro_batch_eval_df["atdtmco_cashdesk_name"].nunique(),
+            "fact_saldo_turn_mean": retro_batch_eval_df["atdtmco_saldo_turn_fact"].mean(),
+            "forecast_saldo_turn_mean": retro_batch_eval_df["atdtmco_saldo_turn_pred"].mean(),
+            "saldo_turn_mae": retro_batch_eval_df["error_atdtmco_saldo_turn"].abs().mean(),
+            "fact_ns_mean": retro_batch_eval_df["atdtmco_ns_fact"].mean(),
+            "forecast_ns_mean": retro_batch_eval_df["atdtmco_ns_pred"].mean(),
+            "ns_mae": retro_batch_eval_df["error_atdtmco_ns"].abs().mean(),
+            "ns_breach_rate": retro_batch_eval_df["ns_breach"].mean(),
+        }
+    ]
 )
 
-# Условные вероятности: куда переходит target_3m к 6 месяцу
-cross_share_by_3m = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="index"
+retro_batch_metrics_by_score_date = (
+    retro_batch_eval_df
+    .groupby("score_date", as_index=False)
+    .agg(
+        rows=("score_date", "size"),
+        cashdesks=("atdtmco_cashdesk_name", "nunique"),
+        fact_saldo_turn_mean=("atdtmco_saldo_turn_fact", "mean"),
+        forecast_saldo_turn_mean=("atdtmco_saldo_turn_pred", "mean"),
+        saldo_turn_mae=("error_atdtmco_saldo_turn", lambda value: value.abs().mean()),
+        fact_ns_mean=("atdtmco_ns_fact", "mean"),
+        forecast_ns_mean=("atdtmco_ns_pred", "mean"),
+        ns_mae=("error_atdtmco_ns", lambda value: value.abs().mean()),
+        ns_breach_rate=("ns_breach", "mean"),
+    )
+    .sort_values("score_date")
 )
 
-# Доля полного совпадения таргетов
-same_target_share = (y3 == y6).mean()
+retro_batch_cashdesk_metrics = (
+    retro_batch_eval_df
+    .groupby("atdtmco_cashdesk_name", as_index=False)
+    .agg(
+        rows=("atdtmco_cashdesk_name", "size"),
+        fact_saldo_turn_mean=("atdtmco_saldo_turn_fact", "mean"),
+        forecast_saldo_turn_mean=("atdtmco_saldo_turn_pred", "mean"),
+        saldo_turn_mae=("error_atdtmco_saldo_turn", lambda value: value.abs().mean()),
+        fact_ns_mean=("atdtmco_ns_fact", "mean"),
+        forecast_ns_mean=("atdtmco_ns_pred", "mean"),
+        ns_mae=("error_atdtmco_ns", lambda value: value.abs().mean()),
+        ns_breach_rate=("ns_breach", "mean"),
+    )
+    .assign(
+        saldo_turn_bias=lambda df: df["fact_saldo_turn_mean"] - df["forecast_saldo_turn_mean"],
+        ns_bias=lambda df: df["fact_ns_mean"] - df["forecast_ns_mean"],
+    )
+    .sort_values(["ns_breach_rate", "ns_mae", "saldo_turn_mae"], ascending=False)
+)
 
-print("Phi correlation:", phi_corr)
-print("\nCounts:")
-print(cross_counts)
+print("Итого по батчу:")
+display(retro_batch_metrics_total)
 
-print("\nShare of all:")
-print(cross_share_all)
+print("По score_date:")
+display(retro_batch_metrics_by_score_date)
 
-print("\nConditional share by target_3m:")
-print(cross_share_by_3m)
-
-print("\nSame target share:", same_target_share)
+print("Топ-10 касс по ошибке:")
+display(retro_batch_cashdesk_metrics.head(10))
