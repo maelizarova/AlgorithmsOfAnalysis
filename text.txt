@@ -1,5 +1,31 @@
 OLD_NS_PRED_COL = "forecast_model"
 
+OLD_NEW_TOTAL_COLS_RU = {
+    "target": "Показатель",
+    "rows": "Строк",
+    "cashdesks": "Касс",
+    "score_dates": "Дат скоринга",
+    "fact_mean": "Средний факт",
+    "new_pred_mean": "Средний прогноз (новый)",
+    "old_pred_mean": "Средний прогноз (старый)",
+    "mae_new": "MAE (новый)",
+    "mae_old": "MAE (старый)",
+    "mae_delta_new_minus_old": "Δ MAE (новый − старый)",
+    "breach_rate_new": "Доля нарушений (новый)",
+    "breach_rate_old": "Доля нарушений (старый)",
+}
+
+OLD_NEW_BY_CASHDESK_COLS_RU = {
+    "atdtmco_cashdesk_name": "Касса",
+    "rows": "Строк",
+    "ns_mae_new": "MAE потребность (новый)",
+    "ns_mae_old": "MAE потребность (старый)",
+    "breach_rate_new": "Доля нарушений (новый)",
+    "breach_rate_old": "Доля нарушений (старый)",
+    "ns_mae_delta": "Δ MAE (новый − старый)",
+    "new_better_ns": "Новый лучше по потребности",
+}
+
 old_new_compare_df = (
     retro_batch_result_df.loc[retro_batch_result_df[OLD_NS_PRED_COL].notna()]
     .assign(
@@ -11,26 +37,29 @@ old_new_compare_df = (
     )
 )
 
-old_new_compare_metrics_total = pd.DataFrame(
-    [
-        {
-            "target": "atdtmco_ns",
-            "rows": len(old_new_compare_df),
-            "cashdesks": old_new_compare_df["atdtmco_cashdesk_name"].nunique(),
-            "score_dates": old_new_compare_df["score_date"].nunique(),
-            "fact_mean": old_new_compare_df["atdtmco_ns_fact"].mean(),
-            "new_pred_mean": old_new_compare_df["atdtmco_ns_pred"].mean(),
-            "old_pred_mean": old_new_compare_df["atdtmco_ns_pred_old"].mean(),
-            "mae_new": old_new_compare_df["error_atdtmco_ns_new"].abs().mean(),
-            "mae_old": old_new_compare_df["error_atdtmco_ns_old"].abs().mean(),
-            "mae_delta_new_minus_old": (
-                old_new_compare_df["error_atdtmco_ns_new"].abs().mean()
-                - old_new_compare_df["error_atdtmco_ns_old"].abs().mean()
-            ),
-            "breach_rate_new": old_new_compare_df["ns_breach_new"].mean(),
-            "breach_rate_old": old_new_compare_df["ns_breach_old"].mean(),
-        }
-    ]
+old_new_compare_metrics_total = (
+    pd.DataFrame(
+        [
+            {
+                "target": "Потребность",
+                "rows": len(old_new_compare_df),
+                "cashdesks": old_new_compare_df["atdtmco_cashdesk_name"].nunique(),
+                "score_dates": old_new_compare_df["score_date"].nunique(),
+                "fact_mean": old_new_compare_df["atdtmco_ns_fact"].mean(),
+                "new_pred_mean": old_new_compare_df["atdtmco_ns_pred"].mean(),
+                "old_pred_mean": old_new_compare_df["atdtmco_ns_pred_old"].mean(),
+                "mae_new": old_new_compare_df["error_atdtmco_ns_new"].abs().mean(),
+                "mae_old": old_new_compare_df["error_atdtmco_ns_old"].abs().mean(),
+                "mae_delta_new_minus_old": (
+                    old_new_compare_df["error_atdtmco_ns_new"].abs().mean()
+                    - old_new_compare_df["error_atdtmco_ns_old"].abs().mean()
+                ),
+                "breach_rate_new": old_new_compare_df["ns_breach_new"].mean(),
+                "breach_rate_old": old_new_compare_df["ns_breach_old"].mean(),
+            }
+        ]
+    )
+    .rename(columns=OLD_NEW_TOTAL_COLS_RU)
 )
 
 old_new_compare_metrics_by_cashdesk = (
@@ -48,6 +77,7 @@ old_new_compare_metrics_by_cashdesk = (
         new_better_ns=lambda df: df["ns_mae_new"] < df["ns_mae_old"],
     )
     .sort_values("ns_mae_delta")
+    .rename(columns=OLD_NEW_BY_CASHDESK_COLS_RU)
 )
 
 print(
@@ -55,9 +85,25 @@ print(
     f"касс: {old_new_compare_df['atdtmco_cashdesk_name'].nunique()}"
 )
 print(
-    f"Новый лучше по NS на "
-    f"{old_new_compare_metrics_by_cashdesk['new_better_ns'].mean():.1%} касс"
+    f"Новый алгоритм лучше по потребности на "
+    f"{old_new_compare_metrics_by_cashdesk['Новый лучше по потребности'].mean():.1%} касс"
+)
+print(
+    f"Нарушений (новый): {old_new_compare_df['ns_breach_new'].sum():.0f} из {len(old_new_compare_df)} строк, "
+    f"(старый): {old_new_compare_df['ns_breach_old'].sum():.0f}"
 )
 
 display(old_new_compare_metrics_total)
+
+print("Топ-10 касс, где новый алгоритм лучше по MAE потребности:")
 display(old_new_compare_metrics_by_cashdesk.head(10))
+
+print("Кассы, где было нарушение (хотя бы по одной модели):")
+display(
+    old_new_compare_metrics_by_cashdesk.loc[
+        (old_new_compare_metrics_by_cashdesk["Доля нарушений (новый)"] > 0)
+        | (old_new_compare_metrics_by_cashdesk["Доля нарушений (старый)"] > 0)
+    ]
+    .sort_values(["Доля нарушений (новый)", "Доля нарушений (старый)"], ascending=False)
+    .head(10)
+)
