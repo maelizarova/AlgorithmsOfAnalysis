@@ -40,7 +40,7 @@ RETRO_BATCH_BY_CASHDESK_COLS_RU = {
     "ns_bias": "Смещение (потребность)",
 }
 
-retro_batch_eval_df = retro_batch_result_df.assign(
+retro_batch_eval_all_df = retro_batch_result_df.assign(
     error_atdtmco_saldo_turn=lambda df: df["atdtmco_saldo_turn_fact"] - df["atdtmco_saldo_turn_pred"],
     error_atdtmco_ns=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred"],
     ns_breach=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred"],
@@ -50,8 +50,27 @@ retro_batch_eval_df = retro_batch_result_df.assign(
     ),
 )
 
-excluded_zero_fact_rows = int(retro_batch_eval_df["is_non_working_day"].sum())
-retro_batch_eval_df = retro_batch_eval_df[~retro_batch_eval_df["is_non_working_day"]].copy()
+excluded_zero_fact_rows = int(retro_batch_eval_all_df["is_non_working_day"].sum())
+retro_batch_eval_df = retro_batch_eval_all_df[~retro_batch_eval_all_df["is_non_working_day"]].copy()
+
+retro_batch_metrics_total_all = pd.DataFrame(
+    [
+        {
+            "rows_total": len(retro_batch_result_df),
+            "rows_used": len(retro_batch_eval_all_df),
+            "excluded_zero_fact_rows": 0,
+            "score_dates": retro_batch_eval_all_df["score_date"].nunique(),
+            "cashdesks": retro_batch_eval_all_df["atdtmco_cashdesk_name"].nunique(),
+            "fact_saldo_turn_mean": retro_batch_eval_all_df["atdtmco_saldo_turn_fact"].mean(),
+            "forecast_saldo_turn_mean": retro_batch_eval_all_df["atdtmco_saldo_turn_pred"].mean(),
+            "saldo_turn_mae": retro_batch_eval_all_df["error_atdtmco_saldo_turn"].abs().mean(),
+            "fact_ns_mean": retro_batch_eval_all_df["atdtmco_ns_fact"].mean(),
+            "forecast_ns_mean": retro_batch_eval_all_df["atdtmco_ns_pred"].mean(),
+            "ns_mae": retro_batch_eval_all_df["error_atdtmco_ns"].abs().mean(),
+            "ns_breach_rate": retro_batch_eval_all_df["ns_breach"].mean(),
+        }
+    ]
+).rename(columns=RETRO_BATCH_TOTAL_COLS_RU)
 
 retro_batch_metrics_total = pd.DataFrame(
     [
@@ -111,7 +130,10 @@ retro_batch_cashdesk_metrics = (
     .rename(columns=RETRO_BATCH_BY_CASHDESK_COLS_RU)
 )
 
-print("Итого по батчу:")
+print("Итого по батчу (все данные, без исключения нулевых дней):")
+display(retro_batch_metrics_total_all)
+
+print("Итого по батчу (без нулевых дней):")
 display(retro_batch_metrics_total)
 
 print("По дате скоринга:")
