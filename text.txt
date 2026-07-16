@@ -1,4 +1,21 @@
-SELECT ROUND(bytes/1024/1024/1024,1) AS gb
-FROM   dba_segments
-WHERE  owner = 'ANALYTICS'
-AND    segment_name = 'VMR_CC_ACTIVE_BASE_SCORES';
+DELETE FROM analytics.vmr_cc_active_base_scores
+WHERE ROWID IN (
+  SELECT rid
+  FROM (
+    SELECT ROWID AS rid,
+           ROW_NUMBER() OVER (
+             PARTITION BY client_did, report_date, score, decile, lvl1, lvl2
+             ORDER BY ROWID
+           ) AS rn
+    FROM analytics.vmr_cc_active_base_scores
+    WHERE report_date = DATE '2026-05-10'   -- ваш день
+  )
+  WHERE rn > 1
+);
+COMMIT;
+
+SELECT client_did, report_date, score, decile, lvl1, lvl2, COUNT(*) AS cnt
+FROM analytics.vmr_cc_active_base_scores
+WHERE report_date = DATE '2026-05-10'
+GROUP BY client_did, report_date, score, decile, lvl1, lvl2
+HAVING COUNT(*) > 1;
