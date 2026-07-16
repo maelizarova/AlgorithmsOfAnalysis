@@ -1,21 +1,31 @@
-DELETE FROM analytics.vmr_cc_active_base_scores
-WHERE ROWID IN (
-  SELECT rid
-  FROM (
-    SELECT ROWID AS rid,
-           ROW_NUMBER() OVER (
-             PARTITION BY client_did, report_date, score, decile, lvl1, lvl2
-             ORDER BY ROWID
-           ) AS rn
-    FROM analytics.vmr_cc_active_base_scores
-    WHERE report_date = DATE '2026-05-10'   -- ваш день
-  )
-  WHERE rn > 1
-);
-COMMIT;
+SET SERVEROUTPUT ON
+DECLARE
+  l_used_bytes  NUMBER;
+  l_alloc_bytes NUMBER;
+BEGIN
+  DBMS_SPACE.CREATE_INDEX_COST(
+    ddl => q'[CREATE INDEX analytics.idx_vmr_cc_scores_repdate
+              ON analytics.vmr_cc_active_base_scores (report_date)]',
+    used_bytes  => l_used_bytes,
+    alloc_bytes => l_alloc_bytes
+  );
 
-SELECT client_did, report_date, score, decile, lvl1, lvl2, COUNT(*) AS cnt
-FROM analytics.vmr_cc_active_base_scores
-WHERE report_date = DATE '2026-05-10'
-GROUP BY client_did, report_date, score, decile, lvl1, lvl2
-HAVING COUNT(*) > 1;
+  DBMS_OUTPUT.PUT_LINE('used_gb  = ' || ROUND(l_used_bytes/1024/1024/1024, 2));
+  DBMS_OUTPUT.PUT_LINE('alloc_gb = ' || ROUND(l_alloc_bytes/1024/1024/1024, 2));
+END;
+
+
+
+SELECT tablespace_name,
+       ROUND(free_mb/1024,1) AS free_gb
+FROM (
+  SELECT tablespace_name, SUM(bytes)/1024/1024 AS free_mb
+  FROM dba_free_space
+  GROUP BY tablespace_name
+)
+WHERE tablespace_name = (
+  SELECT tablespace_name
+  FROM all_tables
+  WHERE owner = 'ANALYTICS'
+  AND table_name = 'VMR_CC_ACTIVE_BASE_SCORES'
+);
