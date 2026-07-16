@@ -1,9 +1,4 @@
-SELECT tablespace_name
-FROM   all_tables
-WHERE  table_name = 'VMR_CC_ACTIVE_BASE_SCORES';
-
-SELECT tablespace_name,
-       ROUND(SUM(bytes)/1024/1024/1024, 1) AS free_gb
-FROM   user_free_space      -- если пусто/ошибка → dba_free_space
-WHERE  tablespace_name = 'СЮДА_ИМЯ_ИЗ_ШАГА_1'
-GROUP  BY tablespace_name;
+SELECT 1 AS x
+    FROM   vmr_cc_active_base_scores
+    WHERE  report_date = DATE '{report_date_sql}'
+    AND    ROWNUM = 1
