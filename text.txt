@@ -1,14 +1,23 @@
-DELETE FROM your_schema.your_table
-WHERE ROWID IN (
-  SELECT rid
-  FROM (
-    SELECT ROWID AS rid,
-           ROW_NUMBER() OVER (
-             PARTITION BY col1, col2, col3, ...  -- все колонки, кроме служебных
-             ORDER BY ROWID
-           ) AS rn
-    FROM your_schema.your_table
-  )
-  WHERE rn > 1
-);
-COMMIT;
+BEGIN
+  LOOP
+    DELETE FROM your_schema.your_table
+    WHERE ROWID IN (
+      SELECT rid FROM (
+        SELECT ROWID AS rid,
+               ROW_NUMBER() OVER (
+                 PARTITION BY col1, col2, col3, ...
+                 ORDER BY ROWID
+               ) AS rn
+        FROM your_schema.your_table
+      )
+      WHERE rn > 1
+      AND ROWNUM <= 100000
+    );
+    EXIT WHEN SQL%ROWCOUNT = 0;
+    COMMIT;
+  END LOOP;
+END;
+
+
+CREATE TABLE your_schema.your_table_dedup AS
+SELECT DISTINCT * FROM your_schema.your_table;
