@@ -1,31 +1,9 @@
-SET SERVEROUTPUT ON
-DECLARE
-  l_used_bytes  NUMBER;
-  l_alloc_bytes NUMBER;
-BEGIN
-  DBMS_SPACE.CREATE_INDEX_COST(
-    ddl => q'[CREATE INDEX analytics.idx_vmr_cc_scores_repdate
-              ON analytics.vmr_cc_active_base_scores (report_date)]',
-    used_bytes  => l_used_bytes,
-    alloc_bytes => l_alloc_bytes
-  );
-
-  DBMS_OUTPUT.PUT_LINE('used_gb  = ' || ROUND(l_used_bytes/1024/1024/1024, 2));
-  DBMS_OUTPUT.PUT_LINE('alloc_gb = ' || ROUND(l_alloc_bytes/1024/1024/1024, 2));
-END;
-
-
+SELECT tablespace_name
+FROM   all_tables
+WHERE  table_name = 'VMR_CC_ACTIVE_BASE_SCORES';
 
 SELECT tablespace_name,
-       ROUND(free_mb/1024,1) AS free_gb
-FROM (
-  SELECT tablespace_name, SUM(bytes)/1024/1024 AS free_mb
-  FROM dba_free_space
-  GROUP BY tablespace_name
-)
-WHERE tablespace_name = (
-  SELECT tablespace_name
-  FROM all_tables
-  WHERE owner = 'ANALYTICS'
-  AND table_name = 'VMR_CC_ACTIVE_BASE_SCORES'
-);
+       ROUND(SUM(bytes)/1024/1024/1024, 1) AS free_gb
+FROM   user_free_space      -- если пусто/ошибка → dba_free_space
+WHERE  tablespace_name = 'СЮДА_ИМЯ_ИЗ_ШАГА_1'
+GROUP  BY tablespace_name;
