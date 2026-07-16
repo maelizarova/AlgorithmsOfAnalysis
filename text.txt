@@ -1,128 +1,14 @@
-OLD_NS_PRED_COL = "forecast_model"
-
-OLD_NEW_TOTAL_COLS_RU = {
-    "target": "Показатель",
-    "rows": "Строк",
-    "cashdesks": "Касс",
-    "score_dates": "Дат скоринга",
-    "fact_mean": "Средний факт",
-    "new_pred_mean": "Средний прогноз (новый)",
-    "old_pred_mean": "Средний прогноз (старый)",
-    "mae_new": "MAE (новый)",
-    "mae_old": "MAE (старый)",
-    "mae_delta_new_minus_old": "Δ MAE (новый − старый)",
-    "breach_rate_new": "% невыдач (новый)",
-    "breach_rate_old": "% невыдач (старый)",
-}
-
-OLD_NEW_BY_DATE_COLS_RU = {
-    "score_date": "Дата скоринга",
-    **OLD_NEW_TOTAL_COLS_RU,
-}
-
-OLD_NEW_BY_CASHDESK_COLS_RU = {
-    "atdtmco_cashdesk_name": "Касса",
-    "rows": "Строк",
-    "ns_mae_new": "MAE потребность (новый)",
-    "ns_mae_old": "MAE потребность (старый)",
-    "breach_rate_new": "% невыдач (новый)",
-    "breach_rate_old": "% невыдач (старый)",
-    "ns_mae_delta": "Δ MAE (новый − старый)",
-    "new_better_ns": "Новый лучше по потребности",
-}
-
-
-def build_old_new_compare_metrics(df: pd.DataFrame) -> dict:
-    return {
-        "target": "Потребность",
-        "rows": len(df),
-        "cashdesks": df["atdtmco_cashdesk_name"].nunique(),
-        "score_dates": df["score_date"].nunique(),
-        "fact_mean": df["atdtmco_ns_fact"].mean(),
-        "new_pred_mean": df["atdtmco_ns_pred"].mean(),
-        "old_pred_mean": df["atdtmco_ns_pred_old"].mean(),
-        "mae_new": df["error_atdtmco_ns_new"].abs().mean(),
-        "mae_old": df["error_atdtmco_ns_old"].abs().mean(),
-        "mae_delta_new_minus_old": (
-            df["error_atdtmco_ns_new"].abs().mean()
-            - df["error_atdtmco_ns_old"].abs().mean()
-        ),
-        "breach_rate_new": df["ns_breach_new"].mean(),
-        "breach_rate_old": df["ns_breach_old"].mean(),
-    }
-
-old_new_compare_df = (
-    retro_batch_result_df.loc[retro_batch_result_df[OLD_NS_PRED_COL].notna()]
-    .assign(
-        atdtmco_ns_pred_old=lambda df: -df[OLD_NS_PRED_COL],
-        error_atdtmco_ns_new=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred"],
-        error_atdtmco_ns_old=lambda df: df["atdtmco_ns_fact"] - df["atdtmco_ns_pred_old"],
-        ns_breach_new=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred"],
-        ns_breach_old=lambda df: df["atdtmco_ns_fact"] < df["atdtmco_ns_pred_old"],
-    )
-)
-
-old_new_compare_metrics_total = (
-    pd.DataFrame([build_old_new_compare_metrics(old_new_compare_df)])
-    .rename(columns=OLD_NEW_TOTAL_COLS_RU)
-)
-
-old_new_compare_metrics_by_score_date = (
-    pd.DataFrame(
-        [
-            {"score_date": score_date, **build_old_new_compare_metrics(group)}
-            for score_date, group in old_new_compare_df.groupby("score_date")
-        ]
-    )
-    .sort_values("score_date")
-    .rename(columns=OLD_NEW_BY_DATE_COLS_RU)
-)
-
-old_new_compare_metrics_by_cashdesk = (
-    old_new_compare_df
-    .groupby("atdtmco_cashdesk_name", as_index=False)
-    .agg(
-        rows=("atdtmco_cashdesk_name", "size"),
-        ns_mae_new=("error_atdtmco_ns_new", lambda s: s.abs().mean()),
-        ns_mae_old=("error_atdtmco_ns_old", lambda s: s.abs().mean()),
-        breach_rate_new=("ns_breach_new", "mean"),
-        breach_rate_old=("ns_breach_old", "mean"),
-    )
-    .assign(
-        ns_mae_delta=lambda df: df["ns_mae_new"] - df["ns_mae_old"],
-        new_better_ns=lambda df: df["ns_mae_new"] < df["ns_mae_old"],
-    )
-    .sort_values("ns_mae_delta")
-    .rename(columns=OLD_NEW_BY_CASHDESK_COLS_RU)
-)
-
-print(
-    f"Строк с forecast_model: {len(old_new_compare_df):,}, "
-    f"касс: {old_new_compare_df['atdtmco_cashdesk_name'].nunique()}"
-)
-print(
-    f"Новый алгоритм лучше по потребности на "
-    f"{old_new_compare_metrics_by_cashdesk['Новый лучше по потребности'].mean():.1%} касс"
-)
-print(
-    f"Невыдач (новый): {old_new_compare_df['ns_breach_new'].sum():.0f} из {len(old_new_compare_df)} строк, "
-    f"(старый): {old_new_compare_df['ns_breach_old'].sum():.0f}"
-)
-
-display(old_new_compare_metrics_total)
-
-print("Метрики по датам скоринга:")
-display(old_new_compare_metrics_by_score_date)
-
-print("Топ-10 касс, где новый алгоритм лучше по MAE потребности:")
-display(old_new_compare_metrics_by_cashdesk.head(10))
-
-print("Кассы, где была невыдача (хотя бы по одной модели):")
-display(
-    old_new_compare_metrics_by_cashdesk.loc[
-        (old_new_compare_metrics_by_cashdesk["% невыдач (новый)"] > 0)
-        | (old_new_compare_metrics_by_cashdesk["% невыдач (старый)"] > 0)
-    ]
-    .sort_values(["% невыдач (новый)", "% невыдач (старый)"], ascending=False)
-    .head(10)
-)
+DELETE FROM your_schema.your_table
+WHERE ROWID IN (
+  SELECT rid
+  FROM (
+    SELECT ROWID AS rid,
+           ROW_NUMBER() OVER (
+             PARTITION BY col1, col2, col3, ...  -- все колонки, кроме служебных
+             ORDER BY ROWID
+           ) AS rn
+    FROM your_schema.your_table
+  )
+  WHERE rn > 1
+);
+COMMIT;
