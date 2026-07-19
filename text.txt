@@ -1,1 +1,51 @@
-Пересчёт всех активных клиентов будет корректен только для единого актуального среза. Ранжирование смеси последних известных скоров разных дат создаёт другой показатель и меняет rank клиентов без их повторного скоринга. В нашей таблице хранится последний rank, присвоенный на дату расчёта score.
+-- 3) rid строк, которые надо удалить (оставляем rn=1)
+CREATE TABLE tmp_scores_del AS
+SELECT *
+FROM (
+  SELECT d.ROWID AS row_id,
+         d.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY d.client_did, d.report_date, d.score, d.decile, d.lvl1, d.lvl2
+           ORDER BY d.ROWID
+         ) AS rn
+  FROM   vmr_cc_active_base_scores d
+  WHERE  d.report_date = DATE '2026-05-10'
+)
+WHERE rn >= 2;
+SELECT COUNT(*) FROM tmp_scores_del;
+-- 4) удаление чанками по ROWID из ОСНОВНОЙ таблицы
+DECLARE
+  CURSOR c_ids IS
+    SELECT row_id
+    FROM   tmp_scores_del;
+  TYPE t_ids IS TABLE OF ROWID;
+  l_ids t_ids;
+  c_limit  PLS_INTEGER := 50000;  -- размер пачки (у них в примере было 2)
+  l_total  PLS_INTEGER := 0;
+BEGIN
+  OPEN c_ids;
+  LOOP
+    FETCH c_ids BULK COLLECT INTO l_ids LIMIT c_limit;
+    EXIT WHEN l_ids.COUNT = 0;
+    FORALL i IN 1 .. l_ids.COUNT
+      DELETE FROM vmr_cc_active_base_scores
+      WHERE  ROWID = l_ids(i);
+    l_total := l_total + l_ids.COUNT;
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('deleted chunk=' || l_ids.COUNT || ' total=' || l_total);
+  END LOOP;
+  CLOSE c_ids;
+  DBMS_OUTPUT.PUT_LINE('DONE total=' || l_total);
+END;
+/
+-- 5) проверка: дублей за день больше нет
+SELECT *
+FROM (
+  SELECT d.*,
+         COUNT(*) OVER (
+           PARTITION BY d.client_did, d.report_date, d.score, d.decile, d.lvl1, d.lvl2
+         ) AS cnt
+  FROM   vmr_cc_active_base_scores d
+  WHERE  d.report_date = DATE '2026-05-10'
+)
+WHERE cnt >= 2;
