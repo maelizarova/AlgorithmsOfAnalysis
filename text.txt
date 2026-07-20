@@ -1,45 +1,21 @@
-# общая статистика по совпадениям/расхождениям с учетом/без учета пропусков, пропуски, разницы
-df_anal = pd.DataFrame(columns = ['equal', 'not equal', 'equal %', 'not equal %', 'equal not null', 
-                                  'not equal not null', 'equal not null %', 'not equal not null %', 
-                                  'diff mean', 'diff max', 'null our', 'null their', 'null our %', 'null their %'])
+df_anal.loc[feat] = [
+    (df_feat['is_equal'] == 1).sum(),
+    (df_feat['is_equal'] == 0).sum(),
 
-for feat in features[1:]:
-    df_feat = df_[['id', 'calldate', 'reportid', f'{feat}_x',  f'{feat}_y']].copy()
+    (df_feat['is_equal'] == 1).mean(),
+    (df_feat['is_equal'] == 0).mean(),
 
-    df_feat['is_equal'] = np.isclose(
-        df_feat[f'{feat}_x'], 
-        df_feat[f'{feat}_y'],
-        atol=0.1,
-        equal_nan=True,
-    ).astype(int)
-    
-    df_feat['not_null']= (
-        df_feat[f'{feat}_x'].notna()
-        & df_feat[f'{feat}_y'].notna()
-    ).astype(int)
+    ((df_feat['not_null'] == 1) & (df_feat['is_equal'] == 1)).sum(),
+    ((df_feat['not_null'] == 1) & (df_feat['is_equal'] == 0)).sum(),
 
-    df_feat['diff'] = df_feat[f'{feat}_x'] - df_feat[f'{feat}_y']
+    df_feat.loc[df_feat['not_null'] == 1, 'is_equal'].eq(1).mean(),
+    df_feat.loc[df_feat['not_null'] == 1, 'is_equal'].eq(0).mean(),
 
-    
-    df_anal.loc[feat] = [
-        
-        df_feat['is_equal'].value_counts().loc[1],
-        df_feat['is_equal'].value_counts().loc[0],
-        
-        df_feat['is_equal'].value_counts(normalize=True).loc[1],
-        df_feat['is_equal'].value_counts(normalize=True).loc[0],
-        
-        df_feat[df_feat['not_null']==1]['is_equal'].value_counts().loc[1],
-        df_feat[df_feat['not_null']==1]['is_equal'].value_counts().loc[0],
-        
-        df_feat[df_feat['not_null']==1]['is_equal'].value_counts(normalize=True).loc[1],
-        df_feat[df_feat['not_null']==1]['is_equal'].value_counts(normalize=True).loc[0],
-        
-        df_feat[(df_feat['not_null']==1) & (df_feat['is_equal']==0)]['diff'].mean(),
-        df_feat[(df_feat['not_null']==1) & (df_feat['is_equal']==0)]['diff'].max(),
-        
-        df_feat[f'{feat}_x'].isnull().sum(),
-        df_feat[f'{feat}_y'].isnull().sum(),
-        df_feat[f'{feat}_x'].isnull().mean(),
-        df_feat[f'{feat}_y'].isnull().mean()
-    ]
+    df_feat.loc[(df_feat['not_null'] == 1) & (df_feat['is_equal'] == 0), 'diff'].mean(),
+    df_feat.loc[(df_feat['not_null'] == 1) & (df_feat['is_equal'] == 0), 'diff'].max(),
+
+    df_feat[f'{feat}_x'].isnull().sum(),
+    df_feat[f'{feat}_y'].isnull().sum(),
+    df_feat[f'{feat}_x'].isnull().mean(),
+    df_feat[f'{feat}_y'].isnull().mean(),
+]
