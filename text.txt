@@ -1,1 +1,9 @@
 diff = df_their[(df_their["score_our_model"] - df_their["score"]).abs() > 1e-9]
+
+
+keys = ["ID", "callDate", "reportId"]
+# строки df_their, где score не пустой
+keep = df_their.loc[df_their["score"].notna(), keys]
+# оставляем в обоих только эти строки
+df_their = df_their.merge(keep, on=keys, how="inner")
+df_our = df_our.merge(keep, on=keys, how="inner")
