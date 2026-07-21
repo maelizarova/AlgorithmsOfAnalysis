@@ -1,5 +1,8 @@
-# имена фичей
-names = model.booster_.feature_name()
-# importance_type: "split" | "gain"
-vals = model.booster_.feature_importance(importance_type="gain")
-fi = pd.Series(vals, index=names).sort_values(ascending=False)
+fi = (
+    pd.DataFrame({
+        "feature": names,
+        "importance": vals,
+    })
+    .sort_values("importance", ascending=False)
+    .reset_index(drop=True)
+)
