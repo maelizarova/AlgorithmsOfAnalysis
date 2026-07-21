@@ -1,21 +1,5 @@
-df_anal.loc[feat] = [
-    (df_feat['is_equal'] == 1).sum(),
-    (df_feat['is_equal'] == 0).sum(),
-
-    (df_feat['is_equal'] == 1).mean(),
-    (df_feat['is_equal'] == 0).mean(),
-
-    ((df_feat['not_null'] == 1) & (df_feat['is_equal'] == 1)).sum(),
-    ((df_feat['not_null'] == 1) & (df_feat['is_equal'] == 0)).sum(),
-
-    df_feat.loc[df_feat['not_null'] == 1, 'is_equal'].eq(1).mean(),
-    df_feat.loc[df_feat['not_null'] == 1, 'is_equal'].eq(0).mean(),
-
-    df_feat.loc[(df_feat['not_null'] == 1) & (df_feat['is_equal'] == 0), 'diff'].mean(),
-    df_feat.loc[(df_feat['not_null'] == 1) & (df_feat['is_equal'] == 0), 'diff'].max(),
-
-    df_feat[f'{feat}_x'].isnull().sum(),
-    df_feat[f'{feat}_y'].isnull().sum(),
-    df_feat[f'{feat}_x'].isnull().mean(),
-    df_feat[f'{feat}_y'].isnull().mean(),
-]
+# имена фичей
+names = model.booster_.feature_name()
+# importance_type: "split" | "gain"
+vals = model.booster_.feature_importance(importance_type="gain")
+fi = pd.Series(vals, index=names).sort_values(ascending=False)
