@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Итоговый алгоритм прогнозирования кассовой потребности</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --text: #172033;
+      --muted: #5f6b7a;
+      --line: #dce2ea;
+      --accent: #2457a7;
+      --accent-soft: #edf3fc;
+      --good: #176b45;
+      --good-soft: #eaf7f0;
+      --warn: #865400;
+      --warn-soft: #fff6df;
+      --danger: #a43434;
+      --danger-soft: #fff0f0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 42px 24px 72px;
+    }
+
+    h1, h2, h3 { line-height: 1.2; margin: 0; }
+    h1 { font-size: 32px; max-width: 850px; }
+    h2 { font-size: 23px; margin-bottom: 18px; }
+    h3 { font-size: 17px; margin-bottom: 8px; }
+    p { margin: 0; }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 17px;
+      max-width: 850px;
+      margin-top: 14px;
+    }
+
+    section { margin-top: 42px; }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 22px;
+    }
+
+    .lead {
+      background: var(--accent-soft);
+      border-left: 5px solid var(--accent);
+      margin-top: 28px;
+      padding: 20px 22px;
+      border-radius: 8px;
+      font-size: 17px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px;
+    }
+
+    .stat strong {
+      display: block;
+      color: var(--good);
+      font-size: 26px;
+      margin-bottom: 4px;
+    }
+
+    .stat span { color: var(--muted); font-size: 14px; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px;
+    }
+
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      color: white;
+      background: var(--accent);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .step p, .muted { color: var(--muted); }
+
+    code, .formula {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .formula {
+      display: block;
+      background: #f0f3f7;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 12px 0;
+      overflow-wrap: anywhere;
+    }
+
+    .note {
+      border-radius: 8px;
+      padding: 16px 18px;
+      margin-top: 16px;
+    }
+
+    .note.info { background: var(--accent-soft); color: #173c76; }
+    .note.good { background: var(--good-soft); color: var(--good); }
+    .note.warn { background: var(--warn-soft); color: var(--warn); }
+    .note.danger { background: var(--danger-soft); color: var(--danger); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef2f7;
+      font-size: 13px;
+      color: #3d4858;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    td:not(:first-child), th:not(:first-child) { text-align: right; }
+    .result-row { background: var(--good-soft); }
+
+    ul { margin: 10px 0 0; padding-left: 21px; }
+    li + li { margin-top: 6px; }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 42px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 820px) {
+      .flow, .stats, .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 27px; }
+      main { padding: 28px 16px 52px; }
+      .table-wrap { overflow-x: auto; }
+      table { min-width: 780px; }
+    }
+
+    @media print {
+      :root { --bg: #ffffff; }
+      body { background: white; font-size: 11pt; }
+      main { max-width: none; padding: 0; }
+      section { break-inside: avoid; margin-top: 28px; }
+      .panel, .step, .stat, table { break-inside: avoid; }
+      h1 { font-size: 25pt; }
+      h2 { font-size: 17pt; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Итоговый вариант · T−2 · горизонт 30 дней</div>
+    <h1>Алгоритм прогнозирования кассовой потребности</h1>
+    <p class="subtitle">
+      Центральный прогноз SARIMA дополняется иерархической калибровкой
+      нормированных ошибок и адаптивным квантилем, который поддерживает
+      целевой уровень невыдач около 15%.
+    </p>
+
+    <div class="lead">
+      <strong>Основная идея.</strong> SARIMA прогнозирует наиболее вероятную
+      потребность. Затем прогноз сдвигается в более консервативную сторону
+      на основе недавних ошибок всех касс и конкретной кассы. Сила
+      консервативности автоматически корректируется по уже известным
+      результатам.
+    </div>
+
+    <div class="stats">
+      <div class="stat"><strong>15,09%</strong><span>невыдач итоговой модели</span></div>
+      <div class="stat"><strong>−11%</strong><span>MAE относительно старой модели</span></div>
+      <div class="stat"><strong>−14%</strong><span>MAE95 относительно старой модели</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>1. Что прогнозируется</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Понятие</th><th style="text-align:left">Смысл</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>atdtmco_ns</strong></td>
+            <td style="text-align:left">Минимальная потребность кассы за день. Значения отрицательные: чем меньше число, тем больше потребность.</td>
+          </tr>
+          <tr>
+            <td><strong>atdtmco_saldo_turn</strong></td>
+            <td style="text-align:left">Дневной денежный поток. Прогнозируется отдельно как временной ряд.</td>
+          </tr>
+          <tr>
+            <td><strong>Невыдача</strong></td>
+            <td style="text-align:left">Факт оказался более отрицательным, чем прогноз: <code>fact &lt; prediction</code>. Предусмотренного объёма не хватило.</td>
+          </tr>
+          <tr>
+            <td><strong>T−2</strong></td>
+            <td style="text-align:left">Для скоринга на дату D разрешены факты не позднее D−2. Будущие данные не используются.</td>
+          </tr>
+          <tr>
+            <td><strong>Central SARIMA</strong></td>
+            <td style="text-align:left">Точечный прогноз до консервативной поправки на риск невыдачи.</td>
+          </tr>
+          <tr>
+            <td><strong>Scale кассы</strong></td>
+            <td style="text-align:left">Медиана |NS| по отрицательным фактам кассы за последние 56 дней. Делает ошибки разных касс сопоставимыми.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note warn">
+      <strong>Знак NS важно не перепутать.</strong> Факт −12 млн хуже прогноза
+      −10 млн: касса потребовала на 2 млн больше, чем было предусмотрено.
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Полный поток расчёта на дату D</h2>
+    <div class="flow">
+      <article class="step">
+        <span class="step-number">1</span>
+        <h3>Подготовить историю</h3>
+        <p>Для каждой кассы берутся данные до D−2. Закрытые и отсутствующие дни остаются NaN, а не искусственными нулями.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">2</span>
+        <h3>Построить central SARIMA</h3>
+        <p>На последних 12 месяцах строится центральный прогноз с недельной сезонностью.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">3</span>
+        <h3>Собрать ошибки</h3>
+        <p>Используются только ошибки прогнозов, факт которых уже доступен на текущем D−2.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">4</span>
+        <h3>Нормировать и объединить</h3>
+        <p>Ошибки делятся на scale кассы. Общая история смешивается с историей конкретной кассы.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">5</span>
+        <h3>Взять адаптивный квантиль</h3>
+        <p>Из распределения ошибок берётся текущий квантиль отдельно для каждого горизонта.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">6</span>
+        <h3>Сформировать прогноз</h3>
+        <p>Поправка масштабируется размером кассы и добавляется к central SARIMA. На закрытый день прогноз равен нулю.</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Центральная SARIMA</h2>
+    <div class="grid">
+      <div>
+        <p>
+          Для каждой кассы строится отдельный ряд <code>atdtmco_ns</code>.
+          Используются последние 12 месяцев до D−2 и недельная сезонность
+          с периодом 7 дней.
+        </p>
+        <p style="margin-top:12px">
+          Закрытые дни не заменяются нулями. Они остаются NaN, чтобы модель
+          не принимала отсутствие работы за обычный нулевой спрос.
+        </p>
+        <p style="margin-top:12px">
+          Central SARIMA хорошо минимизирует среднюю ошибку, но не управляет
+          односторонним риском. Поэтому у неё низкий MAE, но 42,28% невыдач.
+        </p>
+      </div>
+      <div class="panel">
+        <h3>Защитные проверки</h3>
+        <ul>
+          <li>сходимость оптимизации;</li>
+          <li>устойчивость AR/MA-корней;</li>
+          <li>конечность и разумный масштаб прогноза;</li>
+          <li>fallback на медианы по дням недели при ошибке SARIMA.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Нормированные ошибки</h2>
+    <p>
+      Ошибки нельзя объединять напрямую: один миллион для маленькой и крупной
+      кассы означает разный относительный риск. Поэтому ошибка переводится
+      в безразмерную шкалу.
+    </p>
+    <div class="grid" style="margin-top:16px">
+      <div class="panel">
+        <h3>Нормирующий масштаб</h3>
+        <span class="formula">scale(c, D) = median(|NS|) за последние 56 дней</span>
+        <p class="muted">
+          Берутся отрицательные факты, доступные на D−2. При недостатке
+          истории используется общий масштаб.
+        </p>
+      </div>
+      <div class="panel">
+        <h3>Нормированная ошибка</h3>
+        <span class="formula">e = (fact − central) / scale</span>
+        <p class="muted">
+          Отрицательная e означает, что факт оказался более отрицательным
+          центрального прогноза — возник риск невыдачи.
+        </p>
+      </div>
+    </div>
+    <div class="note info">
+      После нормировки ошибки 115 касс можно объединить, не позволяя крупнейшим
+      кассам полностью определять поправку.
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Иерархическое распределение ошибок</h2>
+    <p>
+      Для каждого горизонта формируются два распределения: глобальное по всем
+      кассам и локальное по конкретной кассе. Используются ошибки за последние
+      56 дней с известным на D−2 фактом.
+    </p>
+    <div class="grid" style="margin-top:16px">
+      <div class="panel">
+        <h3>Вес конкретной кассы</h3>
+        <span class="formula">w(c) = n(c) / (n(c) + 5)</span>
+        <p class="muted">
+          При малом числе ошибок локальная оценка стягивается к глобальной.
+          При накоплении истории влияние конкретной кассы растёт.
+        </p>
+      </div>
+      <div class="panel">
+        <h3>Почему не чисто покассовый bootstrap</h3>
+        <p>
+          У отдельной кассы часто мало ошибок, особенно на дальних горизонтах.
+          Повторная случайная выборка пяти значений не создаёт новой информации.
+          Глобальный пул даёт устойчивость, а локальная часть сохраняет
+          индивидуальные особенности.
+        </p>
+      </div>
+    </div>
+    <div class="note info">
+      Итоговая реализация берёт точный взвешенный эмпирический квантиль.
+      Это результат, к которому сходился бы residual bootstrap при очень
+      большом числе повторений, но без случайного шума. Строгое название
+      метода — иерархическая эмпирическая калибровка ошибок.
+    </div>
+  </section>
+
+  <section>
+    <h2>6. Динамический адаптивный квантиль</h2>
+    <p>
+      Со временем SARIMA может ошибаться по-разному. Поэтому квантиль
+      обновляется последовательно по уже известным результатам.
+    </p>
+    <div class="panel" style="margin-top:16px">
+      <span class="formula">q(next) = clip(q + 0,20 × (0,15 − observed_breach), 0,01, 0,25)</span>
+      <ul>
+        <li><strong>Старт:</strong> q = 0,15.</li>
+        <li>Если невыдач больше 15%, q уменьшается и прогноз становится консервативнее.</li>
+        <li>Если невыдач меньше 15%, q увеличивается и избыточный запас сокращается.</li>
+        <li>День обновляет q только при наличии минимум 30 отрицательных фактов.</li>
+        <li>Для прогноза на D используются результаты не позднее D−2.</li>
+      </ul>
+    </div>
+    <div class="grid" style="margin-top:16px">
+      <div class="note danger" style="margin-top:0">
+        <strong>Невыдачи 30%.</strong> Изменение q:
+        0,20 × (0,15 − 0,30) = −0,03. Квантиль снизится с 0,15 до 0,12.
+      </div>
+      <div class="note good" style="margin-top:0">
+        <strong>Невыдачи 5%.</strong> Изменение q:
+        0,20 × (0,15 − 0,05) = +0,02. Квантиль вырастет с 0,10 до 0,12.
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>7. Финальная формула NS и прогноз saldo_turn</h2>
+    <div class="panel">
+      <h3>Прогноз NS кассы c на горизонте h</h3>
+      <span class="formula">prediction(c,h) = min(central(c,h) + correction(c,h,q) × scale(c), 0)</span>
+      <p>
+        Например: central = −10 млн, scale = 2 млн, поправка = −1,2.
+        Итоговый прогноз равен −10 + (−1,2 × 2) = −12,4 млн.
+        Если касса закрыта по расписанию, итог принудительно устанавливается в 0.
+      </p>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3>Прогноз saldo_turn</h3>
+      <p>
+        <code>atdtmco_saldo_turn</code> прогнозируется отдельно как обычный
+        временной ряд: guarded SARIMA на истории до D−2, при ошибке —
+        медианы по дням недели. Иерархическая калибровка и адаптивный квантиль
+        относятся только к <code>atdtmco_ns</code>.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>8. Итоговые результаты</h2>
+    <p class="muted" style="margin-bottom:16px">
+      Ретро-период: 15.04.2026–15.06.2026.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Модель</th>
+            <th>Невыдачи</th>
+            <th>MAE</th>
+            <th>MAE95</th>
+            <th>Медиана</th>
+            <th>P90</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Старый forecast_model</td>
+            <td>13,36%</td>
+            <td>7,29 млн</td>
+            <td>5,58 млн</td>
+            <td>3,09 млн</td>
+            <td>10,74 млн</td>
+          </tr>
+          <tr>
+            <td>Центральный SARIMA</td>
+            <td>42,28%</td>
+            <td>3,25 млн</td>
+            <td>2,16 млн</td>
+            <td>1,18 млн</td>
+            <td>6,32 млн</td>
+          </tr>
+          <tr class="result-row">
+            <td><strong>Адаптивный алгоритм</strong></td>
+            <td><strong>15,09%</strong></td>
+            <td><strong>6,50 млн</strong></td>
+            <td><strong>4,82 млн</strong></td>
+            <td><strong>2,76 млн</strong></td>
+            <td><strong>11,23 млн</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid" style="margin-top:16px">
+      <div class="note good" style="margin-top:0">
+        <strong>Улучшение.</strong> При 15,09% невыдач MAE снизился примерно
+        на 11%, MAE95 — на 14%, медианная ошибка — на 11%. Смещение также уменьшилось.
+      </div>
+      <div class="note warn" style="margin-top:0">
+        <strong>Ограничение.</strong> P90 вырос с 10,74 до 11,23 млн:
+        типичная ошибка улучшилась, но отдельные крупные ошибки ещё присутствуют.
+      </div>
+    </div>
+    <p class="muted" style="margin-top:16px">
+      Для NS-метрик используются строки с отрицательным фактом и доступным
+      старым прогнозом. Поэтому подневный отчёт содержит не все 62 календарные
+      даты, хотя прогнозы рассчитаны для всех дат скоринга.
+    </p>
+  </section>
+</main>
+</body>
+</html>
