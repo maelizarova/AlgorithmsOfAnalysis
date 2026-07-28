@@ -1,49 +1,461 @@
-import pandas as pd
+first_day_df = final_forecasts_df[
+    final_forecasts_df["forecast_date"].eq(
+        final_forecasts_df["score_date"]
+    )
+].copy()
+common_first_day_df = first_day_df.merge(
+    old_history_dedup_df[[
+        "cashdesk_name",
+        "calday",
+        "atdtmco_ns_pred_old",
+    ]],
+    left_on=["atdtmco_cashdesk_name_trn", "forecast_date"],
+    right_on=["cashdesk_name", "calday"],
+    how="inner",
+    validate="many_to_one",
+).dropna(subset=["atdtmco_ns_fact", "atdtmco_ns_pred_old"])
+common_first_day_df = common_first_day_df[
+    common_first_day_df["atdtmco_ns_fact"] < 0
+].reset_index(drop=True)
+if common_first_day_df.empty:
+    raise RuntimeError("Нет общей NS-выборки с отрицательным фактом")
 
-y3 = df["target_3m"]
-y6 = df["target_6m"]
 
-# Phi coefficient: Pearson correlation для двух бинарных 0/1 таргетов
-phi_corr = y3.corr(y6)
+def build_ns_metric_row(
+    evaluation_df: pd.DataFrame,
+    variant_name: str,
+    pred_col: str,
+) -> Dict[str, object]:
+    fact = evaluation_df["atdtmco_ns_fact"]
+    prediction = evaluation_df[pred_col]
+    error = fact - prediction
+    absolute_error = error.abs()
+    breach = fact < prediction
+    return {
+        "вариант": variant_name,
+        "количество строк": len(evaluation_df),
+        "количество касс": evaluation_df[
+            "atdtmco_cashdesk_name"
+        ].nunique(),
+        "количество невыдач": int(breach.sum()),
+        "% невыдач": float(breach.mean()),
+        "отклонение от цели 15%": float(
+            breach.mean() - TARGET_BREACH_RATE
+        ),
+        "среднее факта": float(fact.mean()),
+        "среднее прогноза": float(prediction.mean()),
+        "MAE": float(absolute_error.mean()),
+        "MAE95": mae95_ns(
+            evaluation_df,
+            "atdtmco_ns_fact",
+            pred_col,
+        ),
+        "медианная абсолютная ошибка": float(
+            absolute_error.median()
+        ),
+        "P90 абсолютной ошибки": float(
+            absolute_error.quantile(0.90)
+        ),
+        "смещение факт − прогноз": float(error.mean()),
+        "дисперсия ошибок": float(error.var(ddof=1)),
+        "СКО ошибок": float(error.std(ddof=1)),
+    }
 
-# Таблица переходов в штуках
-cross_counts = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    margins=True
+
+ns_overall_comparison_df = pd.DataFrame([
+    build_ns_metric_row(
+        common_first_day_df,
+        "старый forecast_model",
+        "atdtmco_ns_pred_old",
+    ),
+    build_ns_metric_row(
+        common_first_day_df,
+        "центральный SARIMA",
+        "atdtmco_ns_pred_central",
+    ),
+    build_ns_metric_row(
+        common_first_day_df,
+        "итоговый адаптивный алгоритм",
+        "atdtmco_ns_pred",
+    ),
+])
+
+
+def build_ns_cashdesk_row(
+    cashdesk_df: pd.DataFrame,
+) -> Dict[str, object]:
+    fact = cashdesk_df["atdtmco_ns_fact"]
+    old_prediction = cashdesk_df["atdtmco_ns_pred_old"]
+    new_prediction = cashdesk_df["atdtmco_ns_pred"]
+    old_error = fact - old_prediction
+    new_error = fact - new_prediction
+    old_absolute_error = old_error.abs()
+    new_absolute_error = new_error.abs()
+    old_mae = float(old_absolute_error.mean())
+    new_mae = float(new_absolute_error.mean())
+    old_mae95 = mae95_ns(
+        cashdesk_df,
+        "atdtmco_ns_fact",
+        "atdtmco_ns_pred_old",
+    )
+    new_mae95 = mae95_ns(
+        cashdesk_df,
+        "atdtmco_ns_fact",
+        "atdtmco_ns_pred",
+    )
+    old_breach = fact < old_prediction
+    new_breach = fact < new_prediction
+    translated_names = cashdesk_df[
+        "atdtmco_cashdesk_name_trn"
+    ].dropna()
+    return {
+        "касса": cashdesk_df["atdtmco_cashdesk_name"].iloc[0],
+        "английское название": (
+            translated_names.iloc[-1]
+            if len(translated_names) > 0
+            else pd.NA
+        ),
+        "количество строк": len(cashdesk_df),
+        "среднее факта": float(fact.mean()),
+        "старый: количество невыдач": int(old_breach.sum()),
+        "старый: % невыдач": float(old_breach.mean()),
+        "новый: количество невыдач": int(new_breach.sum()),
+        "новый: % невыдач": float(new_breach.mean()),
+        "изменение % невыдач": float(
+            new_breach.mean() - old_breach.mean()
+        ),
+        "старый: среднее прогноза": float(old_prediction.mean()),
+        "новый: среднее прогноза": float(new_prediction.mean()),
+        "старый: MAE": old_mae,
+        "новый: MAE": new_mae,
+        "улучшение MAE": old_mae - new_mae,
+        "улучшение MAE, %": (
+            (old_mae - new_mae) / old_mae
+            if old_mae > 0
+            else np.nan
+        ),
+        "старый: MAE95": old_mae95,
+        "новый: MAE95": new_mae95,
+        "улучшение MAE95": old_mae95 - new_mae95,
+        "улучшение MAE95, %": (
+            (old_mae95 - new_mae95) / old_mae95
+            if old_mae95 > 0
+            else np.nan
+        ),
+        "старый: медианная ошибка": float(
+            old_absolute_error.median()
+        ),
+        "новый: медианная ошибка": float(
+            new_absolute_error.median()
+        ),
+        "старый: P90 ошибки": float(
+            old_absolute_error.quantile(0.90)
+        ),
+        "новый: P90 ошибки": float(
+            new_absolute_error.quantile(0.90)
+        ),
+        "старый: смещение факт − прогноз": float(
+            old_error.mean()
+        ),
+        "новый: смещение факт − прогноз": float(
+            new_error.mean()
+        ),
+        "старый: дисперсия ошибок": float(
+            old_error.var(ddof=1)
+        ),
+        "новый: дисперсия ошибок": float(
+            new_error.var(ddof=1)
+        ),
+        "старый: СКО ошибок": float(old_error.std(ddof=1)),
+        "новый: СКО ошибок": float(new_error.std(ddof=1)),
+    }
+
+
+ns_by_cashdesk_df = pd.DataFrame([
+    build_ns_cashdesk_row(cashdesk_df)
+    for _, cashdesk_df in common_first_day_df.groupby(
+        "atdtmco_cashdesk_name",
+        sort=True,
+    )
+]).sort_values(
+    ["улучшение MAE, %", "новый: % невыдач"],
+    ascending=[True, False],
+).reset_index(drop=True)
+mae_improved_mask = ns_by_cashdesk_df["улучшение MAE"] > 0
+ns_cashdesk_summary_df = pd.DataFrame([{
+    "всего касс": len(ns_by_cashdesk_df),
+    "касс с улучшением MAE": int(mae_improved_mask.sum()),
+    "% касс с улучшением MAE": float(mae_improved_mask.mean()),
+    "касс без улучшения MAE": int((~mae_improved_mask).sum()),
+}])
+
+
+def build_dynamic_date_row(date_df: pd.DataFrame) -> Dict[str, object]:
+    fact = date_df["atdtmco_ns_fact"]
+    old_prediction = date_df["atdtmco_ns_pred_old"]
+    new_prediction = date_df["atdtmco_ns_pred"]
+    old_error = fact - old_prediction
+    new_error = fact - new_prediction
+    old_absolute_error = old_error.abs()
+    new_absolute_error = new_error.abs()
+    old_mae = float(old_absolute_error.mean())
+    new_mae = float(new_absolute_error.mean())
+    old_mae95 = mae95_ns(
+        date_df,
+        "atdtmco_ns_fact",
+        "atdtmco_ns_pred_old",
+    )
+    new_mae95 = mae95_ns(
+        date_df,
+        "atdtmco_ns_fact",
+        "atdtmco_ns_pred",
+    )
+    return {
+        "дата скоринга": date_df["score_date"].iloc[0],
+        "количество строк": len(date_df),
+        "среднее факта": float(fact.mean()),
+        "старый: количество невыдач": int(
+            (fact < old_prediction).sum()
+        ),
+        "старый: % невыдач": float((fact < old_prediction).mean()),
+        "новый: количество невыдач": int(
+            (fact < new_prediction).sum()
+        ),
+        "новый: % невыдач": float((fact < new_prediction).mean()),
+        "изменение % невыдач": float(
+            (fact < new_prediction).mean()
+            - (fact < old_prediction).mean()
+        ),
+        "старый: среднее прогноза": float(old_prediction.mean()),
+        "новый: среднее прогноза": float(new_prediction.mean()),
+        "старый: MAE": old_mae,
+        "новый: MAE": new_mae,
+        "улучшение MAE": old_mae - new_mae,
+        "старый: MAE95": old_mae95,
+        "новый: MAE95": new_mae95,
+        "улучшение MAE95": old_mae95 - new_mae95,
+        "старый: медианная абсолютная ошибка": float(
+            old_absolute_error.median()
+        ),
+        "новый: медианная абсолютная ошибка": float(
+            new_absolute_error.median()
+        ),
+        "старый: P90 абсолютной ошибки": float(
+            old_absolute_error.quantile(0.90)
+        ),
+        "новый: P90 абсолютной ошибки": float(
+            new_absolute_error.quantile(0.90)
+        ),
+        "старый: смещение факт − прогноз": float(
+            old_error.mean()
+        ),
+        "новый: смещение факт − прогноз": float(
+            new_error.mean()
+        ),
+        "старый: дисперсия ошибок": float(
+            old_error.var(ddof=1)
+        ),
+        "новый: дисперсия ошибок": float(
+            new_error.var(ddof=1)
+        ),
+        "старый: СКО ошибок": float(old_error.std(ddof=1)),
+        "новый: СКО ошибок": float(new_error.std(ddof=1)),
+        "использованный квантиль": float(
+            date_df["использованный квантиль"].iloc[0]
+        ),
+    }
+
+
+ns_by_date_df = pd.DataFrame([
+    build_dynamic_date_row(date_df)
+    for _, date_df in common_first_day_df.groupby(
+        "score_date",
+        sort=True,
+    )
+])
+
+saldo_first_day_df = first_day_df.loc[
+    ~first_day_df["касса закрыта"]
+].dropna(subset=[
+    "atdtmco_saldo_turn_fact",
+    "atdtmco_saldo_turn_pred",
+]).copy()
+
+
+def build_saldo_metric_row(
+    evaluation_df: pd.DataFrame,
+    variant_name: str,
+) -> Dict[str, object]:
+    fact = evaluation_df["atdtmco_saldo_turn_fact"]
+    prediction = evaluation_df["atdtmco_saldo_turn_pred"]
+    error = fact - prediction
+    absolute_error = error.abs()
+    denominator = float(fact.abs().sum())
+    return {
+        "вариант": variant_name,
+        "количество строк": len(evaluation_df),
+        "количество касс": evaluation_df[
+            "atdtmco_cashdesk_name"
+        ].nunique(),
+        "MAE": float(absolute_error.mean()),
+        "MAE95": mae95_absolute_fact(
+            evaluation_df,
+            "atdtmco_saldo_turn_fact",
+            "atdtmco_saldo_turn_pred",
+        ),
+        "WAPE": (
+            float(absolute_error.sum()) / denominator
+            if denominator > 0
+            else np.nan
+        ),
+        "медианная абсолютная ошибка": float(
+            absolute_error.median()
+        ),
+        "P90 абсолютной ошибки": float(
+            absolute_error.quantile(0.90)
+        ),
+        "смещение факт − прогноз": float(error.mean()),
+        "% fallback saldo": float(
+            evaluation_df["fallback saldo"].mean()
+        ),
+    }
+
+
+saldo_overall_metrics_df = pd.DataFrame([
+    build_saldo_metric_row(
+        saldo_first_day_df,
+        "центральный SARIMA saldo_turn",
+    )
+])
+saldo_by_cashdesk_df = pd.DataFrame([
+    dict(
+        {"касса": cashdesk_name},
+        **build_saldo_metric_row(
+            cashdesk_df,
+            "центральный SARIMA saldo_turn",
+        ),
+    )
+    for cashdesk_name, cashdesk_df in saldo_first_day_df.groupby(
+        "atdtmco_cashdesk_name",
+        sort=True,
+    )
+]).sort_values("MAE", ascending=False).reset_index(drop=True)
+saldo_by_date_df = pd.DataFrame([
+    dict(
+        {"дата скоринга": score_date},
+        **build_saldo_metric_row(
+            date_df,
+            "центральный SARIMA saldo_turn",
+        ),
+    )
+    for score_date, date_df in saldo_first_day_df.groupby(
+        "score_date",
+        sort=True,
+    )
+]).sort_values("дата скоринга").reset_index(drop=True)
+
+report_frames = {
+    "ns_overall_comparison": ns_overall_comparison_df,
+    "ns_by_cashdesk": ns_by_cashdesk_df,
+    "ns_cashdesk_summary": ns_cashdesk_summary_df,
+    "ns_by_date": ns_by_date_df,
+    "saldo_overall_metrics": saldo_overall_metrics_df,
+    "saldo_by_cashdesk": saldo_by_cashdesk_df,
+    "saldo_by_date": saldo_by_date_df,
+    "adaptive_quantile_history": adaptive_update_history_df,
+}
+for report_name, report_df in report_frames.items():
+    report_df.to_csv(
+        REPORT_DIR / "{}.csv".format(report_name),
+        index=False,
+    )
+    report_df.to_parquet(
+        REPORT_DIR / "{}.parquet".format(report_name),
+        index=False,
+    )
+
+print(
+    "Выбранное окно: {} дней; сила стягивания: {:.0f}".format(
+        selected_error_window,
+        selected_shrinkage,
+    )
 )
-
-# Таблица переходов в долях от всей выборки
-cross_share_all = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="all"
-)
-
-# Условные вероятности: куда переходит target_3m к 6 месяцу
-cross_share_by_3m = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="index"
-)
-
-# Доля полного совпадения таргетов
-same_target_share = (y3 == y6).mean()
-
-print("Phi correlation:", phi_corr)
-print("\nCounts:")
-print(cross_counts)
-
-print("\nShare of all:")
-print(cross_share_all)
-
-print("\nConditional share by target_3m:")
-print(cross_share_by_3m)
-
-print("\nSame target share:", same_target_share)
+display(ns_overall_comparison_df.style.format({
+    "% невыдач": "{:.2%}",
+    "отклонение от цели 15%": "{:+.2%}",
+    "среднее факта": "{:,.0f}",
+    "среднее прогноза": "{:,.0f}",
+    "MAE": "{:,.0f}",
+    "MAE95": "{:,.0f}",
+    "медианная абсолютная ошибка": "{:,.0f}",
+    "P90 абсолютной ошибки": "{:,.0f}",
+    "смещение факт − прогноз": "{:,.0f}",
+    "дисперсия ошибок": "{:,.0f}",
+    "СКО ошибок": "{:,.0f}",
+}))
+display(ns_cashdesk_summary_df.style.format({
+    "% касс с улучшением MAE": "{:.2%}",
+}))
+display(ns_by_cashdesk_df.style.format({
+    "среднее факта": "{:,.0f}",
+    "старый: % невыдач": "{:.2%}",
+    "новый: % невыдач": "{:.2%}",
+    "изменение % невыдач": "{:+.2%}",
+    "старый: среднее прогноза": "{:,.0f}",
+    "новый: среднее прогноза": "{:,.0f}",
+    "старый: MAE": "{:,.0f}",
+    "новый: MAE": "{:,.0f}",
+    "улучшение MAE": "{:+,.0f}",
+    "улучшение MAE, %": "{:+.2%}",
+    "старый: MAE95": "{:,.0f}",
+    "новый: MAE95": "{:,.0f}",
+    "улучшение MAE95": "{:+,.0f}",
+    "улучшение MAE95, %": "{:+.2%}",
+    "старый: медианная ошибка": "{:,.0f}",
+    "новый: медианная ошибка": "{:,.0f}",
+    "старый: P90 ошибки": "{:,.0f}",
+    "новый: P90 ошибки": "{:,.0f}",
+    "старый: смещение факт − прогноз": "{:,.0f}",
+    "новый: смещение факт − прогноз": "{:,.0f}",
+    "старый: дисперсия ошибок": "{:,.0f}",
+    "новый: дисперсия ошибок": "{:,.0f}",
+    "старый: СКО ошибок": "{:,.0f}",
+    "новый: СКО ошибок": "{:,.0f}",
+}))
+display(ns_by_date_df.style.format({
+    "среднее факта": "{:,.0f}",
+    "старый: % невыдач": "{:.2%}",
+    "новый: % невыдач": "{:.2%}",
+    "изменение % невыдач": "{:+.2%}",
+    "старый: среднее прогноза": "{:,.0f}",
+    "новый: среднее прогноза": "{:,.0f}",
+    "старый: MAE": "{:,.0f}",
+    "новый: MAE": "{:,.0f}",
+    "улучшение MAE": "{:+,.0f}",
+    "старый: MAE95": "{:,.0f}",
+    "новый: MAE95": "{:,.0f}",
+    "улучшение MAE95": "{:+,.0f}",
+    "старый: медианная абсолютная ошибка": "{:,.0f}",
+    "новый: медианная абсолютная ошибка": "{:,.0f}",
+    "старый: P90 абсолютной ошибки": "{:,.0f}",
+    "новый: P90 абсолютной ошибки": "{:,.0f}",
+    "старый: смещение факт − прогноз": "{:,.0f}",
+    "новый: смещение факт − прогноз": "{:,.0f}",
+    "старый: дисперсия ошибок": "{:,.0f}",
+    "новый: дисперсия ошибок": "{:,.0f}",
+    "старый: СКО ошибок": "{:,.0f}",
+    "новый: СКО ошибок": "{:,.0f}",
+    "использованный квантиль": "{:.3f}",
+}))
+saldo_metric_format = {
+    "MAE": "{:,.0f}",
+    "MAE95": "{:,.0f}",
+    "WAPE": "{:.2%}",
+    "медианная абсолютная ошибка": "{:,.0f}",
+    "P90 абсолютной ошибки": "{:,.0f}",
+    "смещение факт − прогноз": "{:,.0f}",
+    "% fallback saldo": "{:.2%}",
+}
+display(saldo_overall_metrics_df.style.format(saldo_metric_format))
+display(saldo_by_cashdesk_df.style.format(saldo_metric_format))
+display(saldo_by_date_df.style.format(saldo_metric_format))
