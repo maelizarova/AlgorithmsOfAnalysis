@@ -236,13 +236,75 @@
 
     <div class="stats">
       <div class="stat"><strong>15,09%</strong><span>невыдач итоговой модели</span></div>
-      <div class="stat"><strong>−11%</strong><span>MAE относительно старой модели</span></div>
-      <div class="stat"><strong>−14%</strong><span>MAE95 относительно старой модели</span></div>
+      <div class="stat"><strong>−15%</strong><span>MAE относительно старой модели</span></div>
+      <div class="stat"><strong>−20%</strong><span>MAE95 относительно старой модели</span></div>
     </div>
   </header>
 
   <section>
-    <h2>1. Что прогнозируется</h2>
+    <h2>1. Итоговые результаты</h2>
+    <p class="muted" style="margin-bottom:16px">
+      Ретро-период: 15.04.2026–15.06.2026.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Модель</th>
+            <th>Невыдачи</th>
+            <th>MAE</th>
+            <th>MAE95</th>
+            <th>Медиана</th>
+            <th>P90</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Старый forecast_model</td>
+            <td>13,36%</td>
+            <td>7,29 млн</td>
+            <td>5,58 млн</td>
+            <td>3,09 млн</td>
+            <td>10,74 млн</td>
+          </tr>
+          <tr>
+            <td>Центральный SARIMA</td>
+            <td>42,46%</td>
+            <td>3,25 млн</td>
+            <td>2,15 млн</td>
+            <td>1,18 млн</td>
+            <td>6,30 млн</td>
+          </tr>
+          <tr class="result-row">
+            <td><strong>Адаптивный алгоритм</strong></td>
+            <td><strong>15,09%</strong></td>
+            <td><strong>6,21 млн</strong></td>
+            <td><strong>4,47 млн</strong></td>
+            <td><strong>2,47 млн</strong></td>
+            <td><strong>9,20 млн</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid" style="margin-top:16px">
+      <div class="note good" style="margin-top:0">
+        <strong>Улучшение.</strong> При 15,09% невыдач MAE снизился примерно
+        на 15%, MAE95 — на 20%, медианная ошибка — на 20%. Смещение также уменьшилось.
+      </div>
+      <div class="note warn" style="margin-top:0">
+        <strong>Дополнительный результат.</strong> P90 снизился с 10,74 до 9,20 млн:
+        улучшение наблюдается не только в типичной, но и в верхней части распределения ошибок.
+      </div>
+    </div>
+    <p class="muted" style="margin-top:16px">
+      Для NS-метрик используются строки с отрицательным фактом и доступным
+      старым прогнозом. Поэтому подневный отчёт содержит не все 62 календарные
+      даты, хотя прогнозы рассчитаны для всех дат скоринга.
+    </p>
+  </section>
+
+  <section>
+    <h2>2. Что прогнозируется</h2>
     <div class="table-wrap">
       <table>
         <thead>
@@ -271,7 +333,7 @@
           </tr>
           <tr>
             <td><strong>Scale кассы</strong></td>
-            <td style="text-align:left">Медиана |NS| по отрицательным фактам кассы за последние 56 дней. Делает ошибки разных касс сопоставимыми.</td>
+            <td style="text-align:left">Медиана |NS| по отрицательным фактам кассы за последние 224 дня. Делает ошибки разных касс сопоставимыми.</td>
           </tr>
         </tbody>
       </table>
@@ -283,7 +345,7 @@
   </section>
 
   <section>
-    <h2>2. Полный поток расчёта на дату D</h2>
+    <h2>3. Полный поток расчёта на дату D</h2>
     <div class="flow">
       <article class="step">
         <span class="step-number">1</span>
@@ -319,7 +381,7 @@
   </section>
 
   <section>
-    <h2>3. Центральная SARIMA</h2>
+    <h2>4. Центральная SARIMA</h2>
     <div class="grid">
       <div>
         <p>
@@ -333,7 +395,7 @@
         </p>
         <p style="margin-top:12px">
           Central SARIMA хорошо минимизирует среднюю ошибку, но не управляет
-          односторонним риском. Поэтому у неё низкий MAE, но 42,28% невыдач.
+          односторонним риском. Поэтому у неё низкий MAE, но 42,46% невыдач.
         </p>
       </div>
       <div class="panel">
@@ -349,7 +411,7 @@
   </section>
 
   <section>
-    <h2>4. Нормированные ошибки</h2>
+    <h2>5. Нормированные ошибки</h2>
     <p>
       Ошибки нельзя объединять напрямую: один миллион для маленькой и крупной
       кассы означает разный относительный риск. Поэтому ошибка переводится
@@ -358,7 +420,7 @@
     <div class="grid" style="margin-top:16px">
       <div class="panel">
         <h3>Нормирующий масштаб</h3>
-        <span class="formula">scale(c, D) = median(|NS|) за последние 56 дней</span>
+        <span class="formula">scale(c, D) = median(|NS|) за последние 224 дня</span>
         <p class="muted">
           Берутся отрицательные факты, доступные на D−2. При недостатке
           истории используется общий масштаб.
@@ -380,16 +442,16 @@
   </section>
 
   <section>
-    <h2>5. Иерархическое распределение ошибок</h2>
+    <h2>6. Иерархическое распределение ошибок</h2>
     <p>
       Для каждого горизонта формируются два распределения: глобальное по всем
       кассам и локальное по конкретной кассе. Используются ошибки за последние
-      56 дней с известным на D−2 фактом.
+      224 дня с известным на D−2 фактом.
     </p>
     <div class="grid" style="margin-top:16px">
       <div class="panel">
         <h3>Вес конкретной кассы</h3>
-        <span class="formula">w(c) = n(c) / (n(c) + 5)</span>
+        <span class="formula">w(c) = n(c) / (n(c) + 20)</span>
         <p class="muted">
           При малом числе ошибок локальная оценка стягивается к глобальной.
           При накоплении истории влияние конкретной кассы растёт.
@@ -414,7 +476,7 @@
   </section>
 
   <section>
-    <h2>6. Динамический адаптивный квантиль</h2>
+    <h2>7. Динамический адаптивный квантиль</h2>
     <p>
       Со временем SARIMA может ошибаться по-разному. Поэтому квантиль
       обновляется последовательно по уже известным результатам.
@@ -442,7 +504,7 @@
   </section>
 
   <section>
-    <h2>7. Финальная формула NS и прогноз saldo_turn</h2>
+    <h2>8. Финальная формула NS и прогноз saldo_turn</h2>
     <div class="panel">
       <h3>Прогноз NS кассы c на горизонте h</h3>
       <span class="formula">prediction(c,h) = min(central(c,h) + correction(c,h,q) × scale(c), 0)</span>
@@ -463,67 +525,6 @@
     </div>
   </section>
 
-  <section>
-    <h2>8. Итоговые результаты</h2>
-    <p class="muted" style="margin-bottom:16px">
-      Ретро-период: 15.04.2026–15.06.2026.
-    </p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Модель</th>
-            <th>Невыдачи</th>
-            <th>MAE</th>
-            <th>MAE95</th>
-            <th>Медиана</th>
-            <th>P90</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Старый forecast_model</td>
-            <td>13,36%</td>
-            <td>7,29 млн</td>
-            <td>5,58 млн</td>
-            <td>3,09 млн</td>
-            <td>10,74 млн</td>
-          </tr>
-          <tr>
-            <td>Центральный SARIMA</td>
-            <td>42,28%</td>
-            <td>3,25 млн</td>
-            <td>2,16 млн</td>
-            <td>1,18 млн</td>
-            <td>6,32 млн</td>
-          </tr>
-          <tr class="result-row">
-            <td><strong>Адаптивный алгоритм</strong></td>
-            <td><strong>15,09%</strong></td>
-            <td><strong>6,50 млн</strong></td>
-            <td><strong>4,82 млн</strong></td>
-            <td><strong>2,76 млн</strong></td>
-            <td><strong>11,23 млн</strong></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="grid" style="margin-top:16px">
-      <div class="note good" style="margin-top:0">
-        <strong>Улучшение.</strong> При 15,09% невыдач MAE снизился примерно
-        на 11%, MAE95 — на 14%, медианная ошибка — на 11%. Смещение также уменьшилось.
-      </div>
-      <div class="note warn" style="margin-top:0">
-        <strong>Ограничение.</strong> P90 вырос с 10,74 до 11,23 млн:
-        типичная ошибка улучшилась, но отдельные крупные ошибки ещё присутствуют.
-      </div>
-    </div>
-    <p class="muted" style="margin-top:16px">
-      Для NS-метрик используются строки с отрицательным фактом и доступным
-      старым прогнозом. Поэтому подневный отчёт содержит не все 62 календарные
-      даты, хотя прогнозы рассчитаны для всех дат скоринга.
-    </p>
-  </section>
 </main>
 </body>
 </html>
