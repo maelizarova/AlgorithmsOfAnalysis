@@ -1,0 +1,33 @@
+{
+  "oracle_username": "sb_analytics",
+  "oracle_password_secret_block": "pass-sb-analytics",
+  "source_table": "AIDA2.AIDA_TRS_DTM_CASHOP@aida",
+  "preds_table": "EMA_CASHDESK_PREDS",
+  "calendar_table": "ORL.ORL_CLD_PROD_CALENDAR",
+  "algorithm": {
+    "history_months": 12,
+    "data_lag_days": 2,
+    "forecast_days": 30,
+    "error_window_days": 280,
+    "shrinkage": 10.0,
+    "initial_quantile": 0.13,
+    "target_breach_rate": 0.13,
+    "adaptive_gamma": 0.20,
+    "adaptive_quantile_min": 0.01,
+    "adaptive_quantile_max": 0.25,
+    "adaptive_min_update_rows": 30,
+    "min_scale_rows": 5,
+    "min_sarima_obs": 90,
+    "cash_need_clip_upper": 0.0,
+    "forecast_scale_multiplier": 20.0,
+    "sarima_order": [1, 1, 1],
+    "sarima_seasonal_order": [1, 0, 1, 7],
+    "sarima_maxiter": 200,
+    "exclude_date_ranges": [["2025-09-01", "2025-11-01"]]
+  },
+  "runtime": {
+    "retries": 1,
+    "retry_delay_seconds": 60,
+    "write_batch_size": 100000
+  }
+}
