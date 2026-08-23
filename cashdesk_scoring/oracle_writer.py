@@ -23,6 +23,66 @@ PREDS_COLUMNS: Sequence[str] = (
 )
 
 
+def delete_score_date_rows(
+    engine,
+    table_name: str,
+    score_date: str,
+) -> int:
+    score_date_str = pd.Timestamp(score_date).strftime("%Y-%m-%d")
+    delete_query = text(
+        """
+        delete from {table_name}
+        where score_date = to_date(:score_date, 'YYYY-MM-DD')
+        """.format(table_name=table_name)
+    )
+    with engine.begin() as conn:
+        result = conn.execute(
+            delete_query,
+            {"score_date": score_date_str},
+        )
+        deleted = int(result.rowcount or 0)
+    logger.info(
+        "Deleted %s rows for score_date=%s from %s",
+        deleted,
+        score_date_str,
+        table_name,
+    )
+    return deleted
+
+
+def insert_predictions(
+    engine,
+    df: pd.DataFrame,
+    table_name: str,
+    score_date: str,
+    batch_size: int = 100_000,
+) -> int:
+    writer = CashdeskPredsWriter(
+        df,
+        table_name=table_name,
+        score_date=score_date,
+        batch_size=batch_size,
+    )
+    writer._validate()
+    if writer.df.empty:
+        return 0
+
+    oracle.write(
+        writer.df,
+        engine,
+        writer.table_name,
+        batch_size=writer.batch_size,
+        if_exists="append",
+    )
+    logger.info(
+        "Inserted %s rows into %s for score_date=%s",
+        len(writer.df),
+        writer.table_name,
+        writer.score_date,
+    )
+    return len(writer.df)
+
+
 class CashdeskPredsWriter:
     def __init__(
         self,
@@ -64,44 +124,12 @@ class CashdeskPredsWriter:
             )
         self.df[numeric_columns] = self.df[numeric_columns].round(6)
 
-    def _delete_score_date(self, engine) -> int:
-        delete_query = text(
-            """
-            delete from {table_name}
-            where score_date = to_date(:score_date, 'YYYY-MM-DD')
-            """.format(table_name=self.table_name)
-        )
-        with engine.begin() as conn:
-            result = conn.execute(
-                delete_query,
-                {"score_date": self.score_date},
-            )
-            deleted = int(result.rowcount or 0)
-        logger.info(
-            "Deleted %s rows for score_date=%s from %s",
-            deleted,
-            self.score_date,
-            self.table_name,
-        )
-        return deleted
-
     def write_data(self, engine) -> int:
-        self._validate()
-        self._delete_score_date(engine)
-        if self.df.empty:
-            return 0
-
-        oracle.write(
-            self.df,
+        delete_score_date_rows(engine, self.table_name, self.score_date)
+        return insert_predictions(
             engine,
-            self.table_name,
-            batch_size=self.batch_size,
-            if_exists="append",
-        )
-        logger.info(
-            "Inserted %s rows into %s for score_date=%s",
-            len(self.df),
+            self.df,
             self.table_name,
             self.score_date,
+            batch_size=self.batch_size,
         )
-        return len(self.df)

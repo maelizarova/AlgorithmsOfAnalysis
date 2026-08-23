@@ -10,7 +10,7 @@
 |---|---|
 | `settings.json` | Параметры алгоритма и Oracle |
 | `cashdesk_forecast.py` | Загрузка данных, SARIMA, adaptive q, schedule |
-| `cashdesk_scoring_flow.py` | Prefect flow `ts_cashdesks_0826_v1` |
+| `cashdesk_scoring_flow.py` | Prefect flow `ts_cashdesks_0826_v1` (таски: `reading_data` → `scoring` → `delete_score_date` → `write_predictions`) |
 | `oracle_writer.py` | Delete по `score_date` + append |
 | `schema_preds.sql` | DDL одной партиционированной таблицы |
 
@@ -57,4 +57,9 @@ python cashdesk_scoring_flow.py
 
 ## One-time backfill
 
-Перед первым prod-днём залить в `EMA_CASHDESK_PREDS` историю прошлых `score_date` с полями central/final/`quantile_used`/`is_closed`. Иначе пул ошибок и адаптивный квантиль стартуют «с нуля» (`q=0.13`, пустые residuals до накопления фактов).
+Не заливать старое ретро «как есть» — логика обучения другая.
+
+Используйте ноутбук [`cashdesk_backfill_prod_logic.ipynb`](../cashdesk_backfill_prod_logic.ipynb):
+параллельный ретро с prod-логикой (NaN в обучении, zero только по расписанию,
+окно 280 / shrinkage 10 / q=0.13). В конце `WRITE_BACKFILL_TO_ORACLE = True`
+пишет в `EMA_TS_CASHDESKS_0826_V1`.

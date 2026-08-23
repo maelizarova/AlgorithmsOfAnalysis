@@ -1,8 +1,6 @@
 {
-  "oracle_username": "sb_analytics",
-  "oracle_password_secret_block": "pass-sb-analytics",
   "source_table": "AIDA2.AIDA_TRS_DTM_CASHOP@aida",
-  "preds_table": "EMA_CASHDESK_PREDS",
+  "preds_table": "EMA_TS_CASHDESKS_0826_V1",
   "calendar_table": "ORL.ORL_CLD_PROD_CALENDAR",
   "algorithm": {
     "history_months": 12,

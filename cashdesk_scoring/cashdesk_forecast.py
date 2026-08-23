@@ -800,13 +800,11 @@ def _forecast_one_cashdesk(
     return result_df
 
 
-def run_daily_score(
-    engine,
+def score_from_loaded_data(
     settings: Dict[str, Any],
-    score_date,
+    loaded: Dict[str, Any],
 ) -> pd.DataFrame:
     algo = _algo(settings)
-    loaded = load_source_data(engine, settings, score_date)
     score_date = loaded["score_date"]
     report_date = loaded["report_date"]
     history_date_from = loaded["history_date_from"]
@@ -993,3 +991,12 @@ def run_daily_score(
     if not np.isfinite(result_df[numeric_columns].to_numpy(dtype=float)).all():
         raise RuntimeError("В итоговом прогнозе есть нечисловые значения")
     return result_df
+
+
+def run_daily_score(
+    engine,
+    settings: Dict[str, Any],
+    score_date,
+) -> pd.DataFrame:
+    loaded = load_source_data(engine, settings, score_date)
+    return score_from_loaded_data(settings, loaded)

@@ -1,8 +1,8 @@
--- EMA_CASHDESK_PREDS
+-- EMA_TS_CASHDESKS_0826_V1
 -- Одна строка = касса × score_date × forecast_date
 -- Партиции: INTERVAL по score_date (день скоринга)
 
-CREATE TABLE EMA_CASHDESK_PREDS (
+CREATE TABLE EMA_TS_CASHDESKS_0826_V1 (
     score_date                 DATE           NOT NULL,
     report_date                DATE           NOT NULL,
     atdtmco_cashdesk_code      VARCHAR2(64)   NOT NULL,
@@ -28,13 +28,15 @@ INTERVAL (NUMTODSINTERVAL(1, 'DAY'))
 );
 
 CREATE INDEX ix_ema_cashdesk_preds_code_fd
-    ON EMA_CASHDESK_PREDS (atdtmco_cashdesk_code, forecast_date)
+    ON EMA_TS_CASHDESKS_0826_V1 (atdtmco_cashdesk_code, forecast_date)
     LOCAL;
 
 -- Идемпотентный пересчёт дня:
---   DELETE FROM EMA_CASHDESK_PREDS WHERE score_date = :score_date;
+--   DELETE FROM EMA_TS_CASHDESKS_0826_V1 WHERE score_date = :score_date;
 --   затем APPEND строк за этот score_date.
 --
 -- One-time backfill перед первым prod-запуском:
---   залить историю >= error_window_days + data_lag_days
---   с полями central, ns_pred, quantile_used, is_closed.
+--   ноутбук cashdesk_backfill_prod_logic.ipynb (параллельный ретро
+--   с prod-логикой: NaN в обучении, zero только по расписанию,
+--   окно 280 / shrinkage 10 / q=0.13), затем ячейка
+--   WRITE_BACKFILL_TO_ORACLE = True.
