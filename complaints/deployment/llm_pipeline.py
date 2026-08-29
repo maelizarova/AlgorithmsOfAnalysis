@@ -6,13 +6,14 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
 
+import httpx
 import pandas as pd
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, create_model
 
 
-MAX_HTTP_TIMEOUT_SECONDS = 60
+MAX_HTTP_TIMEOUT_SECONDS = 180
 
 
 class ClassificationLabel(BaseModel):
@@ -49,7 +50,10 @@ class LLMConfig(BaseModel):
 
 
 def build_llm_from_config(llm_config: LLMConfig) -> ChatOpenAI:
+    # Bifrost/corp SSL: default ChatOpenAI client often raises Connection error;
+    # explicit httpx client with verify=False matches the working CaseLLM setup.
     timeout_seconds = min(llm_config.timeout_seconds, MAX_HTTP_TIMEOUT_SECONDS)
+    http_client = httpx.Client(timeout=timeout_seconds, verify=False)
     return ChatOpenAI(
         model=llm_config.model,
         api_key=llm_config.api_key,
@@ -57,6 +61,7 @@ def build_llm_from_config(llm_config: LLMConfig) -> ChatOpenAI:
         temperature=llm_config.temperature,
         timeout=timeout_seconds,
         max_retries=0,
+        http_client=http_client,
         extra_body=llm_config.model_kwargs or None,
     )
 

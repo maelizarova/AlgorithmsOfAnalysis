@@ -9,7 +9,7 @@ import pandas as pd
 RESULT_COLUMNS = [
     "claim_num",
     "created",
-    "score_date",
+    "report_date",
     "product",
     "theme",
     "category",
@@ -21,13 +21,26 @@ RESULT_COLUMNS = [
 ]
 
 
-def compute_score_window(score_date: date | datetime | str | None = None, lookback_days: int = 1) -> tuple[str, str]:
+def compute_report_window(
+    report_date: date | datetime | str | None = None,
+    lookback_days: int = 1,
+) -> tuple[str, str]:
+    """Return [start_date, end_date) for claims.created.
+
+    report_date is the last inclusive day of the report (default: yesterday).
+    Window: [report_date - lookback_days + 1, report_date + 1).
+    """
     if lookback_days < 1:
         raise ValueError("lookback_days must be greater than zero")
 
-    resolved_score_date = _coerce_date(score_date)
-    start_date = resolved_score_date - timedelta(days=lookback_days)
-    return start_date.isoformat(), resolved_score_date.isoformat()
+    resolved_report_date = _coerce_date(report_date)
+    end_date = resolved_report_date + timedelta(days=1)
+    start_date = end_date - timedelta(days=lookback_days)
+    return start_date.isoformat(), end_date.isoformat()
+
+
+# Backward-compatible alias for older notebook cells.
+compute_score_window = compute_report_window
 
 
 def filter_source_data(
@@ -49,10 +62,10 @@ def build_result_frame(
     judge_issues_df: pd.DataFrame,
     judge_requests_df: pd.DataFrame,
     *,
-    score_date: date | datetime | str,
+    report_date: date | datetime | str,
     classifier_name: str,
 ) -> pd.DataFrame:
-    score_timestamp = pd.to_datetime(_coerce_date(score_date))
+    report_timestamp = pd.to_datetime(_coerce_date(report_date))
     rows = []
     rows.extend(
         _iter_result_rows(
@@ -60,7 +73,7 @@ def build_result_frame(
             judge_issues_df,
             labels_column="issues_pred",
             label_type="issue",
-            score_date=score_timestamp,
+            report_date=report_timestamp,
             classifier_name=classifier_name,
         )
     )
@@ -70,7 +83,7 @@ def build_result_frame(
             judge_requests_df,
             labels_column="requested_actions_pred",
             label_type="req_action",
-            score_date=score_timestamp,
+            report_date=report_timestamp,
             classifier_name=classifier_name,
         )
     )
@@ -83,7 +96,7 @@ def _iter_result_rows(
     *,
     labels_column: str,
     label_type: str,
-    score_date: pd.Timestamp,
+    report_date: pd.Timestamp,
     classifier_name: str,
 ) -> list[dict[str, Any]]:
     rows = []
@@ -100,7 +113,7 @@ def _iter_result_rows(
                 {
                     "claim_num": row.get("claim_num", ""),
                     "created": row.get("created"),
-                    "score_date": score_date,
+                    "report_date": report_date,
                     "product": row.get("product", ""),
                     "theme": row.get("theme", ""),
                     "category": row.get("category", ""),
@@ -147,7 +160,7 @@ def _labels_to_list(value: Any) -> list[Any]:
 
 def _coerce_date(value: date | datetime | str | None) -> date:
     if value is None:
-        return date.today()
+        return date.today() - timedelta(days=1)
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):

@@ -17,15 +17,18 @@ Unit-тесты не нужны для боевого переноса и уда
 
 ## Как работает flow
 
-`complaints_scoring_flow.py` читает все JSON-файлы из `deployment/configs/*.json`.
+`complaints_scoring_flow.py` читает все JSON-файлы из `configs/*.json`.
 Один JSON-конфиг соответствует одному классификатору.
 Общие параметры подключения и батчинга берутся из `deployment/settings.json`, поэтому их не нужно дублировать в каждом классификаторе.
 
+Текст претензии читается из `cea.description_claim` в `queries/get_data.sql`.
+Поле извлекается через `dbms_lob.substr(cea.description_claim, 2000, 1)`, чтобы не тянуть CLOB целиком через DB link `@siebel` и не ловить ORA-06502 на кириллице (лимит VARCHAR2 в SQL — 4000 байт).
+
 По умолчанию:
 
-- `score_date` — дата запуска flow;
-- окно данных — `[score_date - lookback_days, score_date)`;
-- `lookback_days = 1`, то есть скорятся претензии за вчера.
+- `report_date` — дата отчёта (по умолчанию вчера, `today - 1`);
+- окно данных — `[report_date - lookback_days + 1, report_date + 1)`;
+- `lookback_days = 1`, то есть скорятся претензии за `report_date` (вчера).
 
 Если нужно перескорить несколько дней, передайте параметр `lookback_days`, например `3`.
 
@@ -37,7 +40,7 @@ Unit-тесты не нужны для боевого переноса и уда
 
 - `claim_num` — номер претензии;
 - `created` — дата создания претензии;
-- `score_date` — дата скоринга;
+- `report_date` — дата отчёта (по умолчанию вчера);
 - `product`, `theme`, `category` — продуктовые поля из источника;
 - `classifier_name` — имя классификатора из конфига;
 - `type` — `issue` или `req_action`;
@@ -45,16 +48,16 @@ Unit-тесты не нужны для боевого переноса и уда
 - `sub_class` — подкласс из таксономии;
 - `eval` — `true`, если judge подтвердил и класс, и подкласс.
 
-Перед записью flow удаляет старые строки за тот же `score_date` и `classifier_name`, чтобы не плодить дубли при повторном запуске.
+Перед записью flow удаляет старые строки за тот же `report_date`, затем каждый классификатор делает append.
 
 ## Как добавить новый классификатор
 
-1. Скопируйте `deployment/configs/auto_loan.json`.
+1. Скопируйте `configs/auto_loan.json`.
 2. Задайте уникальный `classifier_name`.
 3. Заполните `product`, при необходимости `theme` и `category`.
 4. Положите таксономии рядом с конфигом, например:
-   - `deployment/configs/my_classifier/issues.json`;
-   - `deployment/configs/my_classifier/requested_actions.json`.
+   - `configs/my_classifier/issues.json`;
+   - `configs/my_classifier/requested_actions.json`.
 5. В конфиге укажите пути:
    - `"taxonomy_issues_path": "my_classifier/issues.json"`;
    - `"taxonomy_requests_path": "my_classifier/requested_actions.json"`.
@@ -123,18 +126,23 @@ deployment/prompts/<product>/product_context.txt
 
 ## Ручной запуск
 
-Из корня проекта, где лежит папка `deployment`:
+Перед полным запуском удобно открыть `check_flow_debug.ipynb`.
+Он проходит тот же пайплайн по шагам и показывает промежуточные результаты:
+SQL-выборку, фильтр, sample для LLM, результат классификации, judge и финальную таблицу.
+По умолчанию notebook обрабатывает только несколько строк и не пишет результат в Oracle.
+
+Из папки `deployment`:
 
 ```bash
-python -m deployment.complaints_scoring_flow
+python complaints_scoring_flow.py
 ```
 
 Пример запуска с окном за 3 дня:
 
 ```python
-from deployment.complaints_scoring_flow import run_all_classifiers
+from complaints_scoring_flow import run_all_classifiers
 
-run_all_classifiers(score_date="2026-06-10", lookback_days=3)
+run_all_classifiers(report_date="2026-06-10", lookback_days=3)
 ```
 
 ## Зависимости

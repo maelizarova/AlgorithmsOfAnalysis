@@ -6,6 +6,5 @@
   "text_column": "description_claim",
   "query_path": "../queries/get_data.sql",
   "taxonomy_issues_path": "auto_loan/issues.json",
-  "taxonomy_requests_path": "auto_loan/requested_actions.json",
-  "output_table": "ema_complaints_classification"
+  "taxonomy_requests_path": "auto_loan/requested_actions.json"
 }

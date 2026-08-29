@@ -1,12 +1,14 @@
 {
   "oracle_username": "analytics",
   "oracle_password_secret_block": "pass-space",
+  "output_table": "ema_complaints_classification",
+  "query_path": "queries/get_data.sql",
   "llm": {
-    "api_key_secret_block": "llm-api-key",
-    "base_url": "https://gpt.run.fc.uralsibbank.ru/v1",
-    "model": "openai/gpt-oss-120b",
-    "temperature": 0.0,
-    "timeout_seconds": 60,
+    "api_key": "sk-bf-...",
+    "base_url": "https://api.run.fc.uralsibbank.ru/v1",
+    "model": "A",
+    "temperature": 0.5,
+    "timeout_seconds": 180,
     "model_kwargs": {
       "top_p": 0.95,
       "top_k": 20,
@@ -14,7 +16,7 @@
     }
   },
   "runtime": {
-    "batch_size": 100,
+    "batch_size": 500,
     "max_concurrency": 5,
     "retries": 4,
     "backoff_base_seconds": 2.0
