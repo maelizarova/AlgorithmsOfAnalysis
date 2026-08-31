@@ -1,49 +1,107 @@
-import pandas as pd
+from __future__ import annotations
 
-y3 = df["target_3m"]
-y6 = df["target_6m"]
+import glob
+import json
+import sys
+from datetime import date, timedelta
+from pathlib import Path
 
-# Phi coefficient: Pearson correlation для двух бинарных 0/1 таргетов
-phi_corr = y3.corr(y6)
+sys.path.append(str(Path(__file__).parent.parent))
 
-# Таблица переходов в штуках
-cross_counts = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    margins=True
+from prefect import flow, get_run_logger
+from prefect.task_runners import ConcurrentTaskRunner
+
+from tasks.scoring_functions import (
+    clear_report_date,
+    reading_data,
+    scoring,
+    to_sql,
 )
+from utils.result_builder import compute_report_window
 
-# Таблица переходов в долях от всей выборки
-cross_share_all = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="all"
+
+MAX_WORKERS = 4
+RETRIES = 1
+RETRY_DELAY_SECONDS = 60
+
+
+@flow(
+    name="clf_complaints_0826_v1",
+    retries=RETRIES,
+    retry_delay_seconds=RETRY_DELAY_SECONDS,
+    task_runner=ConcurrentTaskRunner(max_workers=MAX_WORKERS),
 )
+def clf_complaints_0826_v1(
+    report_date: str | None = None,
+    lookback_days: int = 1,
+    config_glob: str = "configs/*.json",
+) -> list[int]:
+    resolved_report_date = report_date or (date.today() - timedelta(days=1)).isoformat()
+    start_date, end_date = compute_report_window(resolved_report_date, lookback_days=lookback_days)
 
-# Условные вероятности: куда переходит target_3m к 6 месяцу
-cross_share_by_3m = pd.crosstab(
-    y3,
-    y6,
-    rownames=["target_3m"],
-    colnames=["target_6m"],
-    normalize="index"
-)
+    package_dir = Path(__file__).resolve().parent
+    pattern = config_glob if Path(config_glob).is_absolute() else str(package_dir / config_glob)
+    config_paths = sorted(glob.glob(pattern))
 
-# Доля полного совпадения таргетов
-same_target_share = (y3 == y6).mean()
+    logger = get_run_logger()
+    logger.info(
+        "Запускаю классификаторы претензий: %s. Окно данных: [%s, %s)",
+        len(config_paths),
+        start_date,
+        end_date,
+    )
 
-print("Phi correlation:", phi_corr)
-print("\nCounts:")
-print(cross_counts)
+    if not config_paths:
+        logger.warning("Не найдены конфиги по шаблону %s", pattern)
+        return []
 
-print("\nShare of all:")
-print(cross_share_all)
+    settings_path = package_dir / "settings.json"
+    with open(settings_path, encoding="utf-8") as f:
+        settings = json.load(f)
 
-print("\nConditional share by target_3m:")
-print(cross_share_by_3m)
+    cleared = clear_report_date.submit(settings, resolved_report_date)
+    source_future = reading_data.submit(
+        settings,
+        start_date,
+        end_date,
+        str(package_dir),
+        wait_for=[cleared],
+    )
 
-print("\nSame target share:", same_target_share)
+    write_futures = []
+    for config_path in config_paths:
+        classifier_name = _peek_classifier_name(config_path)
+        score_future = scoring.submit(
+            source_future,
+            config_path,
+            resolved_report_date,
+            classifier_name,
+        )
+        write_futures.append(
+            to_sql.submit(
+                score_future,
+                classifier_name,
+            )
+        )
+
+    return [future.result() for future in write_futures]
+
+
+def _peek_classifier_name(config_path: str) -> str:
+    with open(config_path, encoding="utf-8") as f:
+        return json.load(f)["classifier_name"]
+
+
+def _merge_settings(settings: dict, classifier_config: dict) -> dict:
+    """Used by check_flow_debug.ipynb."""
+    config = {**settings, **classifier_config}
+    for section in ("llm", "runtime"):
+        config[section] = {
+            **settings.get(section, {}),
+            **classifier_config.get(section, {}),
+        }
+    return config
+
+
+if __name__ == "__main__":
+    clf_complaints_0826_v1()
