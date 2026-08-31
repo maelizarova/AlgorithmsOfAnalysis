@@ -1,107 +1,36 @@
-from __future__ import annotations
+Коллеги, добрый день!
 
-import glob
-import json
-import sys
-from datetime import date, timedelta
-from pathlib import Path
+Запускаем ежедневный скоринг новых претензий LLM-классификатором.
 
-sys.path.append(str(Path(__file__).parent.parent))
+Как работает
 
-from prefect import flow, get_run_logger
-from prefect.task_runners import ConcurrentTaskRunner
+Раз в день обрабатываются претензии за вчера (report_date = сегодня − 1).
+Результат пишется в одну общую таблицу Oracle: ema_complaints_classification.
+Сейчас в проде первый продукт — Автокредит. Дальше буду добавлять остальные продукты по мере готовности таксономий и промптов.
+Поля в таблице
 
-from tasks.scoring_functions import (
-    clear_report_date,
-    reading_data,
-    scoring,
-    to_sql,
-)
-from utils.result_builder import compute_report_window
+Поле	Смысл
+claim_num
+номер претензии
+created
+дата создания претензии в Siebel
+report_date
+дата отчёта (за какой день скорили)
+product / theme / category
+продуктовые поля из источника
+classifier_name
+какой классификатор писал строку (например, auto_loan)
+type
+issue (проблема) или req_action (запрос клиента)
+class / sub_class
+класс и подкласс по таксономии
+eval
+1, если judge подтвердил и класс, и подкласс; иначе 0
+Одна претензия может дать несколько строк (несколько issues / requested actions).
 
+Прошу обратную связь Нам удобнее идти итеративно: сначала Автокредит в ежедневном контуре, затем подключать следующие продукты.
+Или вам важнее сначала увидеть разметку по всем ключевым продуктам и только потом включать ежедневный процесс?
 
-MAX_WORKERS = 4
-RETRIES = 1
-RETRY_DELAY_SECONDS = 60
+Буду благодарна за комментарии по формату таблицы, полям и порядку раскатки.
 
-
-@flow(
-    name="clf_complaints_0826_v1",
-    retries=RETRIES,
-    retry_delay_seconds=RETRY_DELAY_SECONDS,
-    task_runner=ConcurrentTaskRunner(max_workers=MAX_WORKERS),
-)
-def clf_complaints_0826_v1(
-    report_date: str | None = None,
-    lookback_days: int = 1,
-    config_glob: str = "configs/*.json",
-) -> list[int]:
-    resolved_report_date = report_date or (date.today() - timedelta(days=1)).isoformat()
-    start_date, end_date = compute_report_window(resolved_report_date, lookback_days=lookback_days)
-
-    package_dir = Path(__file__).resolve().parent
-    pattern = config_glob if Path(config_glob).is_absolute() else str(package_dir / config_glob)
-    config_paths = sorted(glob.glob(pattern))
-
-    logger = get_run_logger()
-    logger.info(
-        "Запускаю классификаторы претензий: %s. Окно данных: [%s, %s)",
-        len(config_paths),
-        start_date,
-        end_date,
-    )
-
-    if not config_paths:
-        logger.warning("Не найдены конфиги по шаблону %s", pattern)
-        return []
-
-    settings_path = package_dir / "settings.json"
-    with open(settings_path, encoding="utf-8") as f:
-        settings = json.load(f)
-
-    cleared = clear_report_date.submit(settings, resolved_report_date)
-    source_future = reading_data.submit(
-        settings,
-        start_date,
-        end_date,
-        str(package_dir),
-        wait_for=[cleared],
-    )
-
-    write_futures = []
-    for config_path in config_paths:
-        classifier_name = _peek_classifier_name(config_path)
-        score_future = scoring.submit(
-            source_future,
-            config_path,
-            resolved_report_date,
-            classifier_name,
-        )
-        write_futures.append(
-            to_sql.submit(
-                score_future,
-                classifier_name,
-            )
-        )
-
-    return [future.result() for future in write_futures]
-
-
-def _peek_classifier_name(config_path: str) -> str:
-    with open(config_path, encoding="utf-8") as f:
-        return json.load(f)["classifier_name"]
-
-
-def _merge_settings(settings: dict, classifier_config: dict) -> dict:
-    """Used by check_flow_debug.ipynb."""
-    config = {**settings, **classifier_config}
-    for section in ("llm", "runtime"):
-        config[section] = {
-            **settings.get(section, {}),
-            **classifier_config.get(section, {}),
-        }
-    return config
-
-
-if __name__ == "__main__":
-    clf_complaints_0826_v1()
+Спасибо!
