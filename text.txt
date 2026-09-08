@@ -1,104 +1,453 @@
-def gini_rate_plotly(
-    data: pd.DataFrame,
-    date_col: str,
-    target_col: str,
-    score_col: str,
-    title: str = "Gini by months",
-) -> Tuple[pd.DataFrame, go.Figure]:
-    """
-    Строит график с количеством записей (столбики) и Gini (линия) по месяцам.
+   -- Универсальная процедура для удаления таблицы, игнорируя ошибку, если таблица не существует
+  PROCEDURE drop_table_if_exists(table_name IN VARCHAR2) IS
+  BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE ' || table_name;
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF SQLCODE = -942 THEN
+        NULL;  -- Игнорируем ошибку "таблица не существует"
+      ELSE
+        RAISE;  -- Для других ошибок выбрасываем исключение
+      END IF;
+  END drop_table_if_exists;
+BEGIN
 
-    Параметры:
-    ----------
-    data : pd.DataFrame
-        Исходные данные
-    date_col : str
-        Название колонки с датой
-    target_col : str
-        Название колонки с таргетом (0/1)
-    score_col : str
-        Название колонки с вероятностью/скором позитивного класса
-    title : str, optional
-        Заголовок графика (по умолчанию "Gini by months")
+drop_table_if_exists(out_table);
 
-    Возвращает:
-    -----------
-    Tuple[pd.DataFrame, go.Figure]
-        DataFrame с агрегированными данными и Plotly фигура
+execute immediate
+'create table '||out_table||' as
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+    
+    --кол-во дней с последнего изменения лимита
+    min(trunc(a.report_date - creation_dt)) as card_limit_report_date_diff_creation_dt_aggmin,
 
-    Примечание:
-    -----------
-    Gini для каждого месяца = 2 * AUC - 1
-    """
-    df = data[[date_col, target_col, score_col]].copy()
-    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-    df = df.dropna(subset=[date_col])
-
-    # месяц = начало месяца
-    df["month"] = df[date_col].dt.to_period("M").dt.to_timestamp()
-
-    # cnt по месяцам
-    agg_cnt = df.groupby("month", as_index=False).agg(cnt=(target_col, "size"))
-
-    # gini по месяцам
-    def _gini_month(gr: pd.DataFrame) -> float:
-        y = gr[target_col].values
-        s = gr[score_col].values
-        if len(np.unique(y)) < 2:
-            return np.nan  # AUC не определён, если в месяце один класс
-        auc = roc_auc_score(y, s)
-        return 2 * auc - 1
-
-    gini = df.groupby("month").apply(_gini_month).reset_index(name="gini")
-
-    df_agg = (
-        agg_cnt.merge(gini, on="month", how="left")
-        .sort_values("month")
-        .reset_index(drop=True)
-    )
-
-    # --- Plotly ---
-    fig = go.Figure()
-    fig.add_bar(
-        x=df_agg["month"],
-        y=df_agg["cnt"],
-        name="CNT",
-        marker_color="royalblue",
-        opacity=0.9,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df_agg["month"],
-            y=df_agg["gini"],
-            mode="lines+markers",
-            name="GINI",
-            yaxis="y2",
-            line=dict(width=3, color="red"),
-            marker=dict(size=7, line=dict(width=1, color="white")),
-        )
-    )
-
-    fig.update_layout(
-        title=title,
-        xaxis=dict(title=None, tickangle=45),
-        yaxis=dict(
-            title=dict(text="CNT", font=dict(color="royalblue")),
-            tickformat=",.0f",
-            color="royalblue",
-        ),
-        yaxis2=dict(
-            title=dict(text="GINI", font=dict(color="red")),
-            overlaying="y",
-            side="right",
-            range=[0, 1],
-            tickformat=".2f",
-            color="red",
-        ),
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5),
-        margin=dict(t=70, r=70, b=70, l=70),
-    )
-
-    fig.show()
-
-    return df_agg[["month", "cnt", "gini"]], fig
+    --кол-во изменений лимита за всё время
+    count(prop_uid) as card_limit_prop_uid_aggcnt,
+    
+    --кол-во изменений лимита за последние 730 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 730
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d730,
+      
+    --кол-во изменений лимита за последние 365 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 365
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d365,
+      
+    --кол-во изменений лимита за последние 180 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 180
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d180,
+      
+    --кол-во изменений лимита за последние 90 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 90
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d90,
+      
+    --кол-во договоров, по которым было изменение лимита за всё время
+    count(distinct deal_num) as card_limit_deal_num_aggcnt,
+    
+    --кол-во договоров, по которым было изменение лимита за последние 730 дней
+    count(distinct case
+      when trunc(creation_dt) >= a.report_date - 730
+      then deal_num
+      else null
+      end) as card_limit_deal_num_aggcnt_d730,
+      
+    --кол-во договоров, по которым было изменение лимита за последние 365 дней
+    count(distinct case
+      when trunc(creation_dt) >= a.report_date - 365
+      then deal_num
+      else null
+      end) as card_limit_deal_num_aggcnt_d365,
+      
+    --кол-во договоров, по которым было изменение лимита за последние 180 дней
+    count(distinct case
+      when trunc(creation_dt) >= a.report_date - 180
+      then deal_num
+      else null
+      end) as card_limit_deal_num_aggcnt_d180,
+      
+    --кол-во договоров, по которым было изменение лимита за последние 90 дней
+    count(distinct case
+      when trunc(creation_dt) >= a.report_date - 90
+      then deal_num
+      else null
+      end) as card_limit_deal_num_aggcnt_d90,
+      
+    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за всё время
+    round(count(prop_uid) / count(distinct deal_num), 2) as card_limit_prop_uid_cnt_div_deal_num_cnt,
+    
+    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 730 дней
+    case
+      when count(distinct case
+        when trunc(creation_dt) >= a.report_date - 730
+        then deal_num
+        else null
+      end) = 0
+      then 0
+      else round(
+        count(case
+          when trunc(creation_dt) >= a.report_date - 730
+          then limit_dif
+          else null
+        end) /
+        count(distinct case
+          when trunc(creation_dt) >= a.report_date - 730
+          then deal_num
+          else null
+        end), 2)
+      end as card_limit_limit_dif_div_deal_num_aggcnt_d730,
+      
+    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 365 дней
+    case
+      when count(distinct case
+        when trunc(creation_dt) >= a.report_date - 365
+        then deal_num
+        else null
+      end) = 0
+      then 0
+      else round(
+        count(case
+          when trunc(creation_dt) >= a.report_date - 365
+          then limit_dif
+          else null
+        end) /
+        count(distinct case
+          when trunc(creation_dt) >= a.report_date - 365
+          then deal_num
+          else null
+        end), 2)
+      end as card_limit_limit_dif_div_deal_num_aggcnt_d365,
+      
+    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 180 дней
+    case
+      when count(distinct case
+        when trunc(creation_dt) >= a.report_date - 180
+        then deal_num
+        else null
+      end) = 0
+      then 0
+      else round(
+        count(case
+          when trunc(creation_dt) >= a.report_date - 180
+          then limit_dif
+          else null
+        end) /
+        count(distinct case
+          when trunc(creation_dt) >= a.report_date - 180
+          then deal_num
+          else null
+        end), 2)
+      end as card_limit_limit_dif_div_deal_num_aggcnt_d180,
+      
+    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 90 дней
+    case
+      when count(distinct case
+        when trunc(creation_dt) >= a.report_date - 90
+        then deal_num
+        else null
+      end) = 0
+      then 0
+      else round(
+        count(case
+          when trunc(creation_dt) >= a.report_date - 90
+          then limit_dif
+          else null
+        end) /
+        count(distinct case
+          when trunc(creation_dt) >= a.report_date - 90
+          then deal_num
+          else null
+        end), 2)
+      end as card_limit_limit_dif_div_deal_num_aggcnt_d90,
+      
+    --кол-во увеличений лимита за всё время
+    count(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt,
+      
+    --кол-во увеличений лимита за последние 730 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d730,
+      
+    --кол-во увеличений лимита за последние 365 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d365,
+      
+    --кол-во увеличений лимита за последние 180 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d180,
+      
+    --кол-во увеличений лимита за последние 90 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d90,
+      
+    --кол-во уменьшений лимита за всё время
+    count(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt,
+      
+    --кол-во уменьшений лимита за последние 730 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d730,
+      
+    --кол-во уменьшений лимита за последние 365 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d365,
+      
+    --кол-во уменьшений лимита за последние 180 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d180,
+      
+    --кол-во уменьшений лимита за последние 90 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d90,
+      
+    --мин. увеличение лимита за всё время
+    min(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin,
+      
+    --макс. увеличение лимита за всё время
+    max(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax,
+      
+    --среднее увеличение лимита за всё время
+    trunc(avg(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg,
+      
+    --мин. увеличение лимита за последние 730 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d730,
+      
+    --макс. увеличение лимита за последние 730 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d730,
+      
+    --среднее увеличение лимита за последние 730 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d730,
+      
+    --мин. увеличение лимита за последние 365 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d365,
+      
+    --макс. увеличение лимита за последние 365 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d365,
+      
+    --среднее увеличение лимита за последние 365 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d365,
+      
+    --мин. увеличение лимита за последние 180 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d180,
+      
+    --макс. увеличение лимита за последние 180 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d180,
+      
+    --среднее увеличение лимита за последние 180 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d180,
+      
+    --мин. увеличение лимита за последние 90 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d90,
+      
+    --макс. увеличение лимита за последние 90 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d90,
+      
+    --среднее увеличение лимита за последние 90 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d90,
+      
+    --мин. уменьшение лимита за всё время
+    min(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin,
+      
+    --макс. уменьшение лимита за всё время
+    max(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax,
+      
+    --среднее уменьшение лимита за всё время
+    trunc(avg(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg,
+      
+    --мин. уменьшение лимита за последние 730 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d730,
+      
+    --макс. уменьшение лимита за последние 730 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d730,
+      
+    --среднее уменьшение лимита за последние 730 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d730,
+      
+    --мин. уменьшение лимита за последние 365 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d365,
+      
+    --макс. уменьшение лимита за последние 365 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d365,
+      
+    --среднее уменьшение лимита за последние 365 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d365,
+      
+    --мин. уменьшение лимита за последние 180 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d180,
+      
+    --макс. уменьшение лимита за последние 180 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d180,
+      
+    --среднее уменьшение лимита за последние 180 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d180,
+      
+    --мин. уменьшение лимита за последние 90 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d90,
+      
+    --макс. уменьшение лимита за последние 90 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d90,
+      
+    --среднее уменьшение лимита за последние 90 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d90
