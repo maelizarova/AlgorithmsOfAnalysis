@@ -1,3 +1,17 @@
+create or replace PROCEDURE VMR_COLLECT_FEAT_DM_MRK_CONTRACT_CRED
+(in_table in VARCHAR2,
+ out_table in VARCHAR2)
+AUTHID CURRENT_USER
+IS
+
+tmp_table VARCHAR2(100);
+
+all_cred_contracts_feat0 varchar2(10000 char);
+all_cred_contracts_feat1 varchar2(10000 char);
+all_cred_contracts_feat2 varchar2(10000 char);
+all_cred_contracts_feat3 varchar2(10000 char);
+all_cred_contracts_feat4 varchar2(10000 char);
+
    -- Универсальная процедура для удаления таблицы, игнорируя ошибку, если таблица не существует
   PROCEDURE drop_table_if_exists(table_name IN VARCHAR2) IS
   BEGIN
@@ -10,444 +24,1786 @@
         RAISE;  -- Для других ошибок выбрасываем исключение
       END IF;
   END drop_table_if_exists;
+
+
+
 BEGIN
 
+tmp_table := in_table ||'_cred_contracts';
+
+--вызов процедуры для удаления временных таблиц
 drop_table_if_exists(out_table);
+drop_table_if_exists(tmp_table);
+drop_table_if_exists(concat(in_table, '_first_cred_prod'));
+drop_table_if_exists(concat(in_table, '_last_cred_prod'));
+drop_table_if_exists(concat(in_table, '_all_time_cred_contracts'));
+drop_table_if_exists(concat(in_table, '_working_cred_contracts'));
+drop_table_if_exists(concat(in_table, '_closed_cred_contracts'));
+
+
+--таблица с промежуточными результатами
+execute immediate
+'
+create table '||tmp_table||' as 
+select /*+parallel(8)*/
+    a.client_did,
+    a.report_date,
+    dm.contract_uid,
+    dm.product_category_nm,
+    dm.status_nm,
+    dm.open_dt,
+    dm.fact_close_dt,
+    dm.contract_amt,
+    dm.current_debt_amt,
+    dm.current_principal_sum,
+    dm.limit_available_amt,
+    dm.effective_from_dt, 
+    dm.effective_to_dt
+from '||in_table||' a
+inner join DM_MRK.DM_MRK_CONTRACT dm
+on a.client_did = dm.client_did 
+and open_dt < report_date
+and report_date between effective_from_dt and effective_to_dt
+and contract_type = ''C''
+and product_category_nm != ''Перерасход''
+'; 
+
+---------------------ПЕРВЫЙ ОТКРЫТЫЙ ПРОДУКТ------------------------------------
 
 execute immediate
-'create table '||out_table||' as
+'create table '||in_table||'_first_cred_prod as
+select client_did, report_date, contract_cred_product_category_nm_by_open_dt_max, contract_cred_contract_amt_by_open_dt_max, contract_cred_report_date_diff_open_dt_max
+from (
+    select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+    
+    --категория первого открытого продукта
+    b.product_category_nm as contract_cred_product_category_nm_by_open_dt_max,
+    
+    --сумма первого открытого продукта
+    b.contract_amt as contract_cred_contract_amt_by_open_dt_max,
+    
+    --кол-во месяцев с первого открытого продукта
+    round(months_between(a.report_date, b.open_dt)) as contract_cred_report_date_diff_open_dt_max,
+    
+    row_number() over (partition by a.client_did order by b.open_dt asc) as rn
+    
+    from '||in_table||' a
+    join '||tmp_table||' b
+    on a.client_did = b.client_did
+) t
+where rn = 1
+order by client_did
+';
+
+------------------ПОСЛЕДНИЙ ОТКРЫТЫЙ ПРОДУКТ------------------------------------
+
+execute immediate
+'create table '||in_table||'_last_cred_prod as
+select client_did, report_date, contract_cred_product_category_nm_by_open_dt_min, contract_cred_contract_amt_by_open_dt_min, contract_cred_report_date_diff_open_dt_min
+from (
+    select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+    
+    --категория последнего открытого продукта
+    b.product_category_nm as contract_cred_product_category_nm_by_open_dt_min,
+    
+    --сумма последнего открытого продукта
+    b.contract_amt as contract_cred_contract_amt_by_open_dt_min,
+    
+    --кол-во месяцев с последнего открытого продукта
+    round(months_between(a.report_date, b.open_dt)) as contract_cred_report_date_diff_open_dt_min,
+    
+    row_number() over (partition by a.client_did order by open_dt desc) as rn
+    
+    from '||in_table||' a
+    join '||tmp_table||' b
+    on a.client_did = b.client_did
+) t
+where rn = 1
+order by client_did
+';
+
+-------------------------ВСЕ ПРОДУКТЫ-------------------------------------------
+
+all_cred_contracts_feat0 := 'create table '||in_table||'_all_time_cred_contracts as
 select /* + parallel(8) */
     a.client_did,
     a.report_date,
     
-    --кол-во дней с последнего изменения лимита
-    min(trunc(a.report_date - creation_dt)) as card_limit_report_date_diff_creation_dt_aggmin,
+    --кол-во месяцев с закрытия последнего договора на потреб. кредит
+    min(case
+      when product_category_nm = ''Потребительский кредит'' and fact_close_dt is not null
+      then round(months_between(a.report_date, fact_close_dt))
+      else null end) as contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_ptb_pil_aggmin,
+      
+    --кол-во месяцев с закрытия последнего договора на кредит. карту
+    min(case
+      when product_category_nm = ''Кредитная карта'' and fact_close_dt is not null
+      then round(months_between(a.report_date, fact_close_dt))
+      else null end) as contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_ptb_cc_aggmin,
+      
+    --кол-во месяцев с закрытия последнего договора на автокредит
+    min(case
+      when product_category_nm = ''Автокредит'' and fact_close_dt is not null
+      then round(months_between(a.report_date, fact_close_dt))
+      else null end) as contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_auto_aggmin,
+      
+    --кол-во месяцев с закрытия последнего договора на ипотеку
+    min(case
+      when product_category_nm = ''Ипотека'' and fact_close_dt is not null
+      then round(months_between(a.report_date, fact_close_dt))
+      else null end) as contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_mortg_aggmin,
+      
+      
+    --кол-во договоров за всё время
+    count(contract_uid) as contract_cred_contract_uid_aggcnt,
+      
+    --кол-во договоров, открытых за последние 730 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 730
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_aggcnt_d730,
+    
+    --кол-во договоров, открытых за последние 365 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 365
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_aggcnt_d365,
+      
+    --кол-во договоров, открытых за последние 180 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 180
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_aggcnt_d180,
+      
+    --кол-во договоров, открытых за последние 90 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 90
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_aggcnt_d90,
+      
+      
+    --сумма договоров, открытых за последние 730 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 730
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggsum_d730,
+    
+    --сумма договоров, открытых за последние 365 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 365
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggsum_d365,
+      
+    --сумма договоров, открытых за последние 180 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 180
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggsum_d180,
+      
+    --сумма договоров, открытых за последние 90 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 90
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggsum_d90,
+      
+      
+    --мин. сумма договора среди договоров, открытых за последние 730 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 730
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_aggmin_d730,
+    
+    --мин. сумма договора среди договоров, открытых за последние 365 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 365
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_aggmin_d365,
+      
+    --мин. сумма договора среди договоров, открытых за последние 180 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 180
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_aggmin_d180,
+      
+    --мин. сумма договора среди договоров, открытых за последние 90 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 90
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_aggmin_d90,
+      
+      
+    --макс. сумма договора среди договоров, открытых за последние 730 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 730
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggmax_d730,
+    
+    --макс. сумма договора среди договоров, открытых за последние 365 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 365
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggmax_d365,
+      
+    --макс. сумма договора среди договоров, открытых за последние 180 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 180
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggmax_d180,
+      
+    --макс. сумма договора среди договоров, открытых за последние 90 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 90
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_aggmax_d90,
+      
+      
+    --средняя сумма договора среди договоров, открытых за последние 730 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 730
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_aggavg_d730,
+    
+    --средняя сумма договора среди договоров, открытых за последние 365 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 365
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_aggavg_d365,
+      
+    --средняя сумма договора среди договоров, открытых за последние 180 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 180
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_aggavg_d180,
+      
+    --средняя сумма договора среди договоров, открытых за последние 90 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 90
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_aggavg_d90,';
+       
+       
+all_cred_contracts_feat1 := '--кол-во потреб. кредитов, открытых за последние 730 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Потребительский кредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d730,
+    
+    --кол-во потреб. кредитов, открытых за последние 365 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Потребительский кредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d365,
+      
+    --кол-во потреб. кредитов, открытых за последние 180 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Потребительский кредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d180,
+      
+    --кол-во потреб. кредитов, открытых за последние 90 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Потребительский кредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d90,
+      
+      
+    --сумма договоров по потреб. кредитам, открытым за последние 730 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d730,
+    
+    --сумма договоров по потреб. кредитам, открытым за последние 365 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d365,
+      
+    --сумма договоров по потреб. кредитам, открытым за последние 180 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d180,
+      
+    --сумма договоров по потреб. кредитам, открытым за последние 90 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d90,
+      
+      
+    --мин. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 730 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d730,
+    
+    --мин. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 365 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d365,
+      
+    --мин. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 180 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d180,
+      
+    --мин. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 90 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d90,
+      
+      
+    --макс. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 730 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d730,
+    
+    --макс. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 365 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d365,
+      
+    --макс. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 180 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d180,
+      
+    --макс. сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 90 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d90,
+      
+      
+    --средняя сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 730 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d730,
+    
+    --средняя сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 365 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d365,
+      
+    --средняя сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 180 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d180,
+      
+    --средняя сумма договоров среди всех договоров по потреб. кредитам, открытым за последние 90 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d90,';
+      
+      
+all_cred_contracts_feat2 := '--кол-во кредитных карт, открытых за последние 730 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Кредитная карта''
+      then contract_uid
+      else null
+      end) as CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D730,
+    
+    --кол-во кредитных карт, открытых за последние 365 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Кредитная карта''
+      then contract_uid
+      else null
+      end) as CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D365,
+      
+    --кол-во кредитных карт, открытых за последние 180 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Кредитная карта''
+      then contract_uid
+      else null
+      end) as CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D180,
+      
+    --кол-во кредитных карт, открытых за последние 90 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Кредитная карта''
+      then contract_uid
+      else null
+      end) as CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D90,
+      
+      
+    --сумма договоров по кредитным картам, открытым за последние 730 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D730,
+    
+    --сумма договоров по кредитным картам, открытым за последние 365 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D365,
+      
+    --сумма договоров по кредитным картам, открытым за последние 180 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D180,
+      
+    --сумма договоров по кредитным картам, открытым за последние 90 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D90,
+      
+      
+    --мин. сумма договоров среди всех договоров по кредитным картам, открытым за последние 730 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D730,
+    
+    --мин. сумма договоров среди всех договоров по кредитным картам, открытым за последние 365 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D365,
+      
+    --мин. сумма договоров среди всех договоров по кредитным картам, открытым за последние 180 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D180,
+      
+    --мин. сумма договоров среди всех договоров по кредитным картам, открытым за последние 90 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D90,
+      
+      
+    --макс. сумма договоров среди всех договоров по кредитным картам, открытым за последние 730 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D730,
+    
+    --макс. сумма договоров среди всех договоров по кредитным картам, открытым за последние 365 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D365,
+      
+    --макс. сумма договоров среди всех договоров по кредитным картам, открытым за последние 180 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D180,
+      
+    --макс. сумма договоров среди всех договоров по кредитным картам, открытым за последние 90 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+      end) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D90,
+      
+      
+    --средняя сумма договоров среди всех договоров по кредитным картам, открытым за последние 730 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end)) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D730,
+    
+    --средняя сумма договоров среди всех договоров по кредитным картам, открытым за последние 365 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end)) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D365,
+      
+    --средняя сумма договоров среди всех договоров по кредитным картам, открытым за последние 180 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end)) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D180,
+      
+    --средняя сумма договоров среди всех договоров по кредитным картам, открытым за последние 90 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+      end)) as CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D90,';
+      
+      
+all_cred_contracts_feat3 := '--кол-во автокредитов, открытых за последние 730 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Автокредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d730,
+    
+    --кол-во автокредитов, открытых за последние 365 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Автокредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d365,
+      
+    --кол-во автокредитов, открытых за последние 180 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Автокредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d180,
+      
+    --кол-во автокредитов, открытых за последние 90 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Автокредит''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d90,
+      
+      
+    --сумма договоров по автокредитам, открытым за последние 730 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d730,
+    
+    --сумма договоров по автокредитам, открытым за последние 365 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d365,
+      
+    --сумма договоров по автокредитам, открытым за последние 180 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d180,
+      
+    --сумма договоров по автокредитам, открытым за последние 90 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d90,
+      
+      
+    --мин. сумма договоров среди всех договоров по автокредитам, открытым за последние 730 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d730,
+    
+    --мин. сумма договоров среди всех договоров по автокредитам, открытым за последние 365 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d365,
+      
+    --мин. сумма договоров среди всех договоров по автокредитам, открытым за последние 180 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d180,
+      
+    --мин. сумма договоров среди всех договоров по автокредитам, открытым за последние 90 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d90,
+      
+      
+    --макс. сумма договоров среди всех договоров по автокредитам, открытым за последние 730 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d730,
+    
+    --макс. сумма договоров среди всех договоров по автокредитам, открытым за последние 365 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d365,
+      
+    --макс. сумма договоров среди всех договоров по автокредитам, открытым за последние 180 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d180,
+      
+    --макс. сумма договоров среди всех договоров по автокредитам, открытым за последние 90 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d90,
+      
+      
+    --средняя сумма договоров среди всех договоров по автокредитам, открытым за последние 730 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d730,
+    
+    --средняя сумма договоров среди всех договоров по автокредитам, открытым за последние 365 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d365,
+      
+    --средняя сумма договоров среди всех договоров по автокредитам, открытым за последние 180 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d180,
+      
+    --средняя сумма договоров среди всех договоров по автокредитам, открытым за последние 90 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d90,';
+      
+      
+all_cred_contracts_feat4 := '--кол-во ипотек, открытых за последние 730 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Ипотека''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d730,
+    
+    --кол-во ипотек, открытых за последние 365 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Ипотека''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d365,
+      
+    --кол-во ипотек, открытых за последние 180 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Ипотека''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d180,
+      
+    --кол-во ипотек, открытых за последние 90 дней
+    count(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Ипотека''
+      then contract_uid
+      else null
+      end) as contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d90,
+      
+      
+    --сумма договоров по ипотекам, открытым за последние 730 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d730,
+    
+    --сумма договоров по ипотекам, открытым за последние 365 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d365,
+      
+    --сумма договоров по ипотекам, открытым за последние 180 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d180,
+      
+    --сумма договоров по ипотекам, открытым за последние 90 дней
+    sum(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d90,
+      
+      
+    --мин. сумма договоров среди всех договоров по ипотеке, открытым за последние 730 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d730,
+    
+    --мин. сумма договоров среди всех договоров по ипотеке, открытым за последние 365 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d365,
+      
+    --мин. сумма договоров среди всех договоров по ипотеке, открытым за последние 180 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d180,
+      
+    --мин. сумма договоров среди всех договоров по ипотеке, открытым за последние 90 дней
+    min(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d90,
+      
+      
+    --макс. сумма договоров среди всех договоров по ипотеке, открытым за последние 730 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d730,
+    
+    --макс. сумма договоров среди всех договоров по ипотеке, открытым за последние 365 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d365,
+      
+    --макс. сумма договоров среди всех договоров по ипотеке, открытым за последние 180 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d180,
+      
+    --макс. сумма договоров среди всех договоров по ипотеке, открытым за последние 90 дней
+    max(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+      end) as contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d90,
+      
+      
+    --средняя сумма договоров среди всех договоров по ипотеке, открытым за последние 730 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 730 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d730,
+    
+    --средняя сумма договоров среди всех договоров по ипотеке, открытым за последние 365 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 365 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d365,
+      
+    --средняя сумма договоров среди всех договоров по ипотеке, открытым за последние 180 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 180 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d180,
+      
+    --средняя сумма договоров среди всех договоров по ипотеке, открытым за последние 90 дней
+    trunc(avg(case
+      when trunc(open_dt) >= a.report_date - 90 and product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+      end)) as contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d90
 
-    --кол-во изменений лимита за всё время
-    count(prop_uid) as card_limit_prop_uid_aggcnt,
+from '||in_table||' a
+join '||tmp_table||' b
+on a.client_did = b.client_did
+group by a.client_did, a.report_date
+';
+
+execute immediate all_cred_contracts_feat0||all_cred_contracts_feat1||all_cred_contracts_feat2||all_cred_contracts_feat3||all_cred_contracts_feat4;
+
+----------------------ТОЛЬКО ДЕЙСТВУЮЩИЕ ПРОДУКТЫ-------------------------------
+
+execute immediate
+'create table '||in_table||'_working_cred_contracts as
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
     
-    --кол-во изменений лимита за последние 730 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 730
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d730,
-      
-    --кол-во изменений лимита за последние 365 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 365
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d365,
-      
-    --кол-во изменений лимита за последние 180 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 180
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d180,
-      
-    --кол-во изменений лимита за последние 90 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 90
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d90,
-      
-    --кол-во договоров, по которым было изменение лимита за всё время
-    count(distinct deal_num) as card_limit_deal_num_aggcnt,
+    --флаг наличия действующего договора
+    1 as contract_cred_contract_uid_by_status_nm_wrk_aggmax,
     
-    --кол-во договоров, по которым было изменение лимита за последние 730 дней
-    count(distinct case
-      when trunc(creation_dt) >= a.report_date - 730
-      then deal_num
-      else null
-      end) as card_limit_deal_num_aggcnt_d730,
-      
-    --кол-во договоров, по которым было изменение лимита за последние 365 дней
-    count(distinct case
-      when trunc(creation_dt) >= a.report_date - 365
-      then deal_num
-      else null
-      end) as card_limit_deal_num_aggcnt_d365,
-      
-    --кол-во договоров, по которым было изменение лимита за последние 180 дней
-    count(distinct case
-      when trunc(creation_dt) >= a.report_date - 180
-      then deal_num
-      else null
-      end) as card_limit_deal_num_aggcnt_d180,
-      
-    --кол-во договоров, по которым было изменение лимита за последние 90 дней
-    count(distinct case
-      when trunc(creation_dt) >= a.report_date - 90
-      then deal_num
-      else null
-      end) as card_limit_deal_num_aggcnt_d90,
-      
-    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за всё время
-    round(count(prop_uid) / count(distinct deal_num), 2) as card_limit_prop_uid_cnt_div_deal_num_cnt,
+    --кол-во действующих договоров
+    count(contract_uid) as contract_cred_contract_uid_by_status_nm_wrk_aggcnt,
     
-    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 730 дней
+    --сумма действующих договоров
+    sum(contract_amt) as contract_cred_contract_amt_by_status_nm_wrk_aggsum,
+    
+    --мин. сумма договора среди действующих договоров
+    min(contract_amt) as contract_cred_contract_amt_by_status_nm_wrk_aggmin,
+    
+    --макс. сумма договора среди действующих договоров
+    max(contract_amt) as contract_cred_contract_amt_by_status_nm_wrk_aggmax,
+    
+    --средняя сумма договора среди действующих договоров
+    trunc(avg(contract_amt)) as contract_cred_contract_amt_by_status_nm_wrk_aggavg,
+    
+    --сумма текущих требований по действующим договорам
+    sum(current_debt_amt) as contract_cred_current_debt_amt_by_status_nm_wrk_aggsum,
+    
+    --мин. текущая сумма требований по действующим договорам
+    min(current_debt_amt) as contract_cred_current_debt_amt_by_status_nm_wrk_aggmin,
+    
+    --макс. текущая сумма требований по действующим договорам
+    max(current_debt_amt) as contract_cred_current_debt_amt_by_status_nm_wrk_aggmax,
+
+    --средняя текущая сумма требований по действующим договорам
+    trunc(avg(current_debt_amt)) as contract_cred_current_debt_amt_by_status_nm_wrk_aggavg,
+    
+
+    --флаг наличия действующего договора потребительского кредита      
     case
-      when count(distinct case
-        when trunc(creation_dt) >= a.report_date - 730
-        then deal_num
-        else null
-      end) = 0
-      then 0
-      else round(
-        count(case
-          when trunc(creation_dt) >= a.report_date - 730
-          then limit_dif
-          else null
-        end) /
-        count(distinct case
-          when trunc(creation_dt) >= a.report_date - 730
-          then deal_num
-          else null
-        end), 2)
-      end as card_limit_limit_dif_div_deal_num_aggcnt_d730,
-      
-    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 365 дней
+      when max(case when product_category_nm = ''Потребительский кредит'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax,
+    
+    --кол-во действующих договоров потребительского кредита
+    count(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_uid
+      else null
+    end) as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggcnt,
+    
+    --сумма действующих договоров по потреб. кредитам
+    sum(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum,
+    
+    --мин. сумма договора среди действующих договоров по потреб. кредитам
+    min(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin,
+    
+    --макс. сумма договора среди действующих договоров по потреб. кредитам
+    max(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax,
+    
+    --средняя сумма договора среди действующих договоров по потреб. кредитам
+    trunc(avg(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+    end)) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg,
+    
+    --сумма текущих требований по действующим договорам по потреб. кредитам
+    sum(case
+      when product_category_nm = ''Потребительский кредит''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum,
+
+    --мин. текущая сумма требований по действующим договорам по потреб. кредитам
+    min(case
+      when product_category_nm = ''Потребительский кредит''
+      then current_debt_amt
+      else null
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin,
+
+    --макс. текущая сумма требований по действующим договорам по потреб. кредитам
+    max(case
+      when product_category_nm = ''Потребительский кредит''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax,
+
+    --средняя текущая сумма требований по действующим договорам по потреб. кредитам
+    trunc(avg(case
+      when product_category_nm = ''Потребительский кредит''
+      then current_debt_amt
+      else null
+    end)) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg,
+    
+    
+    --флаг наличия действующего договора кредитной карты      
     case
-      when count(distinct case
-        when trunc(creation_dt) >= a.report_date - 365
-        then deal_num
-        else null
-      end) = 0
-      then 0
-      else round(
-        count(case
-          when trunc(creation_dt) >= a.report_date - 365
-          then limit_dif
-          else null
-        end) /
-        count(distinct case
-          when trunc(creation_dt) >= a.report_date - 365
-          then deal_num
-          else null
-        end), 2)
-      end as card_limit_limit_dif_div_deal_num_aggcnt_d365,
-      
-    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 180 дней
+      when max(case when product_category_nm = ''Кредитная карта'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax,
+    
+    --кол-во действующих договоров кредитных карт
+    count(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_uid
+      else null
+    end) as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggcnt,
+    
+    --сумма действующих договоров по кредитным картам
+    sum(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum,
+    
+    --мин. сумма договора среди действующих договоров по кредитным картам
+    min(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin,
+    
+    --макс. сумма договора среди действующих договоров по кредитным картам
+    max(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax,
+    
+    --средняя сумма договора среди действующих договоров по кредитным картам
+    trunc(avg(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+    end)) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg,
+    
+    --сумма текущих требований по действующим договорам по кредитным картам
+    sum(case
+      when product_category_nm = ''Кредитная карта''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum,
+
+    --мин. текущая сумма требований по действующим договорам по кредитным картам
+    min(case
+      when product_category_nm = ''Кредитная карта''
+      then current_debt_amt
+      else null
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin,
+
+    --макс. текущая сумма требований по действующим договорам по кредитным картам
+    max(case
+      when product_category_nm = ''Кредитная карта''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax,
+
+    --средняя текущая сумма требований по действующим договорам по кредитным картам
+    trunc(avg(case
+      when product_category_nm = ''Кредитная карта''
+      then current_debt_amt
+      else null
+    end)) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg,
+    
+    
+    --флаг наличия действующего договора автокредита      
     case
-      when count(distinct case
-        when trunc(creation_dt) >= a.report_date - 180
-        then deal_num
-        else null
-      end) = 0
-      then 0
-      else round(
-        count(case
-          when trunc(creation_dt) >= a.report_date - 180
-          then limit_dif
-          else null
-        end) /
-        count(distinct case
-          when trunc(creation_dt) >= a.report_date - 180
-          then deal_num
-          else null
-        end), 2)
-      end as card_limit_limit_dif_div_deal_num_aggcnt_d180,
-      
-    --отношение кол-ва изменений лимита ко всем договорам, по которым было изменение лимита за последние 90 дней
+      when max(case when product_category_nm = ''Автокредит'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggmax,
+    
+    --кол-во действующих договоров автокредита
+    count(case
+      when product_category_nm = ''Автокредит''
+      then contract_uid
+      else null
+    end) as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggcnt,
+    
+    --сумма действующих договоров по автокредитам
+    sum(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum,
+    
+    --мин. сумма договора среди действующих договоров по автокредитам
+    min(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin,
+    
+    --макс. сумма договора среди действующих договоров по автокредитам
+    max(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax,
+    
+    --средняя сумма договора среди действующих договоров по автокредитам
+    trunc(avg(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+    end)) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg,
+    
+    --сумма текущих требований по действующим договорам по автокредитам
+    sum(case
+      when product_category_nm = ''Автокредит''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum,
+
+    --мин. текущая сумма требований по действующим договорам по автокредитам
+    min(case
+      when product_category_nm = ''Автокредит''
+      then current_debt_amt
+      else null
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin,
+
+    --макс. текущая сумма требований по действующим договорам по автокредитам
+    max(case
+      when product_category_nm = ''Автокредит''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax,
+    
+    --средняя текущая сумма требований по действующим договорам по автокредитам
+    trunc(avg(case
+      when product_category_nm = ''Автокредит''
+      then current_debt_amt
+      else null
+    end)) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg,
+    
+    
+    --флаг наличия действующего договора ипотеки      
     case
-      when count(distinct case
-        when trunc(creation_dt) >= a.report_date - 90
-        then deal_num
-        else null
-      end) = 0
-      then 0
-      else round(
-        count(case
-          when trunc(creation_dt) >= a.report_date - 90
-          then limit_dif
-          else null
-        end) /
-        count(distinct case
-          when trunc(creation_dt) >= a.report_date - 90
-          then deal_num
-          else null
-        end), 2)
-      end as card_limit_limit_dif_div_deal_num_aggcnt_d90,
-      
-    --кол-во увеличений лимита за всё время
+      when max(case when product_category_nm = ''Ипотека'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggmax,
+    
+    --кол-во действующих договоров ипотеки
     count(case
-      when limit_dif > 0
-      then limit_dif
+      when product_category_nm = ''Ипотека''
+      then contract_uid
       else null
-      end) as card_limit_limit_dif_incrs_aggcnt,
-      
-    --кол-во увеличений лимита за последние 730 дней
+    end) as contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggcnt,
+    
+    --сумма действующих договоров по ипотеке
+    sum(case
+      when product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum,
+    
+    --мин. сумма договора среди действующих договоров по ипотеке
+    min(case
+      when product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin,
+    
+    --макс. сумма договора среди действующих договоров по ипотеке
+    max(case
+      when product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax,
+    
+    --средняя сумма договора среди действующих договоров по ипотеке
+    trunc(avg(case
+      when product_category_nm = ''Ипотека''
+      then contract_amt
+      else null
+    end)) as contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg,
+    
+    --сумма текущих требований по действующим договорам по ипотеке
+    sum(case
+      when product_category_nm = ''Ипотека''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum,
+
+    --мин. текущая сумма требований по действующим договорам по ипотеке
+    min(case
+      when product_category_nm = ''Ипотека''
+      then current_debt_amt
+      else null
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin,
+
+    --макс. текущая сумма требований по действующим договорам по ипотеке
+    max(case
+      when product_category_nm = ''Ипотека''
+      then current_debt_amt
+      else 0
+    end) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax,
+    
+    --средняя текущая сумма требований по действующим договорам по ипотеке
+    trunc(avg(case
+      when product_category_nm = ''Ипотека''
+      then current_debt_amt
+      else null
+    end)) as contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg
+
+from '||in_table||' a
+join '||tmp_table||' b
+on a.client_did = b.client_did
+where
+status_nm = ''Работает''
+and (current_principal_sum != 0 or current_debt_amt != 0 or limit_available_amt != 0)
+group by a.client_did, a.report_date
+';
+
+--------------------------------ЗАКРЫТЫЕ ПРОДУКТЫ-------------------------------
+
+execute immediate
+'create table '||in_table||'_closed_cred_contracts as
+select /* + parallel(8) */
+    a.client_did,
+    a.report_date,
+    
+    --флаг наличия закрытого договора
+    1 as contract_cred_contract_uid_by_status_nm_cls_aggmax,
+    
+    --кол-во закрытых договоров
+    count(contract_uid) as contract_cred_contract_uid_by_status_nm_cls_aggcnt,
+    
+    --сумма закрытых договоров
+    sum(contract_amt) as contract_cred_contract_amt_by_status_nm_cls_aggsum,
+    
+    --мин. сумма договора среди закрытых договоров
+    min(contract_amt) as contract_cred_contract_amt_by_status_nm_cls_aggmin,
+    
+    --макс. сумма договора среди закрытых договоров
+    max(contract_amt) as contract_cred_contract_amt_by_status_nm_cls_aggmax,
+    
+    --средняя сумма договора среди закрытых договоров
+    trunc(avg(contract_amt)) as contract_cred_contract_amt_by_status_nm_cls_aggavg,
+    
+
+    --флаг наличия закрытого договора потребительского кредита      
+    case
+      when max(case when product_category_nm = ''Потребительский кредит'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax,
+    
+    --кол-во закрытых договоров потребительского кредита
     count(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
+      when product_category_nm = ''Потребительский кредит''
+      then contract_uid
       else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d730,
-      
-    --кол-во увеличений лимита за последние 365 дней
+    end) as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggcnt,
+    
+    --сумма закрытых договоров по потреб. кредитам
+    sum(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggsum,
+    
+    --мин. сумма договора среди закрытых договоров по потреб. кредитам
+    min(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmin,
+    
+    --макс. сумма договора среди закрытых договоров по потреб. кредитам
+    max(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax,
+    
+    --средняя сумма договора среди закрытых договоров по потреб. кредитам
+    trunc(avg(case
+      when product_category_nm = ''Потребительский кредит''
+      then contract_amt
+      else null
+    end)) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggavg,
+    
+
+    --флаг наличия закрытого договора кредитной карты      
+    case
+      when max(case when product_category_nm = ''Кредитная карта'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax,
+    
+    --кол-во закрытых договоров кредитных карт
     count(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
+      when product_category_nm = ''Кредитная карта''
+      then contract_uid
       else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d365,
-      
-    --кол-во увеличений лимита за последние 180 дней
+    end) as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggcnt,
+    
+    --сумма закрытых договоров по кредитным картам
+    sum(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggsum,
+    
+    --мин. сумма договора среди закрытых договоров по кредитным картам
+    min(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmin,
+    
+    --макс. сумма договора среди закрытых договоров по кредитным картам
+    max(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax,
+    
+    --средняя сумма договора среди закрытых договоров по кредитным картам
+    trunc(avg(case
+      when product_category_nm = ''Кредитная карта''
+      then contract_amt
+      else null
+    end)) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggavg,
+    
+    
+    --флаг наличия закрытого договора автокредита      
+    case
+      when max(case when product_category_nm = ''Автокредит'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggmax,
+    
+    --кол-во закрытых договоров автокредита
     count(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
+      when product_category_nm = ''Автокредит''
+      then contract_uid
       else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d180,
-      
-    --кол-во увеличений лимита за последние 90 дней
+    end) as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggcnt,
+    
+    --сумма закрытых договоров по автокредитам
+    sum(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggsum,
+    
+    --мин. сумма договора среди закрытых договоров по автокредитам
+    min(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmin,
+    
+    --макс. сумма договора среди закрытых договоров по автокредитам
+    max(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmax,
+    
+    --средняя сумма договора среди закрытых договоров по автокредитам
+    trunc(avg(case
+      when product_category_nm = ''Автокредит''
+      then contract_amt
+      else null
+    end)) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggavg,
+    
+    
+    --флаг наличия закрытого договора ипотеки      
+    case
+      when max(case when product_category_nm = ''Ипотека'' then 1 else 0 end) = 1
+      then 1
+      else 0
+    end as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggmax,
+    
+    --кол-во закрытых договоров ипотеки
     count(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
+      when product_category_nm = ''Ипотека''
+      then contract_uid
       else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d90,
-      
-    --кол-во уменьшений лимита за всё время
-    count(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt,
-      
-    --кол-во уменьшений лимита за последние 730 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d730,
-      
-    --кол-во уменьшений лимита за последние 365 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d365,
-      
-    --кол-во уменьшений лимита за последние 180 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d180,
-      
-    --кол-во уменьшений лимита за последние 90 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d90,
-      
-    --мин. увеличение лимита за всё время
+    end) as contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggcnt,
+    
+    --сумма закрытых договоров по ипотеке
+    sum(case
+      when product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggsum,
+    
+    --мин. сумма договора среди закрытых договоров по ипотеке
     min(case
-      when limit_dif > 0
-      then limit_dif
+      when product_category_nm = ''Ипотека''
+      then contract_amt
       else null
-      end) as card_limit_limit_dif_incrs_aggmin,
-      
-    --макс. увеличение лимита за всё время
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmin,
+    
+    --макс. сумма договора среди закрытых договоров по ипотеке
     max(case
-      when limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax,
-      
-    --среднее увеличение лимита за всё время
+      when product_category_nm = ''Ипотека''
+      then contract_amt
+      else 0
+    end) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmax,
+    
+    --средняя сумма договора среди закрытых договоров по ипотеке
     trunc(avg(case
-      when limit_dif > 0
-      then limit_dif
+      when product_category_nm = ''Ипотека''
+      then contract_amt
       else null
-      end)) as card_limit_limit_dif_incrs_aggavg,
-      
-    --мин. увеличение лимита за последние 730 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d730,
-      
-    --макс. увеличение лимита за последние 730 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d730,
-      
-    --среднее увеличение лимита за последние 730 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d730,
-      
-    --мин. увеличение лимита за последние 365 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d365,
-      
-    --макс. увеличение лимита за последние 365 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d365,
-      
-    --среднее увеличение лимита за последние 365 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d365,
-      
-    --мин. увеличение лимита за последние 180 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d180,
-      
-    --макс. увеличение лимита за последние 180 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d180,
-      
-    --среднее увеличение лимита за последние 180 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d180,
-      
-    --мин. увеличение лимита за последние 90 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d90,
-      
-    --макс. увеличение лимита за последние 90 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d90,
-      
-    --среднее увеличение лимита за последние 90 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d90,
-      
-    --мин. уменьшение лимита за всё время
-    min(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin,
-      
-    --макс. уменьшение лимита за всё время
-    max(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax,
-      
-    --среднее уменьшение лимита за всё время
-    trunc(avg(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg,
-      
-    --мин. уменьшение лимита за последние 730 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d730,
-      
-    --макс. уменьшение лимита за последние 730 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d730,
-      
-    --среднее уменьшение лимита за последние 730 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d730,
-      
-    --мин. уменьшение лимита за последние 365 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d365,
-      
-    --макс. уменьшение лимита за последние 365 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d365,
-      
-    --среднее уменьшение лимита за последние 365 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d365,
-      
-    --мин. уменьшение лимита за последние 180 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d180,
-      
-    --макс. уменьшение лимита за последние 180 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d180,
-      
-    --среднее уменьшение лимита за последние 180 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d180,
-      
-    --мин. уменьшение лимита за последние 90 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d90,
-      
-    --макс. уменьшение лимита за последние 90 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d90,
-      
-    --среднее уменьшение лимита за последние 90 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d90
+    end)) as contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggavg
+
+from '||in_table||' a
+join '||tmp_table||' b
+on a.client_did = b.client_did
+where
+status_nm = ''Закрыт''
+group by a.client_did, a.report_date
+';
+
+---------------------------------СОЕДИНЕНИЕ ВСЕХ ТАБЛИЦ-------------------------
+
+execute immediate 
+'create table '||out_table||' as
+select /* + parallel(8) */
+coalesce(a.client_did, b.client_did, c.client_did, d.client_did, e.client_did) client_did
+, coalesce(a.report_date, b.report_date, c.report_date, d.report_date, e.report_date) report_date
+
+, contract_cred_product_category_nm_by_open_dt_max
+, contract_cred_contract_amt_by_open_dt_max
+, contract_cred_report_date_diff_open_dt_max
+
+, contract_cred_product_category_nm_by_open_dt_min
+, contract_cred_contract_amt_by_open_dt_min
+, contract_cred_report_date_diff_open_dt_min
+
+, contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_ptb_pil_aggmin
+, contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_ptb_cc_aggmin
+, contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_auto_aggmin
+, contract_cred_report_date_diff_fact_close_dt_by_product_category_nm_mortg_aggmin
+, contract_cred_contract_uid_aggcnt
+, contract_cred_contract_uid_aggcnt_d730
+, contract_cred_contract_uid_aggcnt_d365
+, contract_cred_contract_uid_aggcnt_d180
+, contract_cred_contract_uid_aggcnt_d90
+, contract_cred_contract_amt_aggsum_d730
+, contract_cred_contract_amt_aggsum_d365
+, contract_cred_contract_amt_aggsum_d180
+, contract_cred_contract_amt_aggsum_d90
+, contract_cred_contract_amt_aggmin_d730
+, contract_cred_contract_amt_aggmin_d365
+, contract_cred_contract_amt_aggmin_d180
+, contract_cred_contract_amt_aggmin_d90
+, contract_cred_contract_amt_aggmax_d730
+, contract_cred_contract_amt_aggmax_d365
+, contract_cred_contract_amt_aggmax_d180
+, contract_cred_contract_amt_aggmax_d90
+, contract_cred_contract_amt_aggavg_d730
+, contract_cred_contract_amt_aggavg_d365
+, contract_cred_contract_amt_aggavg_d180
+, contract_cred_contract_amt_aggavg_d90
+, contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d730
+, contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d365
+, contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d180
+, contract_cred_contract_uid_by_product_category_nm_ptb_pil_aggcnt_d90
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d730
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d365
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d180
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggsum_d90
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d730
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d365
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d180
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d90
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d730
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d365
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d180
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmax_d90
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d730
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d365
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d180
+, contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d90
+, CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D730
+, CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D365
+, CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D180
+, CONTRACT_CRED_CONTRACT_UID_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGCNT_D90
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D730
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D365
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D180
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGSUM_D90
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D730
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D365
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D180
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D90
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D730
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D365
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D180
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMAX_D90
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D730
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D365
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D180
+, CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D90
+, contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d730
+, contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d365
+, contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d180
+, contract_cred_contract_uid_by_product_category_nm_auto_aggcnt_d90
+, contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d730
+, contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d365
+, contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d180
+, contract_cred_contract_amt_by_product_category_nm_auto_aggsum_d90
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d730
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d365
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d180
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d90
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d730
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d365
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d180
+, contract_cred_contract_amt_by_product_category_nm_auto_aggmax_d90
+, contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d730
+, contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d365
+, contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d180
+, contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d90
+, contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d730
+, contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d365
+, contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d180
+, contract_cred_contract_uid_by_product_category_nm_mortg_aggcnt_d90
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d730
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d365
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d180
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggsum_d90
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d730
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d365
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d180
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d90
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d730
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d365
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d180
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggmax_d90
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d730
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d365
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d180
+, contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d90
+
+, contract_cred_contract_uid_by_status_nm_wrk_aggmax
+, contract_cred_contract_uid_by_status_nm_wrk_aggcnt
+--отношение кол-ва действующих договоров к кол-ву договоров за всё время
+, round(contract_cred_contract_uid_by_status_nm_wrk_aggcnt / contract_cred_contract_uid_aggcnt, 2) as contract_cred_contract_uid_by_status_nm_wrk_div_contract_uid_aggcnt
+, contract_cred_contract_amt_by_status_nm_wrk_aggsum
+, contract_cred_contract_amt_by_status_nm_wrk_aggmin
+, contract_cred_contract_amt_by_status_nm_wrk_aggmax
+, contract_cred_contract_amt_by_status_nm_wrk_aggavg
+, contract_cred_current_debt_amt_by_status_nm_wrk_aggsum  
+, contract_cred_current_debt_amt_by_status_nm_wrk_aggmin
+, contract_cred_current_debt_amt_by_status_nm_wrk_aggmax
+, contract_cred_current_debt_amt_by_status_nm_wrk_aggavg
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggcnt
+--отношение кол-ва действующих договоров потребительского кредита к кол-ву действующих договоров
+, round(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggcnt / contract_cred_contract_uid_by_status_nm_wrk_aggcnt, 2) as contract_cred_contract_uid_by_product_category_nm_ptb_pil_div_contract_uid_by_status_nm_wrk_aggcnt
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggcnt
+--отношение кол-ва действующих договоров кредитных карт к кол-ву действующих договоров
+, round(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggcnt / contract_cred_contract_uid_by_status_nm_wrk_aggcnt, 2) as contract_cred_contract_uid_by_product_category_nm_ptb_cc_div_contract_uid_by_status_nm_wrk_aggcnt
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggmax
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggcnt
+--отношение кол-ва действующих договоров автокредита к кол-ву действующих договоров
+, round(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggcnt / contract_cred_contract_uid_by_status_nm_wrk_aggcnt, 2) as contract_cred_contract_uid_by_product_category_nm_auto_div_contract_uid_by_status_nm_wrk_aggcnt
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggmax
+, contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggcnt
+--отношение кол-ва действующих договоров ипотеки к кол-ву действующих договоров
+, round(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggcnt / contract_cred_contract_uid_by_status_nm_wrk_aggcnt, 2) as contract_cred_contract_uid_by_product_category_nm_mortg_div_contract_uid_by_status_nm_wrk_aggcnt
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax
+, contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax
+, contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg
+
+, contract_cred_contract_uid_by_status_nm_cls_aggmax
+, contract_cred_contract_uid_by_status_nm_cls_aggcnt
+, contract_cred_contract_amt_by_status_nm_cls_aggsum
+, contract_cred_contract_amt_by_status_nm_cls_aggmin
+, contract_cred_contract_amt_by_status_nm_cls_aggmax
+, contract_cred_contract_amt_by_status_nm_cls_aggavg
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggcnt
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggsum
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmin
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggavg
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggcnt
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggsum
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmin
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggavg
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggmax
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggcnt
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggsum
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmin
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmax
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggavg
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggmax
+, contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggcnt
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggsum
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmin
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmax
+, contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggavg
+
+
+from '||in_table||'_first_cred_prod a
+full join '||in_table||'_last_cred_prod b
+        on a.client_did = b.client_did
+        and a.report_date = b.report_date
+full join '||in_table||'_all_time_cred_contracts c
+        on a.client_did = c.client_did
+        and a.report_date = c.report_date
+full join '||in_table||'_working_cred_contracts d
+        on a.client_did = d.client_did
+        and a.report_date = d.report_date
+full join '||in_table||'_closed_cred_contracts e
+        on a.client_did = e.client_did
+        and a.report_date = e.report_date
+';
+
+--если договоров за период не было, то средние и минимальные суммы можно заполнить нулями вместо null,
+--тоже самое по фичам по действующим и закрытым договорам,
+--в фичах про кол-во дней это неверно, там оставляем null
+execute immediate
+'update '||out_table||'
+set contract_cred_contract_amt_aggmin_d730 = nvl(contract_cred_contract_amt_aggmin_d730, 0),
+    contract_cred_contract_amt_aggmin_d365 = nvl(contract_cred_contract_amt_aggmin_d365, 0),
+    contract_cred_contract_amt_aggmin_d180 = nvl(contract_cred_contract_amt_aggmin_d180, 0),
+    contract_cred_contract_amt_aggmin_d90 = nvl(contract_cred_contract_amt_aggmin_d90, 0),
+    contract_cred_contract_amt_aggavg_d730 = nvl(contract_cred_contract_amt_aggavg_d730, 0),
+    contract_cred_contract_amt_aggavg_d365 = nvl(contract_cred_contract_amt_aggavg_d365, 0),
+    contract_cred_contract_amt_aggavg_d180 = nvl(contract_cred_contract_amt_aggavg_d180, 0),
+    contract_cred_contract_amt_aggavg_d90 = nvl(contract_cred_contract_amt_aggavg_d90, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d730 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d730, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d365 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d365, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d180 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d180, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d90 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggmin_d90, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d730 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d730, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d365 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d365, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d180 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d180, 0),
+    contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d90 = nvl(contract_cred_contract_amt_by_product_category_nm_ptb_pil_aggavg_d90, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D730 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D730, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D365 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D365, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D180 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D180, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D90 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGMIN_D90, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D730 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D730, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D365 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D365, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D180 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D180, 0),
+    CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D90 = nvl(CONTRACT_CRED_CONTRACT_AMT_BY_PRODUCT_CATEGORY_NM_PTB_CC_AGGAVG_D90, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d730 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d730, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d365 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d365, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d180 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d180, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d90 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggmin_d90, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d730 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d730, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d365 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d365, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d180 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d180, 0),
+    contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d90 = nvl(contract_cred_contract_amt_by_product_category_nm_auto_aggavg_d90, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d730 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d730, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d365 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d365, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d180 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d180, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d90 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggmin_d90, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d730 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d730, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d365 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d365, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d180 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d180, 0),
+    contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d90 = nvl(contract_cred_contract_amt_by_product_category_nm_mortg_aggavg_d90, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_aggmax = nvl(contract_cred_contract_uid_by_status_nm_wrk_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_wrk_aggcnt, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_div_contract_uid_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_wrk_div_contract_uid_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_aggsum = nvl(contract_cred_contract_amt_by_status_nm_wrk_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_aggmin = nvl(contract_cred_contract_amt_by_status_nm_wrk_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_aggmax = nvl(contract_cred_contract_amt_by_status_nm_wrk_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_aggavg = nvl(contract_cred_contract_amt_by_status_nm_wrk_aggavg, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_aggsum = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_aggsum, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_aggmin = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_aggmin, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_aggmax = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_aggmax, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_aggavg = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggcnt, 0),
+    contract_cred_contract_uid_by_product_category_nm_ptb_pil_div_contract_uid_by_status_nm_wrk_aggcnt = nvl(contract_cred_contract_uid_by_product_category_nm_ptb_pil_div_contract_uid_by_status_nm_wrk_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggsum, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmin, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggmax, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_pil_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggcnt, 0),
+    contract_cred_contract_uid_by_product_category_nm_ptb_cc_div_contract_uid_by_status_nm_wrk_aggcnt = nvl(contract_cred_contract_uid_by_product_category_nm_ptb_cc_div_contract_uid_by_status_nm_wrk_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggsum, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmin, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggmax, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_ptb_cc_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggmax = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_auto_aggcnt, 0),
+    contract_cred_contract_uid_by_product_category_nm_auto_div_contract_uid_by_status_nm_wrk_aggcnt = nvl(contract_cred_contract_uid_by_product_category_nm_auto_div_contract_uid_by_status_nm_wrk_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggsum, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmin, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggmax, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_auto_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggmax = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_wrk_by_product_category_nm_mortg_aggcnt, 0),
+    contract_cred_contract_uid_by_product_category_nm_mortg_div_contract_uid_by_status_nm_wrk_aggcnt = nvl(contract_cred_contract_uid_by_product_category_nm_mortg_div_contract_uid_by_status_nm_wrk_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg = nvl(contract_cred_contract_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggsum, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmin, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggmax, 0),
+    contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg = nvl(contract_cred_current_debt_amt_by_status_nm_wrk_by_product_category_nm_mortg_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_cls_aggmax = nvl(contract_cred_contract_uid_by_status_nm_cls_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_cls_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_cls_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_cls_aggsum = nvl(contract_cred_contract_amt_by_status_nm_cls_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_cls_aggmin = nvl(contract_cred_contract_amt_by_status_nm_cls_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_cls_aggmax = nvl(contract_cred_contract_amt_by_status_nm_cls_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_cls_aggavg = nvl(contract_cred_contract_amt_by_status_nm_cls_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_pil_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggsum = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmin = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggavg = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_pil_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_ptb_cc_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggsum = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmin = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggavg = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_ptb_cc_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggmax = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_auto_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggsum = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmin = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmax = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggavg = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_auto_aggavg, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggmax = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggmax, 0),
+    contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggcnt = nvl(contract_cred_contract_uid_by_status_nm_cls_by_product_category_nm_mortg_aggcnt, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggsum = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggsum, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmin = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmin, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmax = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggmax, 0),
+    contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggavg = nvl(contract_cred_contract_amt_by_status_nm_cls_by_product_category_nm_mortg_aggavg, 0)
+';
+
+--вызов процедуры для удаления временных таблиц
+drop_table_if_exists(tmp_table);
+drop_table_if_exists(concat(in_table, '_first_cred_prod'));
+drop_table_if_exists(concat(in_table, '_last_cred_prod'));
+drop_table_if_exists(concat(in_table, '_all_time_cred_contracts'));
+drop_table_if_exists(concat(in_table, '_working_cred_contracts'));
+drop_table_if_exists(concat(in_table, '_closed_cred_contracts'));
+
+-- Добавляем индекс
+execute immediate
+'
+create index idx_'||out_table||' on '||out_table||'(client_did, report_date) parallel 8
+';
+execute immediate 'grant select on '||out_table||' to public';  
+END;
