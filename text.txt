@@ -1,142 +1,364 @@
-[
-  {
-    "category": "1. Комиссии и тарифы",
-    "sub_category": "1.1 Разъяснение тарифов и комиссий",
-    "description": "Клиент просит письменно или устно разъяснить тариф обслуживания, размер комиссий, условия бесплатного периода, правила снятия наличных и переводов."
-  },
-  {
-    "category": "1. Комиссии и тарифы",
-    "sub_category": "1.2 Возврат комиссии или штрафа",
-    "description": "Клиент просит вернуть уже списанную комиссию/штраф (обслуживание, снятие, перевод, SMS и т.п.), пересчитать или отменить начисление."
-  },
-  {
-    "category": "1. Комиссии и тарифы",
-    "sub_category": "1.3 Перевод на бесплатный или иной тариф",
-    "description": "Клиент просит сменить тарифный план дебетовой карты/счёта (в т.ч. на бесплатное обслуживание) или отключить платный пакет."
-  },
-  {
-    "category": "2. Разблокировка и снятие ограничений",
-    "sub_category": "2.1 Разблокировка карты банком",
-    "description": "Клиент просит снять банковскую блокировку карты (антифрод, внутренняя блокировка) и восстановить операции."
-  },
-  {
-    "category": "2. Разблокировка и снятие ограничений",
-    "sub_category": "2.2 Снятие ареста ФССП / суда",
-    "description": "Клиент просит снять арест, разблокировать счёт после погашения долга, предоставить/принять документы для приставов, возобновить операции после исполнительного производства."
-  },
-  {
-    "category": "2. Разблокировка и снятие ограничений",
-    "sub_category": "2.3 Восстановление доступа к ДБО",
-    "description": "Клиент просит восстановить вход в приложение/интернет-банк, снять ограничение канала, перепривязать устройство/номер."
-  },
-  {
-    "category": "3. Карта: выпуск, доставка, активация, перевыпуск",
-    "sub_category": "3.1 Заказ и доставка карты",
-    "description": "Клиент просит оформить/выпустить карту, изменить способ или адрес доставки, ускорить получение, забрать карту в отделении."
-  },
-  {
-    "category": "3. Карта: выпуск, доставка, активация, перевыпуск",
-    "sub_category": "3.2 Активация и установка ПИН",
-    "description": "Клиент просит помочь активировать карту, установить или сбросить ПИН, получить код активации."
-  },
-  {
-    "category": "3. Карта: выпуск, доставка, активация, перевыпуск",
-    "sub_category": "3.3 Перевыпуск и замена карты",
-    "description": "Клиент просит перевыпустить карту (истечение срока, повреждение, утеря, смена данных) и выдать новый пластик."
-  },
-  {
-    "category": "4. Кешбэк и бонусы",
-    "sub_category": "4.1 Доначисление кешбэка или бонусов",
-    "description": "Клиент просит доначислить неполученный кешбэк/бонусы, пересчитать категории, зачислить обещанную сумму."
-  },
-  {
-    "category": "4. Кешбэк и бонусы",
-    "sub_category": "4.2 Настройка категорий и программы лояльности",
-    "description": "Клиент просит выбрать/сменить категории кешбэка, подключить или уточнить условия программы лояльности."
-  },
-  {
-    "category": "5. Переводы и платежи",
-    "sub_category": "5.1 Розыск и зачисление «потерянного» перевода",
-    "description": "Клиент просит найти перевод, ускорить зачисление, подтвердить статус операции, довести платёж до получателя."
-  },
-  {
-    "category": "5. Переводы и платежи",
-    "sub_category": "5.2 Отмена или возврат перевода/платежа",
-    "description": "Клиент просит отменить исходящий перевод, вернуть ошибочный платёж, инициировать chargeback/оспаривание операции."
-  },
-  {
-    "category": "5. Переводы и платежи",
-    "sub_category": "5.3 Возврат комиссии за перевод",
-    "description": "Клиент просит вернуть комиссию именно за перевод/платёж (не общую комиссию обслуживания — см. 1.2)."
-  },
-  {
-    "category": "6. Закрытие карты/счёта и вывод остатка",
-    "sub_category": "6.1 Закрытие карты или счёта",
-    "description": "Клиент просит закрыть дебетовую карту и/или счёт по собственному желанию."
-  },
-  {
-    "category": "6. Закрытие карты/счёта и вывод остатка",
-    "sub_category": "6.2 Вывод или перевод остатка при закрытии",
-    "description": "Клиент просит снять/перевести остаток средств при закрытии продукта на другой счёт/карту или выдать наличными."
-  },
-  {
-    "category": "6. Закрытие карты/счёта и вывод остатка",
-    "sub_category": "6.3 Отмена комиссии при закрытии",
-    "description": "Клиент просит не удерживать или вернуть комиссию за обслуживание при закрытии карты/счёта."
-  },
-  {
-    "category": "7. Документы и информация",
-    "sub_category": "7.1 Баланс и детали операций",
-    "description": "Клиент просит сообщить баланс, статус операции, детализацию списаний/зачислений без оформления формальной справки."
-  },
-  {
-    "category": "7. Документы и информация",
-    "sub_category": "7.2 Выписки, справки и письма",
-    "description": "Клиент просит выписку по счёту, справку о наличии/отсутствии счёта, об аресте, о закрытии, официальное письмо для суда/приставов/работодателя."
-  },
-  {
-    "category": "7. Документы и информация",
-    "sub_category": "7.3 Разъяснение правил и статуса обращения",
-    "description": "Клиент просит пояснить правила продукта, статус своей претензии/заявки, сроки рассмотрения без запроса нового документа из 7.2."
-  },
-  {
-    "category": "8. Компенсации и претензии по сбоям",
-    "sub_category": "8.1 Компенсация за сбой сервиса или банкомата",
-    "description": "Клиент просит компенсацию/возмещение убытков из‑за сбоя приложения, ДБО, банкомата (невыдача наличных и т.п.)."
-  },
-  {
-    "category": "8. Компенсации и претензии по сбоям",
-    "sub_category": "8.2 Восстановление операции после технического сбоя",
-    "description": "Клиент просит провести заново операцию, разблокировать «зависший» платёж, исправить технический статус без акцента на денежную компенсацию (это 8.1)."
-  },
-  {
-    "category": "9. Безопасность",
-    "sub_category": "9.1 Блокировка карты по инициативе клиента",
-    "description": "Клиент просит заблокировать карту из‑за утери, кражи, подозрения на компрометацию."
-  },
-  {
-    "category": "9. Безопасность",
-    "sub_category": "9.2 Оспаривание мошеннических операций",
-    "description": "Клиент просит оспорить неавторизованные списания, вернуть средства, провести расследование по мошенничеству."
-  },
-  {
-    "category": "9. Безопасность",
-    "sub_category": "9.3 Смена данных безопасности",
-    "description": "Клиент просит сменить телефон, пароль, лимиты уведомлений, настройки 3DS/SMS, перевыпустить реквизиты безопасности."
-  },
-  {
-    "category": "10. Регулятивные и юридические действия",
-    "sub_category": "10.1 Содействие по ФССП / суду / ЦБ",
-    "description": "Клиент просит действия банка по исполнению/снятию ограничений регуляторов, подготовку ответов для ФССП, суда, ЦБ."
-  },
-  {
-    "category": "10. Регулятивные и юридические действия",
-    "sub_category": "10.2 Исключение из списков и стоп-листов",
-    "description": "Клиент просит исключить его из внутренних/регуляторных списков, восстановить обслуживание после ошибочного включения."
-  },
-  {
-    "category": "10. Регулятивные и юридические действия",
-    "sub_category": "10.3 Официальные заявления и претензии",
-    "description": "Клиент просит принять/оформить письменную претензию, заявление, официальный ответ банка по дебетовой карте."
-  }
-]
+create or replace PROCEDURE VMR_COLLECT_FEAT_DM_MRK_CARD_LIMIT_CONTRUID
+(in_table in VARCHAR2,
+ out_table in VARCHAR2)
+AUTHID CURRENT_USER
+IS
+   -- Универсальная процедура для удаления таблицы, игнорируя ошибку, если таблица не существует
+  PROCEDURE drop_table_if_exists(table_name IN VARCHAR2) IS
+  BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE ' || table_name;
+  EXCEPTION
+    WHEN OTHERS THEN
+      IF SQLCODE = -942 THEN
+        NULL;  -- Игнорируем ошибку "таблица не существует"
+      ELSE
+        RAISE;  -- Для других ошибок выбрасываем исключение
+      END IF;
+  END drop_table_if_exists;
+BEGIN
+
+drop_table_if_exists(out_table);
+
+execute immediate
+'create table '||out_table||' as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+
+    --кол-во дней с последнего изменения лимита
+    -- DAYS_SINCE_LAST_LIMIT_CHANGE
+    min(trunc(a.report_date - creation_dt)) as card_limit_report_date_diff_creation_dt_aggmin,
+
+    --кол-во изменений лимита за всё время
+    count(prop_uid) as card_limit_prop_uid_aggcnt,
+
+    --кол-во изменений лимита за последние 730 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 730
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d730,
+
+    --кол-во изменений лимита за последние 365 дней
+    -- LIMIT_CHANGE_CNT_365D
+    count(case
+      when trunc(creation_dt) >= a.report_date - 365
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d365,
+
+    --кол-во изменений лимита за последние 180 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 180
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d180,
+
+    --кол-во изменений лимита за последние 90 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 90
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_aggcnt_d90,
+
+    --кол-во увеличений лимита за всё время
+    count(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt,
+
+    --кол-во увеличений лимита за последние 730 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d730,
+
+    --кол-во увеличений лимита за последние 365 дней
+    -- LIMIT_INCREASE_CNT_365D
+    count(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d365,
+
+    --кол-во увеличений лимита за последние 180 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d180,
+
+    --кол-во увеличений лимита за последние 90 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggcnt_d90,
+
+    --кол-во уменьшений лимита за всё время
+    count(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt,
+
+    --кол-во уменьшений лимита за последние 730 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d730,
+
+    --кол-во уменьшений лимита за последние 365 дней
+    -- LIMIT_DECREASE_CNT_365D
+    count(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d365,
+
+    --кол-во уменьшений лимита за последние 180 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d180,
+
+    --кол-во уменьшений лимита за последние 90 дней
+    count(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggcnt_d90,
+
+    --мин. увеличение лимита за всё время
+    min(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin,
+
+    --макс. увеличение лимита за всё время
+    max(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax,
+
+    --среднее увеличение лимита за всё время
+    trunc(avg(case
+      when limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg,
+
+    --мин. увеличение лимита за последние 730 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d730,
+
+    --макс. увеличение лимита за последние 730 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d730,
+
+    --среднее увеличение лимита за последние 730 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d730,
+
+    --мин. увеличение лимита за последние 365 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d365,
+
+    --макс. увеличение лимита за последние 365 дней
+    -- LIMIT_INCREASE_MAX_365D
+    max(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d365,
+
+    --среднее увеличение лимита за последние 365 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d365,
+
+    --мин. увеличение лимита за последние 180 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d180,
+
+    --макс. увеличение лимита за последние 180 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d180,
+
+    --среднее увеличение лимита за последние 180 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d180,
+
+    --мин. увеличение лимита за последние 90 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmin_d90,
+
+    --макс. увеличение лимита за последние 90 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_incrs_aggmax_d90,
+
+    --среднее увеличение лимита за последние 90 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_incrs_aggavg_d90,
+
+    --мин. уменьшение лимита за всё время
+    min(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin,
+
+    --макс. уменьшение лимита за всё время
+    max(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax,
+
+    --среднее уменьшение лимита за всё время
+    trunc(avg(case
+      when limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg,
+
+    --мин. уменьшение лимита за последние 730 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d730,
+
+    --макс. уменьшение лимита за последние 730 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d730,
+
+    --среднее уменьшение лимита за последние 730 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d730,
+
+    --мин. уменьшение лимита за последние 365 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d365,
+
+    --макс. уменьшение лимита за последние 365 дней
+    -- LIMIT_DECREASE_MAX_365D
+    max(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d365,
+
+    --среднее уменьшение лимита за последние 365 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d365,
+
+    --мин. уменьшение лимита за последние 180 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d180,
+
+    --макс. уменьшение лимита за последние 180 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d180,
+
+    --среднее уменьшение лимита за последние 180 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d180,
+
+    --мин. уменьшение лимита за последние 90 дней
+    min(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmin_d90,
+
+    --макс. уменьшение лимита за последние 90 дней
+    max(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end) as card_limit_limit_dif_decrs_aggmax_d90,
+
+    --среднее уменьшение лимита за последние 90 дней
+    trunc(avg(case
+      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
+      then limit_dif
+      else null
+      end)) as card_limit_limit_dif_decrs_aggavg_d90
+
+from '||in_table||' a
+join dm_mrk.DM_MRK_CARD_LIMIT b
+  on a.contract_uid = b.contract_uid
+where trunc(creation_dt) <= a.report_date
+  and limit_dif != 0
+  and limit_dif is not null
+  and (status_nm = ''WORK'' or status_nm is null)
+group by a.contract_uid, a.report_date
+';
+
+-- Добавляем индекс
+execute immediate
+'
+create index idx_'||out_table||' on '||out_table||'(contract_uid, report_date) parallel 8
+';
+execute immediate 'grant select on '||out_table||' to public';
+END;
