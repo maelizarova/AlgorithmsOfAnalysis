@@ -1,364 +1,47 @@
-create or replace PROCEDURE VMR_COLLECT_FEAT_DM_MRK_CARD_LIMIT_CONTRUID
-(in_table in VARCHAR2,
- out_table in VARCHAR2)
-AUTHID CURRENT_USER
-IS
-   -- Универсальная процедура для удаления таблицы, игнорируя ошибку, если таблица не существует
-  PROCEDURE drop_table_if_exists(table_name IN VARCHAR2) IS
-  BEGIN
-    EXECUTE IMMEDIATE 'DROP TABLE ' || table_name;
-  EXCEPTION
-    WHEN OTHERS THEN
-      IF SQLCODE = -942 THEN
-        NULL;  -- Игнорируем ошибку "таблица не существует"
-      ELSE
-        RAISE;  -- Для других ошибок выбрасываем исключение
-      END IF;
-  END drop_table_if_exists;
-BEGIN
-
-drop_table_if_exists(out_table);
-
-execute immediate
-'create table '||out_table||' as
-select /*+ parallel(8) */
-    a.contract_uid,
-    a.report_date,
-
-    --кол-во дней с последнего изменения лимита
-    -- DAYS_SINCE_LAST_LIMIT_CHANGE
-    min(trunc(a.report_date - creation_dt)) as card_limit_report_date_diff_creation_dt_aggmin,
-
-    --кол-во изменений лимита за всё время
-    count(prop_uid) as card_limit_prop_uid_aggcnt,
-
-    --кол-во изменений лимита за последние 730 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 730
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d730,
-
-    --кол-во изменений лимита за последние 365 дней
-    -- LIMIT_CHANGE_CNT_365D
-    count(case
-      when trunc(creation_dt) >= a.report_date - 365
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d365,
-
-    --кол-во изменений лимита за последние 180 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 180
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d180,
-
-    --кол-во изменений лимита за последние 90 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 90
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_aggcnt_d90,
-
-    --кол-во увеличений лимита за всё время
-    count(case
-      when limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggcnt,
-
-    --кол-во увеличений лимита за последние 730 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d730,
-
-    --кол-во увеличений лимита за последние 365 дней
-    -- LIMIT_INCREASE_CNT_365D
-    count(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d365,
-
-    --кол-во увеличений лимита за последние 180 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d180,
-
-    --кол-во увеличений лимита за последние 90 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggcnt_d90,
-
-    --кол-во уменьшений лимита за всё время
-    count(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt,
-
-    --кол-во уменьшений лимита за последние 730 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d730,
-
-    --кол-во уменьшений лимита за последние 365 дней
-    -- LIMIT_DECREASE_CNT_365D
-    count(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d365,
-
-    --кол-во уменьшений лимита за последние 180 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d180,
-
-    --кол-во уменьшений лимита за последние 90 дней
-    count(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggcnt_d90,
-
-    --мин. увеличение лимита за всё время
-    min(case
-      when limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin,
-
-    --макс. увеличение лимита за всё время
-    max(case
-      when limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax,
-
-    --среднее увеличение лимита за всё время
-    trunc(avg(case
-      when limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg,
-
-    --мин. увеличение лимита за последние 730 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d730,
-
-    --макс. увеличение лимита за последние 730 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d730,
-
-    --среднее увеличение лимита за последние 730 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d730,
-
-    --мин. увеличение лимита за последние 365 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d365,
-
-    --макс. увеличение лимита за последние 365 дней
-    -- LIMIT_INCREASE_MAX_365D
-    max(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d365,
-
-    --среднее увеличение лимита за последние 365 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d365,
-
-    --мин. увеличение лимита за последние 180 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d180,
-
-    --макс. увеличение лимита за последние 180 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d180,
-
-    --среднее увеличение лимита за последние 180 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d180,
-
-    --мин. увеличение лимита за последние 90 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmin_d90,
-
-    --макс. увеличение лимита за последние 90 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_incrs_aggmax_d90,
-
-    --среднее увеличение лимита за последние 90 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif > 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_incrs_aggavg_d90,
-
-    --мин. уменьшение лимита за всё время
-    min(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin,
-
-    --макс. уменьшение лимита за всё время
-    max(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax,
-
-    --среднее уменьшение лимита за всё время
-    trunc(avg(case
-      when limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg,
-
-    --мин. уменьшение лимита за последние 730 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d730,
-
-    --макс. уменьшение лимита за последние 730 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d730,
-
-    --среднее уменьшение лимита за последние 730 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 730 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d730,
-
-    --мин. уменьшение лимита за последние 365 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d365,
-
-    --макс. уменьшение лимита за последние 365 дней
-    -- LIMIT_DECREASE_MAX_365D
-    max(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d365,
-
-    --среднее уменьшение лимита за последние 365 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 365 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d365,
-
-    --мин. уменьшение лимита за последние 180 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d180,
-
-    --макс. уменьшение лимита за последние 180 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d180,
-
-    --среднее уменьшение лимита за последние 180 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 180 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d180,
-
-    --мин. уменьшение лимита за последние 90 дней
-    min(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmin_d90,
-
-    --макс. уменьшение лимита за последние 90 дней
-    max(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end) as card_limit_limit_dif_decrs_aggmax_d90,
-
-    --среднее уменьшение лимита за последние 90 дней
-    trunc(avg(case
-      when trunc(creation_dt) >= a.report_date - 90 and limit_dif < 0
-      then limit_dif
-      else null
-      end)) as card_limit_limit_dif_decrs_aggavg_d90
-
-from '||in_table||' a
-join dm_mrk.DM_MRK_CARD_LIMIT b
-  on a.contract_uid = b.contract_uid
-where trunc(creation_dt) <= a.report_date
-  and limit_dif != 0
-  and limit_dif is not null
-  and (status_nm = ''WORK'' or status_nm is null)
-group by a.contract_uid, a.report_date
-';
-
--- Добавляем индекс
-execute immediate
-'
-create index idx_'||out_table||' on '||out_table||'(contract_uid, report_date) parallel 8
-';
-execute immediate 'grant select on '||out_table||' to public';
-END;
+src,src_desc,proc,src_field,f_name,f_desc,is_category,online_table
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,creation_dt,card_limit_report_date_diff_creation_dt_aggmin,кол-во дней с последнего изменения лимита,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,prop_uid,card_limit_prop_uid_aggcnt,кол-во изменений лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d730,кол-во изменений лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d365,кол-во изменений лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d180,кол-во изменений лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d90,кол-во изменений лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt,кол-во увеличений лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d730,кол-во увеличений лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d365,кол-во увеличений лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d180,кол-во увеличений лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d90,кол-во увеличений лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt,кол-во уменьшений лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d730,кол-во уменьшений лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d365,кол-во уменьшений лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d180,кол-во уменьшений лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d90,кол-во уменьшений лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin,мин. увеличение лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax,макс. увеличение лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg,среднее увеличение лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d730,мин. увеличение лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d730,макс. увеличение лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d730,среднее увеличение лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d365,мин. увеличение лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d365,макс. увеличение лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d365,среднее увеличение лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d180,мин. увеличение лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d180,макс. увеличение лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d180,среднее увеличение лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d90,мин. увеличение лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d90,макс. увеличение лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d90,среднее увеличение лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin,мин. уменьшение лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax,макс. уменьшение лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg,среднее уменьшение лимита за всё время,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d730,мин. уменьшение лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d730,макс. уменьшение лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d730,среднее уменьшение лимита за последние 730 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d365,мин. уменьшение лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d365,макс. уменьшение лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d365,среднее уменьшение лимита за последние 365 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d180,мин. уменьшение лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d180,макс. уменьшение лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d180,среднее уменьшение лимита за последние 180 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d90,мин. уменьшение лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d90,макс. уменьшение лимита за последние 90 дней,0,
+dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d90,среднее уменьшение лимита за последние 90 дней,0,
