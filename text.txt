@@ -1,47 +1,338 @@
-src,src_desc,proc,src_field,f_name,f_desc,is_category,online_table
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,creation_dt,card_limit_report_date_diff_creation_dt_aggmin,кол-во дней с последнего изменения лимита,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,prop_uid,card_limit_prop_uid_aggcnt,кол-во изменений лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d730,кол-во изменений лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d365,кол-во изменений лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d180,кол-во изменений лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_aggcnt_d90,кол-во изменений лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt,кол-во увеличений лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d730,кол-во увеличений лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d365,кол-во увеличений лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d180,кол-во увеличений лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggcnt_d90,кол-во увеличений лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt,кол-во уменьшений лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d730,кол-во уменьшений лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d365,кол-во уменьшений лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d180,кол-во уменьшений лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggcnt_d90,кол-во уменьшений лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin,мин. увеличение лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax,макс. увеличение лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg,среднее увеличение лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d730,мин. увеличение лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d730,макс. увеличение лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d730,среднее увеличение лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d365,мин. увеличение лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d365,макс. увеличение лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d365,среднее увеличение лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d180,мин. увеличение лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d180,макс. увеличение лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d180,среднее увеличение лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmin_d90,мин. увеличение лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggmax_d90,макс. увеличение лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_incrs_aggavg_d90,среднее увеличение лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin,мин. уменьшение лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax,макс. уменьшение лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg,среднее уменьшение лимита за всё время,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d730,мин. уменьшение лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d730,макс. уменьшение лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d730,среднее уменьшение лимита за последние 730 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d365,мин. уменьшение лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d365,макс. уменьшение лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d365,среднее уменьшение лимита за последние 365 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d180,мин. уменьшение лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d180,макс. уменьшение лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d180,среднее уменьшение лимита за последние 180 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmin_d90,мин. уменьшение лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggmax_d90,макс. уменьшение лимита за последние 90 дней,0,
-dm_mrk.dm_mrk_card_limit,изменение лимита по картам по контрактам,ema_collect_feat_dm_mrk_card_limit_contruid,limit_dif,card_limit_limit_dif_decrs_aggavg_d90,среднее уменьшение лимита за последние 90 дней,0,
+-- Скрипт: фичи текущего состояния договора (зерно contract_uid × report_date)
+--
+-- Задайте имена таблиц:
+define in_table  = my_in_table
+define out_table = my_out_table
+--
+--   &in_table  — вход: contract_uid, report_date
+--   &out_table — выходная витрина
+--
+-- Временные таблицы:
+--   &in_table._feat_current
+--   &in_table._feat_daily_max
+--   &in_table._feat_util_monthavg
+--   &in_table._feat_debt_hist
+--   &in_table._feat_days_since
+--
+-- Часть полей релевантна только револьверным продуктам (КК):
+--   limit_available_amt, util_* — для потреб/авто/ипотеки обычно не нужны.
+
+-- удаление out и временных
+begin
+  for t in (
+    select column_value as table_name
+    from table(sys.odcivarchar2list(
+      '&out_table',
+      '&in_table._feat_current',
+      '&in_table._feat_daily_max',
+      '&in_table._feat_util_monthavg',
+      '&in_table._feat_debt_hist',
+      '&in_table._feat_days_since'
+    ))
+  ) loop
+    begin
+      execute immediate 'drop table ' || t.table_name;
+    exception
+      when others then
+        if sqlcode != -942 then raise; end if;
+    end;
+  end loop;
+end;
+/
+
+---------------------1. ТЕКУЩЕЕ СОСТОЯНИЕ ДОГОВОРА------------------------------
+create table &in_table._feat_current as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+    dm.client_did,
+    dm.product_category_nm,
+    dm.status_nm,
+    dm.open_dt,
+    dm.fact_close_dt,
+
+    -- CURRENT_LIMIT
+    dm.contract_amt as current_limit,
+
+    -- первоначальная сумма договора
+    dm.contract_init_amt,
+
+    -- CURRENT_DEBT
+    dm.current_debt_amt as current_debt,
+
+    -- задолженность по ОД
+    dm.current_principal_sum,
+
+    -- собственные средства (точка на дату; avg 3/6/12M — из monthly)
+    dm.current_amt,
+
+    -- CARD_AGE_MONTHS
+    round(months_between(a.report_date, dm.open_dt)) as card_age_months,
+
+    -- CURRENT_INTEREST_RATE (с договора; в monthly тоже есть)
+    dm.current_prc_rt as current_interest_rate,
+
+    -- ставка на открытии / последнем ДОС
+    dm.prol_prc_rt,
+
+    -- изменение ставки vs открытие/ДОС
+    (dm.current_prc_rt - dm.prol_prc_rt) as prc_rt_diff,
+
+    -- изменение суммы/лимита vs первоначальная
+    (dm.contract_amt - dm.contract_init_amt) as contract_amt_diff_init,
+
+    -- AVAILABLE_LIMIT по формуле из презентации: limit - debt
+    (dm.contract_amt - dm.current_debt_amt) as available_limit_by_debt,
+
+    -- UTIL_CURRENT по презентации: debt / limit
+    case
+      when dm.contract_amt = 0 or dm.contract_amt is null then null
+      else dm.current_debt_amt / dm.contract_amt
+    end as util_current,
+
+    -- util по ОД
+    case
+      when dm.contract_amt = 0 or dm.contract_amt is null then null
+      else dm.current_principal_sum / dm.contract_amt
+    end as util_by_principal,
+
+    -- ===== КК =====
+    -- канонический available из витрины
+    dm.limit_available_amt as available_limit,
+
+    -- util по использованному лимиту: (limit - available) / limit
+    case
+      when dm.contract_amt = 0 or dm.contract_amt is null then null
+      else (dm.contract_amt - dm.limit_available_amt) / dm.contract_amt
+    end as util_by_available
+
+from &in_table a
+inner join dm_mrk.dm_mrk_contract dm
+  on a.contract_uid = dm.contract_uid
+ and dm.open_dt < a.report_date
+ and a.report_date between dm.effective_from_dt and dm.effective_to_dt
+ and dm.contract_type = 'C'
+ and dm.product_category_nm != 'Перерасход'
+;
+
+---------------------2. DAILY MAX (история версий договора)---------------------
+-- новая запись в dm_mrk_contract при изменении долга/лимита
+create table &in_table._feat_daily_max as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+
+    -- DEBT_DAILY_MAX_90D / 180D
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 90
+          then h.current_debt_amt
+        end) as debt_daily_max_90d,
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 180
+          then h.current_debt_amt
+        end) as debt_daily_max_180d,
+
+    -- UTIL_DAILY_MAX_90D / 180D
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 90
+           and h.contract_amt != 0
+           and h.contract_amt is not null
+          then h.current_debt_amt / h.contract_amt
+        end) as util_daily_max_90d,
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 180
+           and h.contract_amt != 0
+           and h.contract_amt is not null
+          then h.current_debt_amt / h.contract_amt
+        end) as util_daily_max_180d
+
+from &in_table a
+inner join dm_mrk.dm_mrk_contract h
+  on a.contract_uid = h.contract_uid
+ and h.open_dt < a.report_date
+ and h.contract_type = 'C'
+ and h.product_category_nm != 'Перерасход'
+ and h.effective_from_dt <= a.report_date
+ and h.effective_to_dt   >= a.report_date - 180
+group by a.contract_uid, a.report_date
+;
+
+---------------------3. UTIL_MONTHAVG_AVG (из monthly)--------------------------
+-- utilized / (utilized + unused), окна 3/6/12M
+create table &in_table._feat_util_monthavg as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+
+    case
+      when nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.utilized_limit_avg_sum end), 0)
+         + nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.unused_limit_avg_sum end), 0) = 0
+      then null
+      else avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.utilized_limit_avg_sum end)
+         / (avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.utilized_limit_avg_sum end)
+          + avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.unused_limit_avg_sum end))
+    end as util_monthavg_avg_3m,
+
+    case
+      when nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.utilized_limit_avg_sum end), 0)
+         + nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.unused_limit_avg_sum end), 0) = 0
+      then null
+      else avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.utilized_limit_avg_sum end)
+         / (avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.utilized_limit_avg_sum end)
+          + avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.unused_limit_avg_sum end))
+    end as util_monthavg_avg_6m,
+
+    case
+      when nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.utilized_limit_avg_sum end), 0)
+         + nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.unused_limit_avg_sum end), 0) = 0
+      then null
+      else avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.utilized_limit_avg_sum end)
+         / (avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.utilized_limit_avg_sum end)
+          + avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.unused_limit_avg_sum end))
+    end as util_monthavg_avg_12m
+
+from &in_table a
+inner join dm_mrk.dm_mrk_contract_agg_monthly m
+  on a.contract_uid = m.contract_uid
+ and m.report_month < trunc(a.report_date, 'mm')
+ and m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+group by a.contract_uid, a.report_date
+;
+
+---------------------4. DAYS_SINCE_LAST_TRANSACTION-----------------------------
+-- для контракта: сколько дней с последнего изменения current_debt_amt
+create table &in_table._feat_debt_hist as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+    h.effective_from_dt,
+    h.current_debt_amt,
+    lag(h.current_debt_amt) over (
+      partition by a.contract_uid, a.report_date
+      order by h.effective_from_dt
+    ) as prev_debt_amt
+from &in_table a
+inner join dm_mrk.dm_mrk_contract h
+  on a.contract_uid = h.contract_uid
+ and h.open_dt < a.report_date
+ and h.contract_type = 'C'
+ and h.product_category_nm != 'Перерасход'
+ and h.effective_from_dt <= a.report_date
+;
+
+create table &in_table._feat_days_since as
+select /*+ parallel(8) */
+    contract_uid,
+    report_date,
+    trunc(report_date - max(case
+          when prev_debt_amt is null
+            or nvl(current_debt_amt, -1) != nvl(prev_debt_amt, -1)
+          then effective_from_dt
+        end)) as days_since_last_transaction
+from &in_table._feat_debt_hist
+group by contract_uid, report_date
+;
+
+---------------------5. СОЕДИНЕНИЕ ВСЕХ ФИЧЕЙ-----------------------------------
+create table &out_table as
+select /*+ parallel(8) */
+    c.contract_uid,
+    c.report_date,
+    c.client_did,
+    c.product_category_nm,
+    c.status_nm,
+    c.open_dt,
+    c.fact_close_dt,
+    c.current_limit,
+    c.contract_init_amt,
+    c.current_debt,
+    c.current_principal_sum,
+    c.current_amt,
+    c.card_age_months,
+    c.current_interest_rate,
+    c.prol_prc_rt,
+    c.prc_rt_diff,
+    c.contract_amt_diff_init,
+    c.available_limit_by_debt,
+    c.util_current,
+    c.util_by_principal,
+    c.available_limit,
+    c.util_by_available,
+    d.debt_daily_max_90d,
+    d.debt_daily_max_180d,
+    d.util_daily_max_90d,
+    d.util_daily_max_180d,
+    u.util_monthavg_avg_3m,
+    u.util_monthavg_avg_6m,
+    u.util_monthavg_avg_12m,
+    s.days_since_last_transaction
+from &in_table._feat_current c
+left join &in_table._feat_daily_max d
+  on c.contract_uid = d.contract_uid
+ and c.report_date = d.report_date
+left join &in_table._feat_util_monthavg u
+  on c.contract_uid = u.contract_uid
+ and c.report_date = u.report_date
+left join &in_table._feat_days_since s
+  on c.contract_uid = s.contract_uid
+ and c.report_date = s.report_date
+;
+
+-- удаление временных
+begin
+  for t in (
+    select column_value as table_name
+    from table(sys.odcivarchar2list(
+      '&in_table._feat_current',
+      '&in_table._feat_daily_max',
+      '&in_table._feat_util_monthavg',
+      '&in_table._feat_debt_hist',
+      '&in_table._feat_days_since'
+    ))
+  ) loop
+    begin
+      execute immediate 'drop table ' || t.table_name;
+    exception
+      when others then
+        if sqlcode != -942 then raise; end if;
+    end;
+  end loop;
+end;
+/
+
+create index idx_&out_table on &out_table (contract_uid, report_date) parallel 8;
+grant select on &out_table to public;
