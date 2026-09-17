@@ -1,207 +1,371 @@
-[
-  {
-    "category": "1. Card Issuance & Activation",
-    "sub_category": "1.1 New card issuance",
-    "description": "Client requests a new physical or virtual credit card."
-  },
-  {
-    "category": "1. Card Issuance & Activation",
-    "sub_category": "1.2 Card activation",
-    "description": "Client needs to activate a newly issued card or set PIN."
-  },
-  {
-    "category": "1. Card Issuance & Activation",
-    "sub_category": "1.3 Card re‑issuance / replacement",
-    "description": "Client asks for replacement due to loss, damage, or expiration."
-  },
-  {
-    "category": "2. Card Delivery & Logistics",
-    "sub_category": "2.1 Delivery scheduling & address change",
-    "description": "Client wants to set, change, or postpone card delivery address or date."
-  },
-  {
-    "category": "2. Card Delivery & Logistics",
-    "sub_category": "2.2 Courier issues & alternative delivery",
-    "description": "Issues with courier service or request alternative delivery method."
-  },
-  {
-    "category": "2. Card Delivery & Logistics",
-    "sub_category": "2.3 Delivery delays & tracking",
-    "description": "Client reports late or missing delivery and needs tracking."
-  },
-  {
-    "category": "3. Card Blocking & Unblocking",
-    "sub_category": "3.1 Card block (fraud, loss, internal)",
-    "description": "Card blocked due to fraud, loss, or internal bank action."
-  },
-  {
-    "category": "3. Card Blocking & Unblocking",
-    "sub_category": "3.2 Unblock request & removal of restrictions",
-    "description": "Client requests unblocking or removal of card restrictions."
-  },
-  {
-    "category": "4. Credit Limit & Credit Line Management",
-    "sub_category": "4.1 Increase / decrease credit limit",
-    "description": "Client requests increase or decrease of credit limit."
-  },
-  {
-    "category": "4. Credit Limit & Credit Line Management",
-    "sub_category": "4.2 Reset / restore credit line after repayment",
-    "description": "Restore original limit after full repayment or temporary hold."
-  },
-  {
-    "category": "4. Credit Limit & Credit Line Management",
-    "sub_category": "4.3 Temporary limit suspension",
-    "description": "Client wants to temporarily suspend or hold the credit line."
-  },
-  {
-    "category": "5. Fees, Commissions & Service Charges",
-    "sub_category": "5.1 Dispute over service fees (monthly, SMS, etc.)",
-    "description": "Dispute over recurring service fees (monthly, SMS, etc.)."
-  },
-  {
-    "category": "5. Fees, Commissions & Service Charges",
-    "sub_category": "5.2 Dispute over transaction fees (cash withdrawal, transfer, QR)",
-    "description": "Dispute fees for cash withdrawal, transfers, QR payments."
-  },
-  {
-    "category": "5. Fees, Commissions & Service Charges",
-    "sub_category": "5.3 Request fee waiver or tariff change",
-    "description": "Request fee waiver or switch to cheaper tariff."
-  },
-  {
-    "category": "6. Interest, Penalties & Grace Period",
-    "sub_category": "6.1 Incorrect interest calculation",
-    "description": "Client believes interest was calculated incorrectly."
-  },
-  {
-    "category": "6. Interest, Penalties & Grace Period",
-    "sub_category": "6.2 Penalties and late‑fee disputes",
-    "description": "Dispute penalties or late‑payment charges."
-  },
-  {
-    "category": "6. Interest, Penalties & Grace Period",
-    "sub_category": "6.3 Grace period clarification",
-    "description": "Clarify start, end, and application of grace period."
-  },
-  {
-    "category": "7. Payments, Transfers & Transaction Issues",
-    "sub_category": "7.1 Payment failures, double or missing payments",
-    "description": "Payment declined, duplicated, or not reflected."
-  },
-  {
-    "category": "7. Payments, Transfers & Transaction Issues",
-    "sub_category": "7.2 Transfer errors, cancellations and refunds",
-    "description": "Transfer errors, cancellations, or need refund."
-  },
-  {
-    "category": "7. Payments, Transfers & Transaction Issues",
-    "sub_category": "7.3 Cash‑withdrawal problems",
-    "description": "Cash withdrawal failed, charged incorrectly, or amount mismatch."
-  },
-  {
-    "category": "7. Payments, Transfers & Transaction Issues",
-    "sub_category": "7.4 POS / online purchase issues",
-    "description": "Problems with POS or online purchases, 3‑DS, QR, SBP."
-  },
-  {
-    "category": "7. Payments, Transfers & Transaction Issues",
-    "sub_category": "7.5 Incorrect balance or displayed data",
-    "description": "Displayed balance differs from expected amount."
-  },
-  {
-    "category": "8. Dispute Resolution & Refunds",
-    "sub_category": "8.1 Refund of fees, interest, overcharges",
-    "description": "Request refund of wrongly charged fees, interest, or overcharges."
-  },
-  {
-    "category": "8. Dispute Resolution & Refunds",
-    "sub_category": "8.2 Charge‑back / reversal of unauthorized transactions",
-    "description": "Charge‑back or reversal of unauthorized transaction."
-  },
-  {
-    "category": "8. Dispute Resolution & Refunds",
-    "sub_category": "8.3 Compensation for service failures",
-    "description": "Compensation for service delays or poor service."
-  },
-  {
-    "category": "9. Credit Bureau & Legal Records",
-    "sub_category": "9.1 Correction of credit‑bureau entries",
-    "description": "Correct or remove erroneous credit‑bureau entries."
-  },
-  {
-    "category": "9. Credit Bureau & Legal Records",
-    "sub_category": "9.2 Requests related to court, FSSP, arrests",
-    "description": "Actions related to court orders, enforcement, or account arrests."
-  },
-  {
-    "category": "9. Credit Bureau & Legal Records",
-    "sub_category": "9.3 Data protection and third‑party disclosure",
-    "description": "Ensure personal data is not shared without consent."
-  },
-  {
-    "category": "10. Customer Service & Communication",
-    "sub_category": "10.1 Poor service, rude behaviour, apologies",
-    "description": "Complaint about rude staff or poor service, request apology."
-  },
-  {
-    "category": "10. Customer Service & Communication",
-    "sub_category": "10.2 Request for callbacks, escalation, contact details",
-    "description": "Request callback, escalation to manager, or specific contact."
-  },
-  {
-    "category": "10. Customer Service & Communication",
-    "sub_category": "10.3 Opt‑out of marketing, notifications, SMS",
-    "description": "Opt out of marketing calls, SMS, or emails."
-  },
-  {
-    "category": "11. Product Terms & Conditions",
-    "sub_category": "11.1 Clarification of contract terms, rates, fees",
-    "description": "Clarify contract terms, rates, and fees."
-  },
-  {
-    "category": "11. Product Terms & Conditions",
-    "sub_category": "11.2 Request product changes (free tariff, new features)",
-    "description": "Switch to different product variant or add/remove features."
-  },
-  {
-    "category": "11. Product Terms & Conditions",
-    "sub_category": "11.3 Request for specific card features (SBP, QR, contactless)",
-    "description": "Enable or disable specific card functions (SBP, QR, contactless)."
-  },
-  {
-    "category": "12. Collections & Debt Management",
-    "sub_category": "12.1 Debt restructuring, repayment plans, holidays",
-    "description": "Modify repayment schedule, request holidays or grace period."
-  },
-  {
-    "category": "12. Collections & Debt Management",
-    "sub_category": "12.2 Stop collection calls / negotiate with collectors",
-    "description": "Stop collection calls or negotiate settlement with collectors."
-  },
-  {
-    "category": "12. Collections & Debt Management",
-    "sub_category": "12.3 Write‑off or cancellation of debt",
-    "description": "Request write‑off or cancellation of part/all debt."
-  },
-  {
-    "category": "13. Security & Fraud",
-    "sub_category": "13.1 Unauthorized transactions / fraud alerts",
-    "description": "Report unauthorized transaction or fraud alert."
-  },
-  {
-    "category": "13. Security & Fraud",
-    "sub_category": "13.2 Card security actions (PIN reset, PIN block, card freeze)",
-    "description": "Change PIN, remove PIN block, or freeze/unfreeze card."
-  },
-  {
-    "category": "14. Internal Process & System Issues",
-    "sub_category": "14.1 System errors, data correction, technical glitches",
-    "description": "Technical system errors, data correction, or glitches."
-  },
-  {
-    "category": "14. Internal Process & System Issues",
-    "sub_category": "14.2 Internal investigations, audits, compliance checks",
-    "description": "Internal audit, investigation, or compliance check."
-  }
-]
+-- Скрипт: фичи текущего состояния договора (зерно contract_uid × report_date)
+--
+-- Задайте имена таблиц:
+define in_table  = my_in_table
+define out_table = my_out_table
+--
+--   &in_table  — вход: contract_uid, report_date
+--   &out_table — выходная витрина
+--
+-- Временные таблицы:
+--   &in_table._feat_current
+--   &in_table._feat_daily_max
+--   &in_table._feat_contract_list
+--   &in_table._feat_monthly_raw
+--   &in_table._feat_util_monthavg
+--   &in_table._feat_debt_hist
+--   &in_table._feat_days_since
+--   &in_table._feat_risk_grade
+--
+-- Часть полей релевантна только револьверным продуктам (КК):
+--   limit_available_amt, util_* — для потреб/авто/ипотеки обычно не нужны.
+
+-- удаление out и временных
+begin
+  for t in (
+    select column_value as table_name
+    from table(sys.odcivarchar2list(
+      '&out_table',
+      '&in_table._feat_current',
+      '&in_table._feat_daily_max',
+      '&in_table._feat_contract_list',
+      '&in_table._feat_monthly_raw',
+      '&in_table._feat_util_monthavg',
+      '&in_table._feat_debt_hist',
+      '&in_table._feat_days_since',
+      '&in_table._feat_risk_grade'
+    ))
+  ) loop
+    begin
+      execute immediate 'drop table ' || t.table_name;
+    exception
+      when others then
+        if sqlcode != -942 then raise; end if;
+    end;
+  end loop;
+end;
+/
+
+---------------------1. ТЕКУЩЕЕ СОСТОЯНИЕ ДОГОВОРА------------------------------
+create table &in_table._feat_current as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+    dm.client_did,
+    dm.product_category_nm,
+    dm.status_nm,
+    dm.open_dt,
+    dm.fact_close_dt,
+
+    -- CURRENT_LIMIT
+    dm.contract_amt as current_limit,
+
+    -- первоначальная сумма договора
+    dm.contract_init_amt,
+
+    -- задолженность по ОД
+    dm.current_debt_amt as current_debt,
+
+    -- собственные средства
+    dm.current_amt,
+
+    -- CARD_AGE_MONTHS
+    round(months_between(a.report_date, dm.open_dt)) as card_age_months,
+
+    -- CURRENT_INTEREST_RATE (с договора; в monthly тоже есть)
+    dm.current_prc_rt as current_interest_rate,
+
+    -- ставка на открытии / последнем ДОС
+    dm.prol_prc_rt,
+
+    -- изменение ставки vs открытие/ДОС
+    (dm.current_prc_rt - dm.prol_prc_rt) as prc_rt_diff,
+
+    -- изменение суммы/лимита vs первоначальная
+    (dm.contract_amt - dm.contract_init_amt) as contract_amt_diff_init,
+
+    -- AVAILABLE_LIMIT по формуле из презентации: limit - debt
+    (dm.contract_amt - dm.current_debt_amt) as available_limit_by_debt,
+
+    -- UTIL_CURRENT по презентации: debt / limit
+    case
+      when dm.contract_amt = 0 or dm.contract_amt is null then null
+      else dm.current_debt_amt / dm.contract_amt
+    end as util_current
+
+from &in_table a
+inner join dm_mrk.dm_mrk_contract dm
+  on a.contract_uid = dm.contract_uid
+ and dm.open_dt < a.report_date
+ and a.report_date between dm.effective_from_dt and dm.effective_to_dt
+ and dm.contract_type = 'C'
+ and dm.product_category_nm != 'Перерасход'
+;
+
+---------------------2. DAILY MAX (история версий договора)---------------------
+-- новая запись в dm_mrk_contract при изменении долга/лимита
+create table &in_table._feat_daily_max as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+
+    -- DEBT_DAILY_MAX_90D / 180D
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 90
+          then h.current_debt_amt
+        end) as debt_daily_max_90d,
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 180
+          then h.current_debt_amt
+        end) as debt_daily_max_180d,
+
+    -- UTIL_DAILY_MAX_90D / 180D
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 90
+           and h.contract_amt != 0
+           and h.contract_amt is not null
+          then h.current_debt_amt / h.contract_amt
+        end) as util_daily_max_90d,
+    max(case
+          when h.effective_from_dt <= a.report_date
+           and h.effective_to_dt   >= a.report_date - 180
+           and h.contract_amt != 0
+           and h.contract_amt is not null
+          then h.current_debt_amt / h.contract_amt
+        end) as util_daily_max_180d
+
+from &in_table a
+inner join dm_mrk.dm_mrk_contract h
+  on a.contract_uid = h.contract_uid
+ and h.open_dt < a.report_date
+ and h.contract_type = 'C'
+ and h.product_category_nm != 'Перерасход'
+ and h.effective_from_dt <= a.report_date
+ and h.effective_to_dt   >= a.report_date - 180
+group by a.contract_uid, a.report_date
+;
+
+---------------------3. UTIL_MONTHAVG_AVG (из monthly)--------------------------
+-- 3.1 список контрактов из in_table
+create table &in_table._feat_contract_list as
+select /*+ parallel(8) */ distinct
+    contract_uid
+from &in_table
+;
+
+-- 3.2 узкий срез monthly только по нужным контрактам и общему окну дат
+create table &in_table._feat_monthly_raw as
+select /*+ parallel(8) */
+    m.contract_uid,
+    m.report_month,
+    m.utilized_limit_avg_sum,
+    m.unused_limit_avg_sum
+from &in_table._feat_contract_list c
+inner join dm_mrk.dm_mrk_contract_agg_monthly m
+  on c.contract_uid = m.contract_uid
+where m.report_month >= add_months((select trunc(min(report_date), 'mm') from &in_table), -12)
+  and m.report_month <  (select trunc(max(report_date), 'mm') from &in_table)
+;
+
+create index idx_&in_table._feat_monthly_raw
+  on &in_table._feat_monthly_raw (contract_uid, report_month) parallel 8;
+
+-- 3.3 utilized / (utilized + unused), окна 3/6/12M
+create table &in_table._feat_util_monthavg as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+
+    case
+      when nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.utilized_limit_avg_sum end), 0)
+         + nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.unused_limit_avg_sum end), 0) = 0
+      then null
+      else avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.utilized_limit_avg_sum end)
+         / (avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.utilized_limit_avg_sum end)
+          + avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -3)
+             then m.unused_limit_avg_sum end))
+    end as util_monthavg_avg_3m,
+
+    case
+      when nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.utilized_limit_avg_sum end), 0)
+         + nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.unused_limit_avg_sum end), 0) = 0
+      then null
+      else avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.utilized_limit_avg_sum end)
+         / (avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.utilized_limit_avg_sum end)
+          + avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -6)
+             then m.unused_limit_avg_sum end))
+    end as util_monthavg_avg_6m,
+
+    case
+      when nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.utilized_limit_avg_sum end), 0)
+         + nvl(avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.unused_limit_avg_sum end), 0) = 0
+      then null
+      else avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.utilized_limit_avg_sum end)
+         / (avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.utilized_limit_avg_sum end)
+          + avg(case
+             when m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+             then m.unused_limit_avg_sum end))
+    end as util_monthavg_avg_12m
+
+from &in_table a
+left join &in_table._feat_monthly_raw m
+  on a.contract_uid = m.contract_uid
+ and m.report_month < trunc(a.report_date, 'mm')
+ and m.report_month >= add_months(trunc(a.report_date, 'mm'), -12)
+group by a.contract_uid, a.report_date
+;
+
+---------------------4. DAYS_SINCE_LAST_TRANSACTION-----------------------------
+-- для контракта: сколько дней с последнего изменения current_debt_amt
+create table &in_table._feat_debt_hist as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+    h.effective_from_dt,
+    h.current_debt_amt,
+    lag(h.current_debt_amt) over (
+      partition by a.contract_uid, a.report_date
+      order by h.effective_from_dt
+    ) as prev_debt_amt
+from &in_table a
+inner join dm_mrk.dm_mrk_contract h
+  on a.contract_uid = h.contract_uid
+ and h.open_dt < a.report_date
+ and h.contract_type = 'C'
+ and h.product_category_nm != 'Перерасход'
+ and h.effective_from_dt <= a.report_date
+;
+
+create table &in_table._feat_days_since as
+select /*+ parallel(8) */
+    contract_uid,
+    report_date,
+    trunc(report_date - max(case
+          when prev_debt_amt is null
+            or nvl(current_debt_amt, -1) != nvl(prev_debt_amt, -1)
+          then effective_from_dt
+        end)) as days_since_last_transaction
+from &in_table._feat_debt_hist
+group by contract_uid, report_date
+;
+
+---------------------5. RISK_GRADE_LAST (из заявки договора)--------------------
+-- вместо a_p_risk_grade_last / ema_collect_feat_mcc_model
+create table &in_table._feat_risk_grade as
+select /*+ parallel(8) */
+    a.contract_uid,
+    a.report_date,
+    max(app.cd_appl_dec_pd) as risk_grade_last
+from &in_table a
+inner join dm_mrk.dm_mrk_contract dm
+  on a.contract_uid = dm.contract_uid
+ and dm.open_dt < a.report_date
+ and a.report_date between dm.effective_from_dt and dm.effective_to_dt
+ and dm.contract_type = 'C'
+ and dm.product_category_nm != 'Перерасход'
+left join dm.applications@db_space app
+  on dm.application_num = to_char(app.applicationid)
+group by a.contract_uid, a.report_date
+;
+
+---------------------6. СОЕДИНЕНИЕ ВСЕХ ФИЧЕЙ-----------------------------------
+create table &out_table as
+select /*+ parallel(8) */
+    c.contract_uid,
+    c.report_date,
+    c.client_did,
+    c.product_category_nm,
+    c.status_nm,
+    c.open_dt,
+    c.fact_close_dt,
+    c.current_limit,
+    c.contract_init_amt,
+    c.current_debt,
+    c.current_amt,
+    c.card_age_months,
+    c.current_interest_rate,
+    c.prol_prc_rt,
+    c.prc_rt_diff,
+    c.contract_amt_diff_init,
+    c.available_limit_by_debt,
+    c.util_current,
+    d.debt_daily_max_90d,
+    d.debt_daily_max_180d,
+    d.util_daily_max_90d,
+    d.util_daily_max_180d,
+    u.util_monthavg_avg_3m,
+    u.util_monthavg_avg_6m,
+    u.util_monthavg_avg_12m,
+    s.days_since_last_transaction,
+    g.risk_grade_last
+from &in_table._feat_current c
+left join &in_table._feat_daily_max d
+  on c.contract_uid = d.contract_uid
+ and c.report_date = d.report_date
+left join &in_table._feat_util_monthavg u
+  on c.contract_uid = u.contract_uid
+ and c.report_date = u.report_date
+left join &in_table._feat_days_since s
+  on c.contract_uid = s.contract_uid
+ and c.report_date = s.report_date
+left join &in_table._feat_risk_grade g
+  on c.contract_uid = g.contract_uid
+ and c.report_date = g.report_date
+;
+
+-- удаление временных
+begin
+  for t in (
+    select column_value as table_name
+    from table(sys.odcivarchar2list(
+      '&in_table._feat_current',
+      '&in_table._feat_daily_max',
+      '&in_table._feat_contract_list',
+      '&in_table._feat_monthly_raw',
+      '&in_table._feat_util_monthavg',
+      '&in_table._feat_debt_hist',
+      '&in_table._feat_days_since',
+      '&in_table._feat_risk_grade'
+    ))
+  ) loop
+    begin
+      execute immediate 'drop table ' || t.table_name;
+    exception
+      when others then
+        if sqlcode != -942 then raise; end if;
+    end;
+  end loop;
+end;
+/
+
+create index idx_&out_table on &out_table (contract_uid, report_date) parallel 8;
+grant select on &out_table to public;
