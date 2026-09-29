@@ -1,22 +1,3 @@
-%%time
-import gc
-
-MISSING_THRESHOLD = 0.8
-
-for path, filename in tqdm.tqdm(zip(feature_paths, filenames), total=len(feature_paths)):
-    feat_df = pd.read_parquet(path)
-
-    merge_key = [c for c in PRIMARY_KEY if c in feat_df.columns]
-    feat_df = feat_df.drop_duplicates(subset=merge_key, keep='first')
-
-    missing_df = preprocessing.analyze_missing_values(
-        feat_df, missing_threshold=MISSING_THRESHOLD
-    )
-    if missing_df is not None and not missing_df.empty:
-        missing_df.to_excel(f'{REPORTS_FOLDER}/{filename}_missing.xlsx')
-        feat_df = preprocessing.remove_columns_by_missing(feat_df, missing_df, 0.8)
-
-    merged_df = merged_df.merge(feat_df, on=merge_key, how='left', copy=False)
-
-    del feat_df, missing_df
-    gc.collect()
+import pickle
+with open('merged_df.pkl', 'wb') as f:
+    pickle.dump(merged_df, f, protocol=pickle.HIGHEST_PROTOCOL)
