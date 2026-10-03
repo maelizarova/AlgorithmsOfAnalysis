@@ -1,11 +1,6 @@
-from sklearn.metrics import roc_auc_score
-
-rows = []
-for col in best_features:  # или top-15 по importance
-    for dt, g in df.groupby('year_month'):  # или report_date месяц
-        if g[TARGET].nunique() < 2:
-            continue
-        auc = roc_auc_score(g[TARGET], g[col].fillna(g[col].median()))
-        rows.append({'feature': col, 'month': dt, 'gini': 2*auc - 1})
-
-feat_stability = pd.DataFrame(rows)
+gini_wide = (
+    feat_stability
+    .pivot(index='feature', columns='month', values='gini')
+    .sort_index(axis=1)
+)
+gini_wide
