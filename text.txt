@@ -1,82 +1,226 @@
-def quantile_metrics(y, pred, alpha, baseline):
-    y, pred = np.asarray(y, dtype=float), np.asarray(pred, dtype=float)
-    loss = mean_pinball_loss(y, pred, alpha=alpha)
-    baseline_loss = mean_pinball_loss(y, np.full(len(y), baseline), alpha=alpha)
-    excess = np.maximum(y - pred, 0)
-    exceeded = y > pred
-    coverage = np.mean(y <= pred)
-    return dict(N=len(y), alpha=alpha, pinball_loss=loss,
-        baseline_pinball_loss=baseline_loss,
-        pinball_skill=1-loss/baseline_loss if baseline_loss > 0 else np.nan,
-        coverage=coverage, coverage_gap_pp=100*(coverage-alpha),
-        exceedance_rate=exceeded.mean(), exceedance_count=int(exceeded.sum()),
-        mean_excess=excess.mean(), total_excess=excess.sum(),
-        mean_excess_when_exceeded=excess[exceeded].mean() if exceeded.any() else np.nan,
-        avg_target=y.mean(), avg_pred=pred.mean(),
-        MAE=mean_absolute_error(y, pred), RMSE=mean_squared_error(y, pred)**0.5)
+# Можно перезапустить только эту ячейку: используются уже рассчитанные метрики.
+# Форматирование применяется к копиям; обучение и исходные таблицы не меняются.
+import plotly.graph_objects as go
 
-parts = []
-for name, frame in [('train', train), ('test', test), ('oot', oot)]:
-    part = frame[PRIMARY_KEY + [TARGET]].copy()
-    part['segment'] = name
-    if 'current_limit' in frame:
-        part['current_limit'] = frame['current_limit']
-    for label, item in results.items():
-        part[f'pred_{label}'] = item['model'].predict(frame[item['selected']])
-    part['gap_p99_p95'] = part['pred_p99'] - part['pred_p95']
-    part['quantile_crossing'] = part['gap_p99_p95'] < 0
-    parts.append(part)
-scored_df = pd.concat(parts, ignore_index=True)
-scored_df['month'] = pd.to_datetime(scored_df[TIME_COL]).dt.to_period('M').dt.to_timestamp()
+_REPORT_SPLITS = {'train': 'train', 'test': 'test', 'oot': 'oot'}
+_REPORT_ORDER = {'train': 0, 'test': 1, 'oot': 2}
 
-summary_rows, month_rows, bin_rows = [], [], []
+def _report_table(data, columns, names, percent_columns=(), integer_columns=()):
+    table = data.loc[:, columns].copy()
+    if 'segment' in table:
+        table = table.sort_values('segment', key=lambda s: s.map(_REPORT_ORDER))
+        table['segment'] = table['segment'].replace(_REPORT_SPLITS)
+    for col in columns:
+        if col in percent_columns:
+            table[col] = table[col].map(lambda x: f'{100*x:.2f}' if pd.notna(x) else '—')
+        elif col in integer_columns:
+            table[col] = table[col].map(lambda x: f'{x:,.0f}'.replace(',', ' ') if pd.notna(x) else '—')
+        elif pd.api.types.is_numeric_dtype(table[col]):
+            table[col] = table[col].map(lambda x: f'{x:,.1f}'.replace(',', ' ') if pd.notna(x) else '—')
+    return table.rename(columns=names).reset_index(drop=True)
+
+
+def _report_plot(source, x_title, y_title, percent=False):
+    fig = go.Figure(source)  # исходный график остаётся без изменений
+    fig.update_layout(
+        title=None, width=None, height=360, autosize=True,
+        xaxis_title=x_title, yaxis_title=y_title,
+        legend=dict(title_text='', orientation='h', x=0, y=-0.23,
+                    xanchor='left', yanchor='top'),
+        margin=dict(l=65, r=25, t=25, b=100))
+    if percent:
+        fig.update_yaxes(tickformat='.1%')
+    if x_title == 'Месяц':
+        fig.update_xaxes(tickformat='%m.%Y')
+    for trace in fig.data:
+        trace.name = _REPORT_SPLITS.get(trace.name, trace.name)
+        trace.hovertemplate = (
+            x_title + ': %{x}<br>' + y_title +
+            (': %{y:.2%}' if percent else ': %{y:,.1f}') + '<extra>%{fullData.name}</extra>')
+    for annotation in fig.layout.annotations or ():
+        if annotation.text and annotation.text.startswith('Цель'):
+            annotation.text = annotation.text.replace('Цель', 'Уровень')
+    return fig
+
+model_names = {}
 for label, item in results.items():
-    for segment, group in scored_df.groupby('segment', sort=False):
-        summary_rows.append(dict(model=label, segment=segment, N_features=item['best_n'],
-            **quantile_metrics(group[TARGET], group[f'pred_{label}'], item['alpha'], item['baseline'])))
-        for month, g in group.groupby('month'):
-            month_rows.append(dict(model=label, segment=segment, month=month,
-                **quantile_metrics(g[TARGET], g[f'pred_{label}'], item['alpha'], item['baseline'])))
-        group = group.copy()
-        # Равные прогнозы остаются в одном бине; для константного прогноза один бин.
-        group['bin'] = pd.qcut(group[f'pred_{label}'], 10, labels=False, duplicates='drop')
-        group['bin'] = group['bin'].fillna(0).astype(int) + 1
-        for bin_id, g in group.groupby('bin'):
-            bin_rows.append(dict(model=label, segment=segment, bin=bin_id,
-                **quantile_metrics(g[TARGET], g[f'pred_{label}'], item['alpha'], item['baseline'])))
-metrics_summary = pd.DataFrame(summary_rows)
-metrics_month = pd.DataFrame(month_rows)
-metrics_bins = pd.DataFrame(bin_rows)
-crossing_summary = scored_df.groupby('segment').agg(
-    N=('quantile_crossing', 'size'), crossing_count=('quantile_crossing', 'sum'),
-    crossing_rate=('quantile_crossing', 'mean'), mean_gap=('gap_p99_p95', 'mean'),
-    min_gap=('gap_p99_p95', 'min')).reset_index()
-display(metrics_summary.rename(columns={
-    'model': 'Модель',
-    'segment': 'Выборка',
-    'N_features': 'Количество признаков',
-    'N': 'Количество наблюдений',
-    'alpha': 'Уровень квантиля',
-    'pinball_loss': 'Квантильная ошибка (Pinball loss)',
-    'baseline_pinball_loss': 'Квантильная ошибка базового прогноза',
-    'pinball_skill': 'Улучшение относительно базового прогноза (доля)',
-    'coverage': 'Покрытие (доля)',
-    'coverage_gap_pp': 'Отклонение покрытия от уровня квантиля (п.п.)',
-    'exceedance_rate': 'Доля превышений прогноза',
-    'exceedance_count': 'Количество превышений прогноза',
-    'mean_excess': 'Среднее превышение на всех наблюдениях',
-    'total_excess': 'Сумма превышений',
-    'mean_excess_when_exceeded': 'Среднее превышение среди случаев превышения',
-    'avg_target': 'Среднее фактическое значение',
-    'avg_pred': 'Средний прогноз',
-    'MAE': 'Средняя абсолютная ошибка (MAE)',
-    'RMSE': 'Корень из среднеквадратичной ошибки (RMSE)',
-}))
-display(crossing_summary.rename(columns={
-    'segment': 'Выборка',
-    'N': 'Количество наблюдений',
-    'crossing_count': 'Количество случаев P99 < P95',
-    'crossing_rate': 'Доля случаев P99 < P95',
-    'mean_gap': 'Средняя разница P99 − P95',
-    'min_gap': 'Минимальная разница P99 − P95',
-}))
+    best_model = item['model']
+    imp_df = importance_tables[label]
+    description_df = description_tables[label]
+    psi_fig = psi_figures[label]
+    psi_score_fig = psi_score_figures[label]
+    MODEL_NAME = f"{ML_TYPE}_{product}_{monthYear}_{SUBTASK}_{label}"
+    model_names[label] = MODEL_NAME
+    # Создаём отчёт 
+    report_html = report_generator.Report_HTML(
+        title=f"{TITLE} — {label.upper()}",
+        description=DESCRIPTION,
+        footer=f"Дата создания отчёта: {datetime.date.today().strftime('%d-%m-%Y')}" 
+    )
+
+    # === ВКЛАДКА 1: СПЕЦИФИКАЦИЯ МОДЕЛИ ===
+    spec_tab = report_html.add_tab("Спецификация модели")
+
+    # Строка 1x2: Основная информация
+    row1 = spec_tab.add_row("1x2")
+
+    # Основные характеристики
+    model_specs = {
+        "Название": TITLE,
+        "Тип задачи": ML_TYPE,
+        "Квантиль": item["alpha"],
+        "Число признаков": len(item["selected"]),
+        "Режим работы": MODE,
+        "Регрессия": MODEL_TYPE,
+        "Версия модели": SUBTASK,
+        "Разработчик модели": AUTHOR
+    }
+    row1.cells[0].add_kv(
+        model_specs,
+        title="Основные характеристики",
+        caption="Ключевая информация о модели"
+    )
+
+    # Данные и выборки
+    data_specs = {
+        "Источник данных": OUT_TABLE,
+        "Популяция": POPULATION_TEXT,
+        "Период обучения": TRAIN_TEST_PERIOD,
+        "Период OOT": OOT_PERIOD,
+    }
+    row1.cells[1].add_kv(
+        data_specs,
+        title="Данные и выборки", 
+        caption="Информация об источниках данных и временных периодах"
+    )
+
+    # Строка 1x2: Основная метрики
+    row2 = spec_tab.add_row(['1fr', '2fr'])
+    model_specs = best_model.get_params()
+
+    row2.cells[0].add_kv(
+        model_specs,
+        title="Параметры модели", 
+        caption="Подобранные гиперпараметры"
+    )
+
+    rows = []
+    for name, df in [('Train', train), ('Test', test), ('OOT', oot)]:
+        y = pd.to_numeric(df[TARGET], errors='coerce')
+        total = len(df)
+        above_zero = (y > 0).sum()
+        mean_target = y.mean()
+        rows.append([
+            name,
+            total,
+            int(above_zero),
+            f'{mean_target:.4f}',  # или :.2f — как удобнее
+        ])
+
+    cnt_df = pd.DataFrame(
+        rows,
+        columns=['Выборка','Количество контрактов, шт.','Таргет > 0, шт.','Среднее по таргету',],
+    )
+
+    row2.cells[1].add_dataframe(
+        cnt_df,
+        title="Кол-во контрактов и уровень таргета", 
+        caption="Информация о выборке"
+    )
+
+    # === ВКЛАДКА 2: ВЫБОРКИ ===
+    sample_dfs_tab = report_html.add_tab("Данные для построения")
+
+    # Строка 1x2: График sample
+    row1 = sample_dfs_tab.add_row(['2fr', '1fr'])
+    row1.cells[0].add_plotly_figure(
+        fig_sample_try,
+        title="Динамика таргета во времени", 
+        caption="Информация о выборке"
+    )
+    row1.cells[1].add_dataframe(
+        info_sample_try[['month', 'count', 'mean']],
+        title="Динамика таргета во времени", 
+        caption="Информация о выборке"
+    )
+
+    row2 = sample_dfs_tab.add_row("1x1")
+    row2.cells[0].add_plotly_figure(
+        fig_df ,
+        title="Динамика таргета во времени", 
+        # caption="Информация о Train/Test/OOT"
+    )
+    row3 = sample_dfs_tab.add_row("1x1")
+    row3.cells[0].add_dataframe(
+        info_df,
+        title="Динамика таргета во времени", 
+        caption="Информация о Train/Test/OOT"
+    )
+
+    # === ВКЛАДКА 3: МЕТРИКИ МОДЕЛИ ===
+    model_metrics_tab = report_html.add_tab("Метрики модели")
+    summary_view = _report_table(
+        metrics_summary.loc[metrics_summary['model'] == label],
+        ['segment', 'N', 'pinball_loss', 'pinball_skill', 'coverage',
+         'exceedance_count', 'mean_excess_when_exceeded'],
+        {'segment': 'Выборка', 'N': 'Строк', 'pinball_loss': 'Квант. ошибка',
+         'pinball_skill': 'Выигрыш, %', 'coverage': 'Покрытие, %',
+         'exceedance_count': 'Превыш., шт.', 'mean_excess_when_exceeded': 'Превыш., ₽'},
+        percent_columns=['pinball_skill', 'coverage'],
+        integer_columns=['N', 'exceedance_count'])
+    row = model_metrics_tab.add_row("1x1")
+    row.cells[0].add_dataframe(
+        summary_view, title=f"Качество {label.upper()}",
+        caption=(f"Целевое покрытие: {item['alpha']:.0%}. "
+                 "Квант. ошибка — Pinball loss; меньше — лучше. "
+                 "Выигрыш — снижение ошибки относительно постоянного квантиля train. "
+                 "Превыш., ₽ — средняя величина только среди случаев превышения."))
+
+    # Полная ширина; без повторяющих графики помесячных таблиц.
+    for suffix, title, axis, percent in [
+        ('pinball', 'Ошибка по месяцам', 'Квант. ошибка', False),
+        ('coverage', 'Покрытие по месяцам', 'Покрытие', True),
+        ('calibration', 'Покрытие по группам прогноза', 'Покрытие', True),
+    ]:
+        row = model_metrics_tab.add_row("1x1")
+        row.cells[0].add_plotly_figure(
+            _report_plot(figures[f'{label}_{suffix}'],
+                         'Группа' if suffix == 'calibration' else 'Месяц', axis, percent),
+            title=title,
+            caption=("Группы от низкого прогноза к высокому. Границы рассчитаны отдельно "
+                     "для каждой выборки. Пунктир — целевое покрытие."
+                     if suffix == 'calibration' else ''))
+
+    # Общая диагностика пары квантилей; достаточно компактной таблицы.
+    crossings_view = _report_table(
+        crossing_summary,
+        ['segment', 'crossing_count', 'crossing_rate', 'mean_gap', 'min_gap'],
+        {'segment': 'Выборка', 'crossing_count': 'Случаев',
+         'crossing_rate': 'Доля, %', 'mean_gap': 'Ср. разрыв, ₽', 'min_gap': 'Мин. разрыв, ₽'},
+        percent_columns=['crossing_rate'], integer_columns=['crossing_count'])
+    row = model_metrics_tab.add_row("1x1")
+    row.cells[0].add_dataframe(
+        crossings_view, title="Пересечения P99 < P95",
+        caption="Разрыв = P99 − P95. Отрицательное значение означает пересечение. Прогнозы без коррекции.")
+
+    # === ВКЛАДКА 4: ФИЧИ И PSI ===
+    feat_tab = report_html.add_tab("Признаки и PSI")
+
+    row1 = feat_tab.add_row("1x1")
+    row1.cells[0].add_plotly_figure(
+            psi_fig,
+            title="PSI всех признаков модели по месяцам",)
+    row2 = feat_tab.add_row("1x1")
+    row2.cells[0].add_plotly_figure(
+            psi_score_fig,
+            title="PSI скоров модели по месяцам",)
+    row3 = feat_tab.add_row("1x1")
+    row3.cells[0].add_dataframe(
+        pd.merge(imp_df, description_df, how='left', left_on='feature', right_on='f_name')[['importance', 
+                                                                                          'feature', 
+                                                                                          'f_desc']],
+        title="FeatureImp и расшифровка признаков", 
+        caption="Источник описания - SB_DIRKAIM.FEATURE_REGISTRY"
+    )
+
+    report_html.save(f'{REPORTS_FOLDER}/{MODEL_NAME}_report.html')
