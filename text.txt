@@ -1,17 +1,6 @@
-# сила = |gini|, падение = |gini|_aug - |gini|_feb
-abs_g = gini_wide.abs()
-summary = pd.DataFrame({
-    'mean_abs': abs_g.mean(axis=1),
-    'aug': abs_g.iloc[:, 0],
-    'feb': abs_g.iloc[:, -1],
-    'delta_abs': abs_g.iloc[:, -1] - abs_g.iloc[:, 0],
-}).sort_values(['delta_abs', 'mean_abs'])
-
-# 1) слабые
-weak = summary[summary['mean_abs'] < 0.05].index.tolist()
-
-# 2) сильно просевшие по |gini|
-fallen = summary[summary['delta_abs'] < -0.05].index.tolist()
-
-to_drop = sorted(set(weak) | set(fallen))
-print(len(to_drop), to_drop)
+df_month_f.style.format({
+    'avg_target': '{:.1f}',
+    'avg_pred': '{:.1f}',
+    'mae': '{:.1f}',
+    'r2': '{:.1f}',
+})
