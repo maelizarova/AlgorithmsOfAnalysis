@@ -1,6 +1,82 @@
-df_month_f.style.format({
-    'avg_target': '{:.1f}',
-    'avg_pred': '{:.1f}',
-    'mae': '{:.1f}',
-    'r2': '{:.1f}',
-})
+def quantile_metrics(y, pred, alpha, baseline):
+    y, pred = np.asarray(y, dtype=float), np.asarray(pred, dtype=float)
+    loss = mean_pinball_loss(y, pred, alpha=alpha)
+    baseline_loss = mean_pinball_loss(y, np.full(len(y), baseline), alpha=alpha)
+    excess = np.maximum(y - pred, 0)
+    exceeded = y > pred
+    coverage = np.mean(y <= pred)
+    return dict(N=len(y), alpha=alpha, pinball_loss=loss,
+        baseline_pinball_loss=baseline_loss,
+        pinball_skill=1-loss/baseline_loss if baseline_loss > 0 else np.nan,
+        coverage=coverage, coverage_gap_pp=100*(coverage-alpha),
+        exceedance_rate=exceeded.mean(), exceedance_count=int(exceeded.sum()),
+        mean_excess=excess.mean(), total_excess=excess.sum(),
+        mean_excess_when_exceeded=excess[exceeded].mean() if exceeded.any() else np.nan,
+        avg_target=y.mean(), avg_pred=pred.mean(),
+        MAE=mean_absolute_error(y, pred), RMSE=mean_squared_error(y, pred)**0.5)
+
+parts = []
+for name, frame in [('train', train), ('test', test), ('oot', oot)]:
+    part = frame[PRIMARY_KEY + [TARGET]].copy()
+    part['segment'] = name
+    if 'current_limit' in frame:
+        part['current_limit'] = frame['current_limit']
+    for label, item in results.items():
+        part[f'pred_{label}'] = item['model'].predict(frame[item['selected']])
+    part['gap_p99_p95'] = part['pred_p99'] - part['pred_p95']
+    part['quantile_crossing'] = part['gap_p99_p95'] < 0
+    parts.append(part)
+scored_df = pd.concat(parts, ignore_index=True)
+scored_df['month'] = pd.to_datetime(scored_df[TIME_COL]).dt.to_period('M').dt.to_timestamp()
+
+summary_rows, month_rows, bin_rows = [], [], []
+for label, item in results.items():
+    for segment, group in scored_df.groupby('segment', sort=False):
+        summary_rows.append(dict(model=label, segment=segment, N_features=item['best_n'],
+            **quantile_metrics(group[TARGET], group[f'pred_{label}'], item['alpha'], item['baseline'])))
+        for month, g in group.groupby('month'):
+            month_rows.append(dict(model=label, segment=segment, month=month,
+                **quantile_metrics(g[TARGET], g[f'pred_{label}'], item['alpha'], item['baseline'])))
+        group = group.copy()
+        # Равные прогнозы остаются в одном бине; для константного прогноза один бин.
+        group['bin'] = pd.qcut(group[f'pred_{label}'], 10, labels=False, duplicates='drop')
+        group['bin'] = group['bin'].fillna(0).astype(int) + 1
+        for bin_id, g in group.groupby('bin'):
+            bin_rows.append(dict(model=label, segment=segment, bin=bin_id,
+                **quantile_metrics(g[TARGET], g[f'pred_{label}'], item['alpha'], item['baseline'])))
+metrics_summary = pd.DataFrame(summary_rows)
+metrics_month = pd.DataFrame(month_rows)
+metrics_bins = pd.DataFrame(bin_rows)
+crossing_summary = scored_df.groupby('segment').agg(
+    N=('quantile_crossing', 'size'), crossing_count=('quantile_crossing', 'sum'),
+    crossing_rate=('quantile_crossing', 'mean'), mean_gap=('gap_p99_p95', 'mean'),
+    min_gap=('gap_p99_p95', 'min')).reset_index()
+display(metrics_summary.rename(columns={
+    'model': 'Модель',
+    'segment': 'Выборка',
+    'N_features': 'Количество признаков',
+    'N': 'Количество наблюдений',
+    'alpha': 'Уровень квантиля',
+    'pinball_loss': 'Квантильная ошибка (Pinball loss)',
+    'baseline_pinball_loss': 'Квантильная ошибка базового прогноза',
+    'pinball_skill': 'Улучшение относительно базового прогноза (доля)',
+    'coverage': 'Покрытие (доля)',
+    'coverage_gap_pp': 'Отклонение покрытия от уровня квантиля (п.п.)',
+    'exceedance_rate': 'Доля превышений прогноза',
+    'exceedance_count': 'Количество превышений прогноза',
+    'mean_excess': 'Среднее превышение на всех наблюдениях',
+    'total_excess': 'Сумма превышений',
+    'mean_excess_when_exceeded': 'Среднее превышение среди случаев превышения',
+    'avg_target': 'Среднее фактическое значение',
+    'avg_pred': 'Средний прогноз',
+    'MAE': 'Средняя абсолютная ошибка (MAE)',
+    'RMSE': 'Корень из среднеквадратичной ошибки (RMSE)',
+}))
+display(crossing_summary.rename(columns={
+    'segment': 'Выборка',
+    'N': 'Количество наблюдений',
+    'crossing_count': 'Количество случаев P99 < P95',
+    'crossing_rate': 'Доля случаев P99 < P95',
+    'mean_gap': 'Средняя разница P99 − P95',
+    'min_gap': 'Минимальная разница P99 − P95',
+}))
