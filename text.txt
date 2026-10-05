@@ -1,148 +1,235 @@
-# 1. Январская валидация: клиенты, отложенные в OOS до обучения.
-features_check = list(best_model.feature_name_)
+from pathlib import Path
 
-train_client_ids = set(train['client_did'])
-oos_client_ids_check = set(oos['client_did'])
+baseline_dir = Path(PATH_MODELS_DATA) / 'diagnostic_baselines'
+baseline_dir.mkdir(parents=True, exist_ok=True)
 
-assert train_client_ids.isdisjoint(oos_client_ids_check)
-assert test['client_did'].notna().all()
+assert best_model.booster_.current_iteration() >= 2985
 
-# Проверяем, что test действительно содержит только январь.
-assert (
-    pd.to_datetime(test['report_date']).dt.to_period('M')
-    == pd.Period('2026-01', freq='M')
-).all()
+baseline_models = {}
 
-jan_check = test.copy()
-jan_check['client_group_check'] = np.select(
-    [
-        jan_check['client_did'].isin(train_client_ids),
-        jan_check['client_did'].isin(oos_client_ids_check),
-    ],
-    ['seen_in_train', 'held_out_oos'],
-    default='new_client'
+for n in [239, 800, 2985]:
+    # Отдельная модель, физически содержащая только первые N деревьев.
+    booster = lgb.Booster(
+        model_str=best_model.booster_.model_to_string(num_iteration=n)
+    )
+    baseline_models[f'baseline_{n}'] = booster
+    booster.save_model(str(baseline_dir / f'model_{n}.txt'))
+
+print(f'Сохранено в: {baseline_dir}')
+
+
+
+from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, space_eval
+
+# features — исходный список кандидатов из раздела 7,
+# до select_top_features и выбора числа признаков.
+candidate_features = list(features)
+
+assert set(candidate_features).issubset(merged_df.columns)
+assert not set(candidate_features).intersection(
+    PRIMARY_KEY + ['year_month', 'target', 'target_25', 'target_50', 'target_75']
 )
 
-jan_valid = jan_check.loc[
-    jan_check['client_group_check'].eq('held_out_oos')
+dates = pd.to_datetime(merged_df['report_date'])
+historical_mask = (
+    (dates >= '2025-09-01') & (dates < '2026-01-01')
+)
+january_mask = (
+    (dates >= '2026-01-01') & (dates < '2026-02-01')
+)
+
+# Используем то же разбиение клиентов, что в предыдущем эксперименте.
+train_ids = set(train['client_did'])
+held_ids = set(oos['client_did'])
+assert train_ids.isdisjoint(held_ids)
+
+train_group = merged_df.loc[
+    historical_mask & merged_df['client_did'].isin(train_ids)
 ].copy()
 
-assert not jan_valid.empty
-assert jan_valid[TARGET].nunique() == 2
-assert set(jan_valid['client_did']).isdisjoint(train_client_ids)
+oos_group = merged_df.loc[
+    historical_mask & merged_df['client_did'].isin(held_ids)
+].copy()
 
-print(
-    f'Валидация: {len(jan_valid):,} контрактных строк, '
-    f'{jan_valid["client_did"].nunique():,} клиентов, '
-    f'доля таргета {jan_valid[TARGET].mean():.2%}'
+jan_group = merged_df.loc[january_mask].copy()
+jan_valid_group = jan_group.loc[
+    jan_group['client_did'].isin(held_ids)
+].copy()
+
+assert len(train_group) == len(train)
+assert len(oos_group) == len(oos)
+assert len(jan_group) == len(test)
+assert jan_valid_group[TARGET].nunique() == 2
+assert set(jan_valid_group['client_did']).isdisjoint(train_ids)
+
+print('Train:', train_group.shape)
+print('Январская валидация:', jan_valid_group.shape)
+
+
+# 2.1. Новый предварительный рейтинг признаков.
+cat_group = train_group[candidate_features].select_dtypes(
+    include=['category', 'object']
+).columns.tolist()
+
+_, ranking_group = feature_selection.select_top_features(
+    data=train_group[candidate_features + [TARGET]],
+    targets=[TARGET],
+    random_state=SEED,
+    eval_set=jan_valid_group[candidate_features + [TARGET]],
+    n_top=PRESELECTION_TOP_N,
+    categorical_features=cat_group
+)
+
+preselected_group = (
+    ranking_group[TARGET]['feature']
+    .head(PRESELECTION_TOP_N)
+    .tolist()
 )
 
 
-# 2. Все параметры прежние; меняем только eval_set.
-# Возвращаем верхний предел вместо найденных ранее 2985 деревьев.
-params_check = best_model.get_params().copy()
-params_check.update({
-    'n_estimators': 3000,
-    'objective': 'binary',
-    'metric': 'auc',
-})
-
-model_group_valid = lgb.LGBMClassifier(**params_check)
-
-model_group_valid.fit(
-    train[features_check],
-    train[TARGET],
-    eval_set=[(
-        jan_valid[features_check],
-        jan_valid[TARGET]
-    )],
-    eval_metric='auc',
-    callbacks=[
-        lgb.early_stopping(
-            stopping_rounds=100,
-            first_metric_only=True,
-            verbose=False
-        )
-    ]
+# 2.2. Выбор числа признаков по той же новой валидации.
+selected_group_features, selection_auc_group, _ = (
+    recursive_feature_selection(
+        train=train_group,
+        test=jan_valid_group,
+        preselected_features=preselected_group,
+        preselected_cat_features=[
+            c for c in cat_group if c in preselected_group
+        ],
+        step=20,
+        accuracy_threshold=0.01,
+        min_features=20,
+        random_state=SEED,
+        target_col=TARGET,
+        logger=logger
+    )
 )
 
-group_best_iteration = int(model_group_valid.best_iteration_)
-print(f'Выбрано деревьев: {group_best_iteration}')
+print('Выбрано признаков:', len(selected_group_features))
 
-# Проверяем, хватило ли верхнего предела для полного ожидания.
-evaluated_rounds = len(
-    model_group_valid.evals_result_['valid_0']['auc']
-)
-if (
-    evaluated_rounds >= params_check['n_estimators']
-    and evaluated_rounds - group_best_iteration < 100
-):
-    print(
-        'Достигнут лимит деревьев до завершения '
-        '100 итераций ожидания после лучшего результата.'
+
+# 2.3. Hyperopt: прежнее пространство поиска,
+# но early stopping и loss считаются по jan_valid_group.
+def objective_group(params):
+    model = lgb.LGBMClassifier(**make_model_params(params))
+
+    model.fit(
+        train_group[selected_group_features],
+        train_group[TARGET],
+        eval_set=[(
+            jan_valid_group[selected_group_features],
+            jan_valid_group[TARGET]
+        )],
+        eval_metric='auc',
+        callbacks=[
+            lgb.early_stopping(
+                EARLY_STOPPING_ROUNDS,
+                first_metric_only=True,
+                verbose=False
+            )
+        ]
     )
 
+    n_trees = int(model.best_iteration_)
+    pred = model.predict_proba(
+        jan_valid_group[selected_group_features],
+        num_iteration=n_trees
+    )[:, 1]
 
-# 3. Сравнение трёх вариантов на одинаковых строках.
-old_full_iteration = best_model.booster_.current_iteration()
-assert old_full_iteration >= 800
+    return {
+        'loss': -float(roc_auc_score(jan_valid_group[TARGET], pred)),
+        'status': STATUS_OK,
+        'best_iteration': n_trees
+    }
 
-variants = [
-    ('current_800', best_model, 800),
-    ('current_full', best_model, old_full_iteration),
-    ('group_early_stopping', model_group_valid, group_best_iteration),
-]
 
-datasets = {
-    'train': train,
-    'oos_sep_dec': oos,
-    'jan_all': jan_check,
+trials_group = Trials()
+
+best_group = fmin(
+    fn=objective_group,
+    space=space,
+    algo=tpe.suggest,
+    max_evals=100,
+    trials=trials_group,
+    rstate=np.random.default_rng(SEED)
+)
+
+winner_group = trials_group.best_trial['result']
+
+params_group = make_model_params(
+    space_eval(space, best_group),
+    n_estimators=int(winner_group['best_iteration'])
+)
+
+# Отдельное имя: исходный best_model сохраняется.
+model_group_tuned = lgb.LGBMClassifier(**params_group)
+model_group_tuned.fit(
+    train_group[selected_group_features],
+    train_group[TARGET]
+)
+
+pred_valid_group = model_group_tuned.predict_proba(
+    jan_valid_group[selected_group_features]
+)[:, 1]
+
+auc_valid_group = roc_auc_score(
+    jan_valid_group[TARGET], pred_valid_group
+)
+
+np.testing.assert_allclose(
+    auc_valid_group,
+    -winner_group['loss'],
+    rtol=0,
+    atol=1e-6
+)
+
+print('Параметры:', params_group)
+print('AUC новой валидации:', auc_valid_group)
+
+
+
+comparison_sets = {
+    'train': train_group,
+    'oos_sep_dec': oos_group,
+    'jan_all': jan_group,
+    'jan_seen_in_train': jan_group.loc[
+        jan_group['client_did'].isin(train_ids)
+    ],
+    'jan_held_out_oos': jan_valid_group,
+    'jan_new_client': jan_group.loc[
+        ~jan_group['client_did'].isin(train_ids | held_ids)
+    ]
 }
 
-for group_name in ['seen_in_train', 'held_out_oos', 'new_client']:
-    datasets[f'jan_{group_name}'] = jan_check.loc[
-        jan_check['client_group_check'].eq(group_name)
-    ]
+# Все модели приводим к одному интерфейсу Booster.
+models_to_compare = {
+    **baseline_models,
+    'group_tuned': model_group_tuned.booster_
+}
 
 rows = []
 
-for model_name, model, n_trees in variants:
-    for segment, data in datasets.items():
+for model_name, booster in models_to_compare.items():
+    model_features = booster.feature_name()
+
+    for segment, data in comparison_sets.items():
         auc = np.nan
 
         if not data.empty and data[TARGET].nunique() == 2:
-            pred = model.predict_proba(
-                data[features_check],
-                num_iteration=n_trees
-            )[:, 1]
+            pred = booster.predict(data[model_features])
             auc = roc_auc_score(data[TARGET], pred)
 
         rows.append({
             'model': model_name,
-            'n_trees': n_trees,
             'segment': segment,
-            'n_samples': len(data),
-            'roc_auc': auc,
-            'gini': 2 * auc - 1,
+            'roc_auc': auc
         })
 
-comparison_group_valid = pd.DataFrame(rows)
-
-auc_comparison = (
-    comparison_group_valid
-    .pivot(index='segment', columns='model', values='roc_auc')
-    .reindex(index=list(datasets))
-    .reindex(columns=[name for name, _, _ in variants])
+comparison_group_tuned = pd.DataFrame(rows).pivot(
+    index='segment', columns='model', values='roc_auc'
+).reindex(
+    index=list(comparison_sets),
+    columns=list(models_to_compare)
 )
 
-auc_comparison['delta_vs_800'] = (
-    auc_comparison['group_early_stopping']
-    - auc_comparison['current_800']
-)
-
-auc_comparison['delta_vs_full'] = (
-    auc_comparison['group_early_stopping']
-    - auc_comparison['current_full']
-)
-
-display(auc_comparison.round(6))
+display(comparison_group_tuned.round(6))
