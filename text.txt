@@ -1,132 +1,148 @@
-WORK_N_TREES = 800
-model_features = list(best_model.feature_name_)
+# 1. Январская валидация: клиенты, отложенные в OOS до обучения.
+features_check = list(best_model.feature_name_)
 
-assert best_model.booster_.current_iteration() >= WORK_N_TREES
+train_client_ids = set(train['client_did'])
+oos_client_ids_check = set(oos['client_did'])
 
-working_predictions = {}
-rows = []
-
-for name, data in [('train', train), ('oos', oos), ('test', test)]:
-    pred = best_model.predict_proba(
-        data[model_features],
-        num_iteration=WORK_N_TREES
-    )[:, 1]
-
-    working_predictions[name] = pred
-    auc = roc_auc_score(data[TARGET], pred)
-
-    rows.append({
-        'segment': name,
-        'n_trees': WORK_N_TREES,
-        'n_samples': len(data),
-        'roc_auc': auc,
-        'gini': 2 * auc - 1,
-    })
-
-working_metrics = pd.DataFrame(rows)
-display(working_metrics)
-
-
-train_clients = set(train['client_did'])
-oos_clients = set(oos['client_did'])
-
-assert train_clients.isdisjoint(oos_clients)
+assert train_client_ids.isdisjoint(oos_client_ids_check)
 assert test['client_did'].notna().all()
 
-jan_diagnostic = test.copy()
-jan_diagnostic['client_group'] = np.select(
+# Проверяем, что test действительно содержит только январь.
+assert (
+    pd.to_datetime(test['report_date']).dt.to_period('M')
+    == pd.Period('2026-01', freq='M')
+).all()
+
+jan_check = test.copy()
+jan_check['client_group_check'] = np.select(
     [
-        jan_diagnostic['client_did'].isin(train_clients),
-        jan_diagnostic['client_did'].isin(oos_clients),
+        jan_check['client_did'].isin(train_client_ids),
+        jan_check['client_did'].isin(oos_client_ids_check),
     ],
-    [
-        'seen_in_train',
-        'held_out_oos',
-    ],
+    ['seen_in_train', 'held_out_oos'],
     default='new_client'
 )
 
-group_order = ['seen_in_train', 'held_out_oos', 'new_client']
+jan_valid = jan_check.loc[
+    jan_check['client_group_check'].eq('held_out_oos')
+].copy()
 
-# Проверяем объём и долю таргета в каждой группе.
-group_stats = (
-    jan_diagnostic.groupby('client_group')
-    .agg(
-        n_contract_rows=(TARGET, 'size'),
-        n_clients=('client_did', 'nunique'),
-        positives=(TARGET, 'sum'),
-        target_share=(TARGET, 'mean'),
-    )
-    .reindex(group_order)
+assert not jan_valid.empty
+assert jan_valid[TARGET].nunique() == 2
+assert set(jan_valid['client_did']).isdisjoint(train_client_ids)
+
+print(
+    f'Валидация: {len(jan_valid):,} контрактных строк, '
+    f'{jan_valid["client_did"].nunique():,} клиентов, '
+    f'доля таргета {jan_valid[TARGET].mean():.2%}'
 )
 
-display(group_stats)
 
-# Используем текущую полную модель и оцениваем первые N деревьев.
-total_trees = best_model.booster_.current_iteration()
-tree_counts = sorted({
-    n for n in [100, 200, 400, 800, 1200, 1800, 2400, total_trees]
-    if n <= total_trees
+# 2. Все параметры прежние; меняем только eval_set.
+# Возвращаем верхний предел вместо найденных ранее 2985 деревьев.
+params_check = best_model.get_params().copy()
+params_check.update({
+    'n_estimators': 3000,
+    'objective': 'binary',
+    'metric': 'auc',
 })
+
+model_group_valid = lgb.LGBMClassifier(**params_check)
+
+model_group_valid.fit(
+    train[features_check],
+    train[TARGET],
+    eval_set=[(
+        jan_valid[features_check],
+        jan_valid[TARGET]
+    )],
+    eval_metric='auc',
+    callbacks=[
+        lgb.early_stopping(
+            stopping_rounds=100,
+            first_metric_only=True,
+            verbose=False
+        )
+    ]
+)
+
+group_best_iteration = int(model_group_valid.best_iteration_)
+print(f'Выбрано деревьев: {group_best_iteration}')
+
+# Проверяем, хватило ли верхнего предела для полного ожидания.
+evaluated_rounds = len(
+    model_group_valid.evals_result_['valid_0']['auc']
+)
+if (
+    evaluated_rounds >= params_check['n_estimators']
+    and evaluated_rounds - group_best_iteration < 100
+):
+    print(
+        'Достигнут лимит деревьев до завершения '
+        '100 итераций ожидания после лучшего результата.'
+    )
+
+
+# 3. Сравнение трёх вариантов на одинаковых строках.
+old_full_iteration = best_model.booster_.current_iteration()
+assert old_full_iteration >= 800
+
+variants = [
+    ('current_800', best_model, 800),
+    ('current_full', best_model, old_full_iteration),
+    ('group_early_stopping', model_group_valid, group_best_iteration),
+]
+
+datasets = {
+    'train': train,
+    'oos_sep_dec': oos,
+    'jan_all': jan_check,
+}
+
+for group_name in ['seen_in_train', 'held_out_oos', 'new_client']:
+    datasets[f'jan_{group_name}'] = jan_check.loc[
+        jan_check['client_group_check'].eq(group_name)
+    ]
 
 rows = []
 
-for n in tree_counts:
-    pred = best_model.predict_proba(
-        jan_diagnostic[model_features],
-        num_iteration=n
-    )[:, 1]
+for model_name, model, n_trees in variants:
+    for segment, data in datasets.items():
+        auc = np.nan
 
-    for group_name in group_order:
-        mask = (
-            jan_diagnostic['client_group'].eq(group_name).to_numpy()
-        )
-        y = jan_diagnostic.loc[mask, TARGET]
-
-        # AUC не определён для пустой группы или одного класса.
-        auc = (
-            roc_auc_score(y, pred[mask])
-            if y.nunique() == 2
-            else np.nan
-        )
+        if not data.empty and data[TARGET].nunique() == 2:
+            pred = model.predict_proba(
+                data[features_check],
+                num_iteration=n_trees
+            )[:, 1]
+            auc = roc_auc_score(data[TARGET], pred)
 
         rows.append({
-            'n_trees': n,
-            'client_group': group_name,
-            'n_samples': int(mask.sum()),
+            'model': model_name,
+            'n_trees': n_trees,
+            'segment': segment,
+            'n_samples': len(data),
             'roc_auc': auc,
+            'gini': 2 * auc - 1,
         })
 
-jan_auc_by_group = pd.DataFrame(rows)
+comparison_group_valid = pd.DataFrame(rows)
 
-jan_auc_pivot = (
-    jan_auc_by_group
-    .pivot(index='n_trees', columns='client_group', values='roc_auc')
-    .reindex(columns=group_order)
+auc_comparison = (
+    comparison_group_valid
+    .pivot(index='segment', columns='model', values='roc_auc')
+    .reindex(index=list(datasets))
+    .reindex(columns=[name for name, _, _ in variants])
 )
 
-display(jan_auc_pivot.round(6))
-
-ax = jan_auc_pivot.plot(
-    marker='o',
-    figsize=(10, 5),
-    title='Январь: AUC по группам клиентов'
+auc_comparison['delta_vs_800'] = (
+    auc_comparison['group_early_stopping']
+    - auc_comparison['current_800']
 )
-ax.set_xlabel('Число деревьев')
-ax.set_ylabel('ROC AUC')
-ax.axvline(WORK_N_TREES, color='gray', linestyle='--', alpha=0.7)
-ax.grid(alpha=0.3)
-plt.tight_layout()
-plt.show()
 
-# Насколько каждая группа выигрывает/проигрывает после 800 деревьев.
-if total_trees > WORK_N_TREES:
-    delta_after_800 = pd.DataFrame({
-        'auc_800': jan_auc_pivot.loc[WORK_N_TREES],
-        'auc_full': jan_auc_pivot.loc[total_trees],
-        'delta': (
-            jan_auc_pivot.loc[total_trees]
-            - jan_auc_pivot.loc[WORK_N_TREES]
-        ),
-    })
-    display(delta_after_800.round(6))
+auc_comparison['delta_vs_full'] = (
+    auc_comparison['group_early_stopping']
+    - auc_comparison['current_full']
+)
+
+display(auc_comparison.round(6))
