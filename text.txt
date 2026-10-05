@@ -1,1 +1,12 @@
+rows = []
 
+for n in [100, 200, 400, 800, 1200, 1800, 2400, 2985]:
+    row = {'n_trees': n}
+    for name, data in [('train', train), ('oos', oos), ('test', test)]:
+        pred = best_model.predict_proba(
+            data[best_features], num_iteration=n
+        )[:, 1]
+        row[name] = roc_auc_score(data[TARGET], pred)
+    rows.append(row)
+
+pd.DataFrame(rows)
