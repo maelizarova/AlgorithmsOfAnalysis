@@ -1,211 +1,38 @@
-import numpy as np
-import pandas as pd
+sample25_check = inspect_sample(sample, name='sample25')
 
-# Если ещё не загрузила — укажи свой файл:
-# sample_full = pd.read_parquet('sample_full.parquet')
-# sample_full = pd.read_csv('sample_full.csv')
-
-CLIENT = 'client_did'
-CONTRACT = 'contract_uid'
-DATE = 'report_date'
-
-# Контракт идентифицируем парой клиент + контракт.
-# Это не требует глобальной уникальности contract_uid.
-CONTRACT_KEY = [CLIENT, CONTRACT]
-ROW_KEY = [CLIENT, CONTRACT, DATE]
-
-
-def inspect_sample(source, name='sample'):
-    required = [CLIENT, CONTRACT, DATE]
-    missing_columns = set(required) - set(source.columns)
-    if missing_columns:
-        raise ValueError(f'Нет колонок: {missing_columns}')
-
-    df = source[required].copy()
-    original_date = df[DATE].copy()
-    df[DATE] = pd.to_datetime(df[DATE], errors='coerce')
-
-    # 1. Качество ключей.
-    valid_key = df[required].notna().all(axis=1)
-
-    quality = pd.DataFrame([{
-        'sample': name,
-        'rows_total': len(df),
-        'missing_client': df[CLIENT].isna().sum(),
-        'missing_contract': df[CONTRACT].isna().sum(),
-        'missing_date_original': original_date.isna().sum(),
-        'unparsed_date': (
-            original_date.notna() & df[DATE].isna()
-        ).sum(),
-        'rows_with_invalid_key': (~valid_key).sum(),
-        'duplicate_key_extra_rows': (
-            df.loc[valid_key].duplicated(ROW_KEY).sum()
-        ),
-        'date_min': df[DATE].min(),
-        'date_max': df[DATE].max(),
-    }])
-
-    # Для статистики пересечения удаляем строки с неполным ключом
-    # и повторные записи одного ключа. Исходный source не изменяем.
-    clean = (
-        df.loc[valid_key]
-        .drop_duplicates(ROW_KEY)
-        .copy()
-    )
-    clean['month'] = clean[DATE].dt.to_period('M')
-
-    # 2. Помесячная статистика за ВСЮ историю.
-    raw_months = df.loc[df[DATE].notna(), DATE].dt.to_period('M')
-    raw_counts = raw_months.value_counts().sort_index()
-
-    monthly_rows = []
-    for month, group in clean.groupby('month', sort=True):
-        monthly_rows.append({
-            'month': month,
-            'raw_rows': int(raw_counts.get(month, 0)),
-            'unique_contract_date_rows': len(group),
-            'n_clients': group[CLIENT].nunique(),
-            'n_contracts': len(group.drop_duplicates(CONTRACT_KEY)),
-            'n_report_dates': group[DATE].nunique(),
-        })
-
-    monthly = pd.DataFrame(monthly_rows)
-    if monthly.empty:
-        raise ValueError('После проверки ключей не осталось строк')
-
-    # 3. Пересечение текущего месяца с заданным периодом.
-    def overlap_row(current_month, ref_start, ref_end, reference_name):
-        current_month = pd.Period(current_month, freq='M')
-
-        current = clean.loc[clean['month'].eq(current_month)]
-        reference_mask = clean[DATE] < pd.Timestamp(ref_end)
-
-        if ref_start is not None:
-            reference_mask &= clean[DATE] >= pd.Timestamp(ref_start)
-
-        reference = clean.loc[reference_mask]
-
-        ref_clients = set(reference[CLIENT])
-        ref_contracts = pd.MultiIndex.from_frame(
-            reference[CONTRACT_KEY].drop_duplicates()
-        )
-
-        client_absent = ~current[CLIENT].isin(ref_clients)
-        current_contract_index = pd.MultiIndex.from_frame(
-            current[CONTRACT_KEY]
-        )
-        contract_absent = ~current_contract_index.isin(ref_contracts)
-
-        unique_clients = current[CLIENT].drop_duplicates()
-        unique_contracts = current[CONTRACT_KEY].drop_duplicates()
-        unique_contract_index = pd.MultiIndex.from_frame(unique_contracts)
-
-        n_absent_clients = (~unique_clients.isin(ref_clients)).sum()
-        n_absent_contracts = (
-            ~unique_contract_index.isin(ref_contracts)
-        ).sum()
-
-        def share(numerator, denominator):
-            return numerator / denominator if denominator else np.nan
-
-        return {
-            'month': str(current_month),
-            'reference': reference_name,
-            'n_rows': len(current),
-            'n_clients': len(unique_clients),
-            'n_contracts': len(unique_contracts),
-
-            # Эти две колонки сопоставимы с прежними 33,34% и 26,92%.
-            'rows_client_absent': int(client_absent.sum()),
-            'share_rows_client_absent': share(
-                client_absent.sum(), len(current)
-            ),
-
-            'n_clients_absent': int(n_absent_clients),
-            'share_clients_absent': share(
-                n_absent_clients, len(unique_clients)
-            ),
-
-            'rows_contract_absent': int(contract_absent.sum()),
-            'share_rows_contract_absent': share(
-                contract_absent.sum(), len(current)
-            ),
-            'n_contracts_absent': int(n_absent_contracts),
-            'share_contracts_absent': share(
-                n_absent_contracts, len(unique_contracts)
-            ),
-        }
-
-    comparisons = [
-        ('2026-01', '2025-09-01', '2026-01-01', 'Sep–Dec'),
-        ('2026-02', '2025-09-01', '2026-01-01', 'Sep–Dec'),
-        ('2026-02', '2025-09-01', '2026-02-01', 'Sep–Jan'),
-
-        # Включаем всю доступную историю, в том числе до сентября.
-        ('2026-01', None, '2026-01-01', 'All before Jan'),
-        ('2026-02', None, '2026-02-01', 'All before Feb'),
-    ]
-
-    overlap = pd.DataFrame([
-        overlap_row(*args) for args in comparisons
-    ])
-
-    # 4. Сколько месяцев наблюдений есть в обучающем периоде?
-    historical = clean.loc[
-        (clean[DATE] >= '2025-09-01') &
-        (clean[DATE] < '2026-01-01')
-    ]
-
-    history_rows = []
-
-    for entity_name, keys in [
-        ('client', [CLIENT]),
-        ('contract', CONTRACT_KEY),
-    ]:
-        months_per_entity = historical.groupby(keys)['month'].nunique()
-        counts = (
-            months_per_entity.value_counts()
-            .reindex([1, 2, 3, 4], fill_value=0)
-            .sort_index()
-        )
-
-        for n_months, count in counts.items():
-            history_rows.append({
-                'entity': entity_name,
-                'n_months': n_months,
-                'n_entities': int(count),
-                'share': (
-                    count / len(months_per_entity)
-                    if len(months_per_entity) else np.nan
-                ),
-            })
-
-    history = pd.DataFrame(history_rows)
-
-    return {
-        'quality': quality,
-        'monthly': monthly,
-        'overlap': overlap,
-        'history': history,
-    }
-
-
-full_check = inspect_sample(sample_full, name='full')
-
-print('1. Качество ключей')
-display(full_check['quality'])
-
-print('2. Объёмы по месяцам: сентябрь–февраль')
-display(
-    full_check['monthly'].loc[
-        full_check['monthly']['month'].between(
-            pd.Period('2025-09'), pd.Period('2026-02')
-        )
-    ]
+compare_overlap = pd.concat(
+    [
+        full_check['overlap'].assign(sample='full'),
+        sample25_check['overlap'].assign(sample='sample25'),
+    ],
+    ignore_index=True
 )
 
-print('3. Отсутствие клиентов и контрактов в предыдущих периодах')
-display(full_check['overlap'].round(4))
+display(
+    compare_overlap[[
+        'sample',
+        'month',
+        'reference',
+        'n_rows',
+        'share_rows_client_absent',
+        'share_clients_absent',
+        'share_rows_contract_absent',
+        'share_contracts_absent',
+    ]]
+    .sort_values(['month', 'reference', 'sample'])
+    .round(4)
+)
 
-print('4. Число месяцев наблюдения в сентябре–декабре')
-display(full_check['history'].round(4))
+compare_history = pd.concat(
+    [
+        full_check['history'].assign(sample='full'),
+        sample25_check['history'].assign(sample='sample25'),
+    ],
+    ignore_index=True
+)
+
+display(
+    compare_history
+    .sort_values(['entity', 'n_months', 'sample'])
+    .round(4)
+)
