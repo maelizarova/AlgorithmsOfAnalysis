@@ -1,235 +1,170 @@
-from pathlib import Path
+import numpy as np
+import pandas as pd
+from sklearn.metrics import roc_auc_score
 
-baseline_dir = Path(PATH_MODELS_DATA) / 'diagnostic_baselines'
-baseline_dir.mkdir(parents=True, exist_ok=True)
+N_TREES = [239, 800, 2985]
+model_features = list(best_model.feature_name_)
 
-assert best_model.booster_.current_iteration() >= 2985
+assert best_model.booster_.current_iteration() >= max(N_TREES)
 
-baseline_models = {}
-
-for n in [239, 800, 2985]:
-    # Отдельная модель, физически содержащая только первые N деревьев.
-    booster = lgb.Booster(
-        model_str=best_model.booster_.model_to_string(num_iteration=n)
-    )
-    baseline_models[f'baseline_{n}'] = booster
-    booster.save_model(str(baseline_dir / f'model_{n}.txt'))
-
-print(f'Сохранено в: {baseline_dir}')
-
-
-
-from hyperopt import hp, fmin, tpe, Trials, STATUS_OK, space_eval
-
-# features — исходный список кандидатов из раздела 7,
-# до select_top_features и выбора числа признаков.
-candidate_features = list(features)
-
-assert set(candidate_features).issubset(merged_df.columns)
-assert not set(candidate_features).intersection(
-    PRIMARY_KEY + ['year_month', 'target', 'target_25', 'target_50', 'target_75']
-)
-
-dates = pd.to_datetime(merged_df['report_date'])
-historical_mask = (
-    (dates >= '2025-09-01') & (dates < '2026-01-01')
-)
-january_mask = (
-    (dates >= '2026-01-01') & (dates < '2026-02-01')
-)
-
-# Используем то же разбиение клиентов, что в предыдущем эксперименте.
 train_ids = set(train['client_did'])
-held_ids = set(oos['client_did'])
-assert train_ids.isdisjoint(held_ids)
+oos_ids = set(oos['client_did'])
+historical_ids = train_ids | oos_ids
+january_ids = set(test['client_did'])
 
-train_group = merged_df.loc[
-    historical_mask & merged_df['client_did'].isin(train_ids)
-].copy()
+assert train_ids.isdisjoint(oos_ids)
 
-oos_group = merged_df.loc[
-    historical_mask & merged_df['client_did'].isin(held_ids)
-].copy()
-
-jan_group = merged_df.loc[january_mask].copy()
-jan_valid_group = jan_group.loc[
-    jan_group['client_did'].isin(held_ids)
-].copy()
-
-assert len(train_group) == len(train)
-assert len(oos_group) == len(oos)
-assert len(jan_group) == len(test)
-assert jan_valid_group[TARGET].nunique() == 2
-assert set(jan_valid_group['client_did']).isdisjoint(train_ids)
-
-print('Train:', train_group.shape)
-print('Январская валидация:', jan_valid_group.shape)
+# Проверяем периоды и наличие ключей.
+for data, month in [(test, '2026-01'), (oot, '2026-02')]:
+    assert data['client_did'].notna().all()
+    assert (
+        pd.to_datetime(data['report_date']).dt.to_period('M')
+        == pd.Period(month, freq='M')
+    ).all()
 
 
-# 2.1. Новый предварительный рейтинг признаков.
-cat_group = train_group[candidate_features].select_dtypes(
-    include=['category', 'object']
-).columns.tolist()
-
-_, ranking_group = feature_selection.select_top_features(
-    data=train_group[candidate_features + [TARGET]],
-    targets=[TARGET],
-    random_state=SEED,
-    eval_set=jan_valid_group[candidate_features + [TARGET]],
-    n_top=PRESELECTION_TOP_N,
-    categorical_features=cat_group
-)
-
-preselected_group = (
-    ranking_group[TARGET]['feature']
-    .head(PRESELECTION_TOP_N)
-    .tolist()
-)
-
-
-# 2.2. Выбор числа признаков по той же новой валидации.
-selected_group_features, selection_auc_group, _ = (
-    recursive_feature_selection(
-        train=train_group,
-        test=jan_valid_group,
-        preselected_features=preselected_group,
-        preselected_cat_features=[
-            c for c in cat_group if c in preselected_group
+# 1. Одинаковое определение групп для января и февраля.
+# "unseen_sep_dec" — отсутствовал в сентябре–декабре,
+# а не обязательно получил новую карту.
+def add_client_group(data):
+    result = data.copy()
+    result['client_group'] = np.select(
+        [
+            result['client_did'].isin(train_ids),
+            result['client_did'].isin(oos_ids),
         ],
-        step=20,
-        accuracy_threshold=0.01,
-        min_features=20,
-        random_state=SEED,
-        target_col=TARGET,
-        logger=logger
+        ['seen_in_train', 'held_out_oos'],
+        default='unseen_sep_dec'
     )
-)
-
-print('Выбрано признаков:', len(selected_group_features))
+    return result
 
 
-# 2.3. Hyperopt: прежнее пространство поиска,
-# но early stopping и loss считаются по jan_valid_group.
-def objective_group(params):
-    model = lgb.LGBMClassifier(**make_model_params(params))
+january_check = add_client_group(test)
+february_check = add_client_group(oot)
 
-    model.fit(
-        train_group[selected_group_features],
-        train_group[TARGET],
-        eval_set=[(
-            jan_valid_group[selected_group_features],
-            jan_valid_group[TARGET]
-        )],
-        eval_metric='auc',
-        callbacks=[
-            lgb.early_stopping(
-                EARLY_STOPPING_ROUNDS,
-                first_metric_only=True,
-                verbose=False
-            )
-        ]
-    )
-
-    n_trees = int(model.best_iteration_)
-    pred = model.predict_proba(
-        jan_valid_group[selected_group_features],
-        num_iteration=n_trees
-    )[:, 1]
-
-    return {
-        'loss': -float(roc_auc_score(jan_valid_group[TARGET], pred)),
-        'status': STATUS_OK,
-        'best_iteration': n_trees
-    }
-
-
-trials_group = Trials()
-
-best_group = fmin(
-    fn=objective_group,
-    space=space,
-    algo=tpe.suggest,
-    max_evals=100,
-    trials=trials_group,
-    rstate=np.random.default_rng(SEED)
-)
-
-winner_group = trials_group.best_trial['result']
-
-params_group = make_model_params(
-    space_eval(space, best_group),
-    n_estimators=int(winner_group['best_iteration'])
-)
-
-# Отдельное имя: исходный best_model сохраняется.
-model_group_tuned = lgb.LGBMClassifier(**params_group)
-model_group_tuned.fit(
-    train_group[selected_group_features],
-    train_group[TARGET]
-)
-
-pred_valid_group = model_group_tuned.predict_proba(
-    jan_valid_group[selected_group_features]
-)[:, 1]
-
-auc_valid_group = roc_auc_score(
-    jan_valid_group[TARGET], pred_valid_group
-)
-
-np.testing.assert_allclose(
-    auc_valid_group,
-    -winner_group['loss'],
-    rtol=0,
-    atol=1e-6
-)
-
-print('Параметры:', params_group)
-print('AUC новой валидации:', auc_valid_group)
-
-
-
-comparison_sets = {
-    'train': train_group,
-    'oos_sep_dec': oos_group,
-    'jan_all': jan_group,
-    'jan_seen_in_train': jan_group.loc[
-        jan_group['client_did'].isin(train_ids)
-    ],
-    'jan_held_out_oos': jan_valid_group,
-    'jan_new_client': jan_group.loc[
-        ~jan_group['client_did'].isin(train_ids | held_ids)
-    ]
+periods = {
+    '2026-01': january_check,
+    '2026-02': february_check,
 }
 
-# Все модели приводим к одному интерфейсу Booster.
-models_to_compare = {
-    **baseline_models,
-    'group_tuned': model_group_tuned.booster_
-}
+group_order = [
+    'all',
+    'seen_in_train',
+    'held_out_oos',
+    'unseen_sep_dec'
+]
 
-rows = []
 
-for model_name, booster in models_to_compare.items():
-    model_features = booster.feature_name()
+# 2. Состав выборок.
+composition_rows = []
 
-    for segment, data in comparison_sets.items():
-        auc = np.nan
+for month, data in periods.items():
+    for group_name in group_order[1:]:
+        group = data.loc[data['client_group'].eq(group_name)]
 
-        if not data.empty and data[TARGET].nunique() == 2:
-            pred = booster.predict(data[model_features])
-            auc = roc_auc_score(data[TARGET], pred)
-
-        rows.append({
-            'model': model_name,
-            'segment': segment,
-            'roc_auc': auc
+        composition_rows.append({
+            'month': month,
+            'client_group': group_name,
+            'n_contract_rows': len(group),
+            'share_rows': len(group) / len(data),
+            'n_clients': group['client_did'].nunique(),
+            'positives': group[TARGET].sum(),
+            'target_share': group[TARGET].mean(),
         })
 
-comparison_group_tuned = pd.DataFrame(rows).pivot(
-    index='segment', columns='model', values='roc_auc'
+composition = pd.DataFrame(composition_rows)
+display(composition.round(4))
+
+
+# 3. AUC по числу деревьев, месяцам и группам.
+metric_rows = []
+
+for month, data in periods.items():
+    for n in N_TREES:
+        predictions = best_model.predict_proba(
+            data[model_features],
+            num_iteration=n
+        )[:, 1]
+
+        for group_name in group_order:
+            mask = (
+                np.ones(len(data), dtype=bool)
+                if group_name == 'all'
+                else data['client_group'].eq(group_name).to_numpy()
+            )
+
+            y = data.loc[mask, TARGET]
+            auc = (
+                roc_auc_score(y, predictions[mask])
+                if y.nunique() == 2
+                else np.nan
+            )
+
+            metric_rows.append({
+                'month': month,
+                'client_group': group_name,
+                'n_trees': n,
+                'n_samples': int(mask.sum()),
+                'roc_auc': auc,
+            })
+
+metrics = pd.DataFrame(metric_rows)
+
+comparison = metrics.pivot(
+    index=['month', 'client_group'],
+    columns='n_trees',
+    values='roc_auc'
 ).reindex(
-    index=list(comparison_sets),
-    columns=list(models_to_compare)
+    pd.MultiIndex.from_product(
+        [list(periods), group_order],
+        names=['month', 'client_group']
+    )
 )
 
-display(comparison_group_tuned.round(6))
+comparison['delta_2985_vs_239'] = comparison[2985] - comparison[239]
+comparison['delta_2985_vs_800'] = comparison[2985] - comparison[800]
+
+display(comparison.round(6))
+
+
+# 4. Изменение AUC с января на февраль внутри каждой группы.
+# Это сравнение групп, а не обязательно одних и тех же контрактов.
+temporal_change = (
+    comparison.loc['2026-02', N_TREES]
+    - comparison.loc['2026-01', N_TREES]
+)
+
+temporal_change.columns = [
+    f'delta_feb_minus_jan_{n}' for n in N_TREES
+]
+
+display(temporal_change.round(6))
+
+
+# 5. Откуда взялись клиенты, отсутствующие в сентябре–декабре?
+february_check['history_group'] = np.select(
+    [
+        february_check['client_did'].isin(historical_ids),
+        february_check['client_did'].isin(january_ids),
+    ],
+    [
+        'present_sep_dec',
+        'absent_sep_dec_but_present_jan',
+    ],
+    default='absent_in_all_previous_samples'
+)
+
+history_summary = (
+    february_check.groupby('history_group')
+    .agg(
+        n_contract_rows=(TARGET, 'size'),
+        n_clients=('client_did', 'nunique'),
+        target_share=(TARGET, 'mean')
+    )
+)
+
+history_summary['share_rows'] = (
+    history_summary['n_contract_rows'] / len(february_check)
+)
+
+display(history_summary.round(4))
