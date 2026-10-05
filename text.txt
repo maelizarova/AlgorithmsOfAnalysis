@@ -1,170 +1,211 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score
 
-N_TREES = [239, 800, 2985]
-model_features = list(best_model.feature_name_)
+# Если ещё не загрузила — укажи свой файл:
+# sample_full = pd.read_parquet('sample_full.parquet')
+# sample_full = pd.read_csv('sample_full.csv')
 
-assert best_model.booster_.current_iteration() >= max(N_TREES)
+CLIENT = 'client_did'
+CONTRACT = 'contract_uid'
+DATE = 'report_date'
 
-train_ids = set(train['client_did'])
-oos_ids = set(oos['client_did'])
-historical_ids = train_ids | oos_ids
-january_ids = set(test['client_did'])
-
-assert train_ids.isdisjoint(oos_ids)
-
-# Проверяем периоды и наличие ключей.
-for data, month in [(test, '2026-01'), (oot, '2026-02')]:
-    assert data['client_did'].notna().all()
-    assert (
-        pd.to_datetime(data['report_date']).dt.to_period('M')
-        == pd.Period(month, freq='M')
-    ).all()
+# Контракт идентифицируем парой клиент + контракт.
+# Это не требует глобальной уникальности contract_uid.
+CONTRACT_KEY = [CLIENT, CONTRACT]
+ROW_KEY = [CLIENT, CONTRACT, DATE]
 
 
-# 1. Одинаковое определение групп для января и февраля.
-# "unseen_sep_dec" — отсутствовал в сентябре–декабре,
-# а не обязательно получил новую карту.
-def add_client_group(data):
-    result = data.copy()
-    result['client_group'] = np.select(
-        [
-            result['client_did'].isin(train_ids),
-            result['client_did'].isin(oos_ids),
-        ],
-        ['seen_in_train', 'held_out_oos'],
-        default='unseen_sep_dec'
+def inspect_sample(source, name='sample'):
+    required = [CLIENT, CONTRACT, DATE]
+    missing_columns = set(required) - set(source.columns)
+    if missing_columns:
+        raise ValueError(f'Нет колонок: {missing_columns}')
+
+    df = source[required].copy()
+    original_date = df[DATE].copy()
+    df[DATE] = pd.to_datetime(df[DATE], errors='coerce')
+
+    # 1. Качество ключей.
+    valid_key = df[required].notna().all(axis=1)
+
+    quality = pd.DataFrame([{
+        'sample': name,
+        'rows_total': len(df),
+        'missing_client': df[CLIENT].isna().sum(),
+        'missing_contract': df[CONTRACT].isna().sum(),
+        'missing_date_original': original_date.isna().sum(),
+        'unparsed_date': (
+            original_date.notna() & df[DATE].isna()
+        ).sum(),
+        'rows_with_invalid_key': (~valid_key).sum(),
+        'duplicate_key_extra_rows': (
+            df.loc[valid_key].duplicated(ROW_KEY).sum()
+        ),
+        'date_min': df[DATE].min(),
+        'date_max': df[DATE].max(),
+    }])
+
+    # Для статистики пересечения удаляем строки с неполным ключом
+    # и повторные записи одного ключа. Исходный source не изменяем.
+    clean = (
+        df.loc[valid_key]
+        .drop_duplicates(ROW_KEY)
+        .copy()
     )
-    return result
+    clean['month'] = clean[DATE].dt.to_period('M')
 
+    # 2. Помесячная статистика за ВСЮ историю.
+    raw_months = df.loc[df[DATE].notna(), DATE].dt.to_period('M')
+    raw_counts = raw_months.value_counts().sort_index()
 
-january_check = add_client_group(test)
-february_check = add_client_group(oot)
-
-periods = {
-    '2026-01': january_check,
-    '2026-02': february_check,
-}
-
-group_order = [
-    'all',
-    'seen_in_train',
-    'held_out_oos',
-    'unseen_sep_dec'
-]
-
-
-# 2. Состав выборок.
-composition_rows = []
-
-for month, data in periods.items():
-    for group_name in group_order[1:]:
-        group = data.loc[data['client_group'].eq(group_name)]
-
-        composition_rows.append({
+    monthly_rows = []
+    for month, group in clean.groupby('month', sort=True):
+        monthly_rows.append({
             'month': month,
-            'client_group': group_name,
-            'n_contract_rows': len(group),
-            'share_rows': len(group) / len(data),
-            'n_clients': group['client_did'].nunique(),
-            'positives': group[TARGET].sum(),
-            'target_share': group[TARGET].mean(),
+            'raw_rows': int(raw_counts.get(month, 0)),
+            'unique_contract_date_rows': len(group),
+            'n_clients': group[CLIENT].nunique(),
+            'n_contracts': len(group.drop_duplicates(CONTRACT_KEY)),
+            'n_report_dates': group[DATE].nunique(),
         })
 
-composition = pd.DataFrame(composition_rows)
-display(composition.round(4))
+    monthly = pd.DataFrame(monthly_rows)
+    if monthly.empty:
+        raise ValueError('После проверки ключей не осталось строк')
 
+    # 3. Пересечение текущего месяца с заданным периодом.
+    def overlap_row(current_month, ref_start, ref_end, reference_name):
+        current_month = pd.Period(current_month, freq='M')
 
-# 3. AUC по числу деревьев, месяцам и группам.
-metric_rows = []
+        current = clean.loc[clean['month'].eq(current_month)]
+        reference_mask = clean[DATE] < pd.Timestamp(ref_end)
 
-for month, data in periods.items():
-    for n in N_TREES:
-        predictions = best_model.predict_proba(
-            data[model_features],
-            num_iteration=n
-        )[:, 1]
+        if ref_start is not None:
+            reference_mask &= clean[DATE] >= pd.Timestamp(ref_start)
 
-        for group_name in group_order:
-            mask = (
-                np.ones(len(data), dtype=bool)
-                if group_name == 'all'
-                else data['client_group'].eq(group_name).to_numpy()
-            )
+        reference = clean.loc[reference_mask]
 
-            y = data.loc[mask, TARGET]
-            auc = (
-                roc_auc_score(y, predictions[mask])
-                if y.nunique() == 2
-                else np.nan
-            )
+        ref_clients = set(reference[CLIENT])
+        ref_contracts = pd.MultiIndex.from_frame(
+            reference[CONTRACT_KEY].drop_duplicates()
+        )
 
-            metric_rows.append({
-                'month': month,
-                'client_group': group_name,
-                'n_trees': n,
-                'n_samples': int(mask.sum()),
-                'roc_auc': auc,
+        client_absent = ~current[CLIENT].isin(ref_clients)
+        current_contract_index = pd.MultiIndex.from_frame(
+            current[CONTRACT_KEY]
+        )
+        contract_absent = ~current_contract_index.isin(ref_contracts)
+
+        unique_clients = current[CLIENT].drop_duplicates()
+        unique_contracts = current[CONTRACT_KEY].drop_duplicates()
+        unique_contract_index = pd.MultiIndex.from_frame(unique_contracts)
+
+        n_absent_clients = (~unique_clients.isin(ref_clients)).sum()
+        n_absent_contracts = (
+            ~unique_contract_index.isin(ref_contracts)
+        ).sum()
+
+        def share(numerator, denominator):
+            return numerator / denominator if denominator else np.nan
+
+        return {
+            'month': str(current_month),
+            'reference': reference_name,
+            'n_rows': len(current),
+            'n_clients': len(unique_clients),
+            'n_contracts': len(unique_contracts),
+
+            # Эти две колонки сопоставимы с прежними 33,34% и 26,92%.
+            'rows_client_absent': int(client_absent.sum()),
+            'share_rows_client_absent': share(
+                client_absent.sum(), len(current)
+            ),
+
+            'n_clients_absent': int(n_absent_clients),
+            'share_clients_absent': share(
+                n_absent_clients, len(unique_clients)
+            ),
+
+            'rows_contract_absent': int(contract_absent.sum()),
+            'share_rows_contract_absent': share(
+                contract_absent.sum(), len(current)
+            ),
+            'n_contracts_absent': int(n_absent_contracts),
+            'share_contracts_absent': share(
+                n_absent_contracts, len(unique_contracts)
+            ),
+        }
+
+    comparisons = [
+        ('2026-01', '2025-09-01', '2026-01-01', 'Sep–Dec'),
+        ('2026-02', '2025-09-01', '2026-01-01', 'Sep–Dec'),
+        ('2026-02', '2025-09-01', '2026-02-01', 'Sep–Jan'),
+
+        # Включаем всю доступную историю, в том числе до сентября.
+        ('2026-01', None, '2026-01-01', 'All before Jan'),
+        ('2026-02', None, '2026-02-01', 'All before Feb'),
+    ]
+
+    overlap = pd.DataFrame([
+        overlap_row(*args) for args in comparisons
+    ])
+
+    # 4. Сколько месяцев наблюдений есть в обучающем периоде?
+    historical = clean.loc[
+        (clean[DATE] >= '2025-09-01') &
+        (clean[DATE] < '2026-01-01')
+    ]
+
+    history_rows = []
+
+    for entity_name, keys in [
+        ('client', [CLIENT]),
+        ('contract', CONTRACT_KEY),
+    ]:
+        months_per_entity = historical.groupby(keys)['month'].nunique()
+        counts = (
+            months_per_entity.value_counts()
+            .reindex([1, 2, 3, 4], fill_value=0)
+            .sort_index()
+        )
+
+        for n_months, count in counts.items():
+            history_rows.append({
+                'entity': entity_name,
+                'n_months': n_months,
+                'n_entities': int(count),
+                'share': (
+                    count / len(months_per_entity)
+                    if len(months_per_entity) else np.nan
+                ),
             })
 
-metrics = pd.DataFrame(metric_rows)
+    history = pd.DataFrame(history_rows)
 
-comparison = metrics.pivot(
-    index=['month', 'client_group'],
-    columns='n_trees',
-    values='roc_auc'
-).reindex(
-    pd.MultiIndex.from_product(
-        [list(periods), group_order],
-        names=['month', 'client_group']
-    )
+    return {
+        'quality': quality,
+        'monthly': monthly,
+        'overlap': overlap,
+        'history': history,
+    }
+
+
+full_check = inspect_sample(sample_full, name='full')
+
+print('1. Качество ключей')
+display(full_check['quality'])
+
+print('2. Объёмы по месяцам: сентябрь–февраль')
+display(
+    full_check['monthly'].loc[
+        full_check['monthly']['month'].between(
+            pd.Period('2025-09'), pd.Period('2026-02')
+        )
+    ]
 )
 
-comparison['delta_2985_vs_239'] = comparison[2985] - comparison[239]
-comparison['delta_2985_vs_800'] = comparison[2985] - comparison[800]
+print('3. Отсутствие клиентов и контрактов в предыдущих периодах')
+display(full_check['overlap'].round(4))
 
-display(comparison.round(6))
-
-
-# 4. Изменение AUC с января на февраль внутри каждой группы.
-# Это сравнение групп, а не обязательно одних и тех же контрактов.
-temporal_change = (
-    comparison.loc['2026-02', N_TREES]
-    - comparison.loc['2026-01', N_TREES]
-)
-
-temporal_change.columns = [
-    f'delta_feb_minus_jan_{n}' for n in N_TREES
-]
-
-display(temporal_change.round(6))
-
-
-# 5. Откуда взялись клиенты, отсутствующие в сентябре–декабре?
-february_check['history_group'] = np.select(
-    [
-        february_check['client_did'].isin(historical_ids),
-        february_check['client_did'].isin(january_ids),
-    ],
-    [
-        'present_sep_dec',
-        'absent_sep_dec_but_present_jan',
-    ],
-    default='absent_in_all_previous_samples'
-)
-
-history_summary = (
-    february_check.groupby('history_group')
-    .agg(
-        n_contract_rows=(TARGET, 'size'),
-        n_clients=('client_did', 'nunique'),
-        target_share=(TARGET, 'mean')
-    )
-)
-
-history_summary['share_rows'] = (
-    history_summary['n_contract_rows'] / len(february_check)
-)
-
-display(history_summary.round(4))
+print('4. Число месяцев наблюдения в сентябре–декабре')
+display(full_check['history'].round(4))
