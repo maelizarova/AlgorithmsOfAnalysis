@@ -1,12 +1,132 @@
+WORK_N_TREES = 800
+model_features = list(best_model.feature_name_)
+
+assert best_model.booster_.current_iteration() >= WORK_N_TREES
+
+working_predictions = {}
 rows = []
 
-for n in [100, 200, 400, 800, 1200, 1800, 2400, 2985]:
-    row = {'n_trees': n}
-    for name, data in [('train', train), ('oos', oos), ('test', test)]:
-        pred = best_model.predict_proba(
-            data[best_features], num_iteration=n
-        )[:, 1]
-        row[name] = roc_auc_score(data[TARGET], pred)
-    rows.append(row)
+for name, data in [('train', train), ('oos', oos), ('test', test)]:
+    pred = best_model.predict_proba(
+        data[model_features],
+        num_iteration=WORK_N_TREES
+    )[:, 1]
 
-pd.DataFrame(rows)
+    working_predictions[name] = pred
+    auc = roc_auc_score(data[TARGET], pred)
+
+    rows.append({
+        'segment': name,
+        'n_trees': WORK_N_TREES,
+        'n_samples': len(data),
+        'roc_auc': auc,
+        'gini': 2 * auc - 1,
+    })
+
+working_metrics = pd.DataFrame(rows)
+display(working_metrics)
+
+
+train_clients = set(train['client_did'])
+oos_clients = set(oos['client_did'])
+
+assert train_clients.isdisjoint(oos_clients)
+assert test['client_did'].notna().all()
+
+jan_diagnostic = test.copy()
+jan_diagnostic['client_group'] = np.select(
+    [
+        jan_diagnostic['client_did'].isin(train_clients),
+        jan_diagnostic['client_did'].isin(oos_clients),
+    ],
+    [
+        'seen_in_train',
+        'held_out_oos',
+    ],
+    default='new_client'
+)
+
+group_order = ['seen_in_train', 'held_out_oos', 'new_client']
+
+# Проверяем объём и долю таргета в каждой группе.
+group_stats = (
+    jan_diagnostic.groupby('client_group')
+    .agg(
+        n_contract_rows=(TARGET, 'size'),
+        n_clients=('client_did', 'nunique'),
+        positives=(TARGET, 'sum'),
+        target_share=(TARGET, 'mean'),
+    )
+    .reindex(group_order)
+)
+
+display(group_stats)
+
+# Используем текущую полную модель и оцениваем первые N деревьев.
+total_trees = best_model.booster_.current_iteration()
+tree_counts = sorted({
+    n for n in [100, 200, 400, 800, 1200, 1800, 2400, total_trees]
+    if n <= total_trees
+})
+
+rows = []
+
+for n in tree_counts:
+    pred = best_model.predict_proba(
+        jan_diagnostic[model_features],
+        num_iteration=n
+    )[:, 1]
+
+    for group_name in group_order:
+        mask = (
+            jan_diagnostic['client_group'].eq(group_name).to_numpy()
+        )
+        y = jan_diagnostic.loc[mask, TARGET]
+
+        # AUC не определён для пустой группы или одного класса.
+        auc = (
+            roc_auc_score(y, pred[mask])
+            if y.nunique() == 2
+            else np.nan
+        )
+
+        rows.append({
+            'n_trees': n,
+            'client_group': group_name,
+            'n_samples': int(mask.sum()),
+            'roc_auc': auc,
+        })
+
+jan_auc_by_group = pd.DataFrame(rows)
+
+jan_auc_pivot = (
+    jan_auc_by_group
+    .pivot(index='n_trees', columns='client_group', values='roc_auc')
+    .reindex(columns=group_order)
+)
+
+display(jan_auc_pivot.round(6))
+
+ax = jan_auc_pivot.plot(
+    marker='o',
+    figsize=(10, 5),
+    title='Январь: AUC по группам клиентов'
+)
+ax.set_xlabel('Число деревьев')
+ax.set_ylabel('ROC AUC')
+ax.axvline(WORK_N_TREES, color='gray', linestyle='--', alpha=0.7)
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+# Насколько каждая группа выигрывает/проигрывает после 800 деревьев.
+if total_trees > WORK_N_TREES:
+    delta_after_800 = pd.DataFrame({
+        'auc_800': jan_auc_pivot.loc[WORK_N_TREES],
+        'auc_full': jan_auc_pivot.loc[total_trees],
+        'delta': (
+            jan_auc_pivot.loc[total_trees]
+            - jan_auc_pivot.loc[WORK_N_TREES]
+        ),
+    })
+    display(delta_after_800.round(6))
