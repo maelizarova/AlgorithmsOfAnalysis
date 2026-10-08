@@ -2,92 +2,111 @@ import pandas as pd
 import lightgbm as lgb
 from sklearn.metrics import roc_auc_score
 
-# 1. Определяем признаки для эксперимента.
-base_features_ablation = list(best_model.feature_name_)
-
-# changed_pct измеряется в процентах:
-# исключаем признаки, изменившиеся менее чем у 0.01% общих контрактов.
-static_candidates_ablation = set(
-    feature_changes_check.loc[
-        feature_changes_check['changed_pct'] < 0.01,
-        'feature',
-    ]
+# Все признаки исходной модели, включая ранее исключавшийся блок.
+features_recent = list(best_model.feature_name_)
+assert len(features_recent) == 40, (
+    'Проверь: best_model должна быть исходной моделью с 40 признаками'
 )
 
-removed_features_ablation = [
-    f for f in base_features_ablation
-    if f in static_candidates_ablation
+# Ограничиваем существующие train/OOS ноябрём–декабрём.
+train_recent = train.loc[
+    (train['report_date'] >= '2025-11-01')
+    & (train['report_date'] < '2026-01-01')
 ]
 
-features_no_static = [
-    f for f in base_features_ablation
-    if f not in static_candidates_ablation
+oos_recent = oos.loc[
+    (oos['report_date'] >= '2025-11-01')
+    & (oos['report_date'] < '2026-01-01')
 ]
 
-assert removed_features_ablation, 'Не найдены признаки для исключения'
-assert features_no_static, 'После исключения не осталось признаков'
+assert not train_recent.empty and not oos_recent.empty, (
+    'Нет строк ноября–декабря'
+)
 
-print(f'Исключаем признаков: {len(removed_features_ablation)}')
-print(f'Остаётся признаков: {len(features_no_static)}')
+# Остальные параметры берём у исходной модели.
+params_recent = best_model.get_params().copy()
+params_recent['metric'] = 'auc'
 
-with pd.option_context('display.max_colwidth', None):
-    display(feature_changes_check.loc[
-        feature_changes_check['feature'].isin(removed_features_ablation),
-        ['feature', 'gain_pct', 'changed_pct'],
-    ])
+max_trees_recent = int(params_recent['n_estimators'])
+PATIENCE_RECENT = 100
 
-# 2. Оставляем прежние параметры и число деревьев.
-params_ablation = best_model.get_params().copy()
+print(f'Признаков: {len(features_recent)}')
+print(f'Train ноября–декабря: {len(train_recent):,}')
+print(f'OOS ноября–декабря: {len(oos_recent):,}')
+print(f'Верхний предел деревьев: {max_trees_recent}')
 
-n_trees_ablation = int(
+# Одно новое обучение; ранняя остановка только по январю.
+model_recent = lgb.LGBMClassifier(**params_recent)
+
+model_recent.fit(
+    train_recent[features_recent],
+    train_recent[TARGET],
+    eval_set=[(test[features_recent], test[TARGET])],
+    eval_names=['jan'],
+    eval_metric='auc',
+    callbacks=[
+        lgb.early_stopping(
+            PATIENCE_RECENT,
+            first_metric_only=True,
+            verbose=True,
+        ),
+        lgb.log_evaluation(500),
+    ],
+)
+
+trees_recent = int(
+    model_recent.best_iteration_
+    or model_recent.booster_.current_iteration()
+)
+trees_original_recent = int(
     best_model.best_iteration_
     or best_model.booster_.current_iteration()
 )
-params_ablation['n_estimators'] = n_trees_ablation
 
-# Одна новая модель, без поиска параметров и нового early stopping.
-print(f'Обучаем одну модель: {n_trees_ablation} деревьев')
+print(f'Выбрано деревьев для новой модели: {trees_recent}')
 
-model_no_static = lgb.LGBMClassifier(**params_ablation)
-model_no_static.fit(
-    train[features_no_static],
-    train[TARGET],
-)
+if trees_recent > max_trees_recent - PATIENCE_RECENT:
+    print(
+        'Лучший результат близок к лимиту: после него не было полных '
+        '100 итераций для проверки остановки. '
+        'Лимит мог ограничить результат.'
+    )
 
-# 3. Сравниваем обе модели на одинаковых выборках.
-ablation_rows = []
+# Обе модели оцениваем на одинаковых наблюдениях.
+recent_rows = []
 
-for sample_ablation, frame_ablation in [
-    ('train', train),
-    ('oos', oos),
+for sample_recent, frame_recent in [
+    ('train_nov_dec', train_recent),
+    ('oos_nov_dec', oos_recent),
     ('jan', test),
     ('feb', oot),
 ]:
-    pred_base_ablation = best_model.predict_proba(
-        frame_ablation[base_features_ablation],
-        num_iteration=n_trees_ablation,
+    pred_original_recent = best_model.predict_proba(
+        frame_recent[features_recent],
+        num_iteration=trees_original_recent,
     )[:, 1]
 
-    pred_new_ablation = model_no_static.predict_proba(
-        frame_ablation[features_no_static]
+    pred_recent = model_recent.predict_proba(
+        frame_recent[features_recent],
+        num_iteration=trees_recent,
     )[:, 1]
 
-    auc_base_ablation = roc_auc_score(
-        frame_ablation[TARGET], pred_base_ablation
+    auc_original_recent = roc_auc_score(
+        frame_recent[TARGET], pred_original_recent
     )
-    auc_new_ablation = roc_auc_score(
-        frame_ablation[TARGET], pred_new_ablation
+    auc_recent = roc_auc_score(
+        frame_recent[TARGET], pred_recent
     )
 
-    ablation_rows.append({
-        'sample': sample_ablation,
-        'n_rows': len(frame_ablation),
-        'auc_original': auc_base_ablation,
-        'auc_no_static': auc_new_ablation,
-        'delta': auc_new_ablation - auc_base_ablation,
+    recent_rows.append({
+        'sample': sample_recent,
+        'n_rows': len(frame_recent),
+        'auc_original': auc_original_recent,
+        'auc_nov_dec': auc_recent,
+        'delta': auc_recent - auc_original_recent,
     })
 
-ablation_result = pd.DataFrame(ablation_rows).set_index('sample')
-display(ablation_result.round(6))
+recent_result = pd.DataFrame(recent_rows).set_index('sample')
+display(recent_result.round(6))
 
-del pred_base_ablation, pred_new_ablation
+del pred_original_recent, pred_recent
