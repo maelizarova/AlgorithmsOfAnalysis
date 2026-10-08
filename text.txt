@@ -1,72 +1,59 @@
-import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-features_diag = list(best_model.feature_name_)
+features_check = list(best_model.feature_name_)
 
-# Для сравнения каждому контракту должна соответствовать одна строка за месяц.
-for month_diag, frame_diag in [('2026-01', test), ('2026-02', oot)]:
-    assert frame_diag['contract_uid'].notna().all(), 'Есть пустые contract_uid'
-    assert frame_diag['contract_uid'].is_unique, (
-        f'{month_diag}: несколько строк на один контракт'
-    )
-    assert (
-        frame_diag['report_date'].dt.strftime('%Y-%m') == month_diag
-    ).all(), f'В выборке есть даты вне {month_diag}'
+for data_check in (test, oot):
+    assert data_check['contract_uid'].notna().all(), 'Есть пустые contract_uid'
+    assert data_check['contract_uid'].is_unique, 'Есть повторы contract_uid внутри месяца'
 
-common_contracts = pd.Index(test['contract_uid']).intersection(
-    pd.Index(oot['contract_uid'])
+# Январские скоры исходной модели.
+jan_score_check = test[['contract_uid']].copy()
+jan_score_check['score_jan'] = best_model.predict_proba(
+    test[features_check]
+)[:, 1]
+
+# Февральские скоры и февральский таргет.
+feb_score_check = oot[['contract_uid', TARGET]].rename(
+    columns={TARGET: 'target_feb'}
+).copy()
+
+feb_score_check['score_feb'] = best_model.predict_proba(
+    oot[features_check]
+)[:, 1]
+
+# Оставляем только контракты, присутствующие в обоих месяцах.
+paired_score_check = jan_score_check.merge(
+    feb_score_check,
+    on='contract_uid',
+    how='inner',
+    validate='one_to_one',
 )
 
-cohort_rows = []
+assert len(paired_score_check) > 0, 'Нет общих контрактов'
+assert paired_score_check['target_feb'].notna().all(), 'Есть пропуски таргета'
+assert paired_score_check['target_feb'].nunique() == 2, 'Для AUC нужны оба класса'
 
-for month_diag, frame_diag, only_group in [
-    ('2026-01', test, 'only_january'),
-    ('2026-02', oot, 'only_february'),
-]:
-    # Один расчёт прогнозов на весь месяц.
-    pred_diag = best_model.predict_proba(frame_diag[features_diag])[:, 1]
-
-    common_mask = frame_diag['contract_uid'].isin(common_contracts).to_numpy()
-
-    for group_diag, mask_diag in [
-        ('all', np.ones(len(frame_diag), dtype=bool)),
-        ('same_contracts', common_mask),
-        (only_group, ~common_mask),
-    ]:
-        y_diag = frame_diag.loc[mask_diag, TARGET]
-
-        cohort_rows.append({
-            'month': month_diag,
-            'group': group_diag,
-            'n_contracts': int(mask_diag.sum()),
-            'share_of_month': float(mask_diag.mean()),
-            'target_share': y_diag.mean(),
-            'auc': (
-                roc_auc_score(y_diag, pred_diag[mask_diag])
-                if y_diag.nunique() == 2 else np.nan
-            ),
-        })
-
-cohort_metrics = pd.DataFrame(cohort_rows)
-
-print('Качество и состав групп:')
-display(cohort_metrics.round(6))
-
-# Сравнение месяцев на всей базе и на одинаковом наборе контрактов.
-cohort_comparison = (
-    cohort_metrics[
-        cohort_metrics['group'].isin(['all', 'same_contracts'])
-    ]
-    .pivot(index='group', columns='month', values='auc')
-    .reindex(['all', 'same_contracts'])
+# В обоих расчётах — одни и те же контракты и один февральский таргет.
+auc_jan_score = roc_auc_score(
+    paired_score_check['target_feb'],
+    paired_score_check['score_jan'],
 )
 
-cohort_comparison['delta_feb_minus_jan'] = (
-    cohort_comparison['2026-02'] - cohort_comparison['2026-01']
+auc_feb_score = roc_auc_score(
+    paired_score_check['target_feb'],
+    paired_score_check['score_feb'],
 )
 
-print('Изменение AUC: февраль минус январь:')
-display(cohort_comparison.round(6))
+print(f'Общих контрактов: {len(paired_score_check):,}')
 
-del pred_diag
+display(pd.DataFrame({
+    'признаки': ['январские', 'февральские'],
+    'таргет': ['февральский', 'февральский'],
+    'auc': [auc_jan_score, auc_feb_score],
+}).round(6))
+
+print(
+    'Изменение AUC при обновлении признаков: '
+    f'{auc_feb_score - auc_jan_score:+.6f}'
+)
