@@ -1,37 +1,72 @@
-model_once = lgb.LGBMClassifier(**best_model.get_params())
+import numpy as np
+import pandas as pd
+from sklearn.metrics import roc_auc_score
 
-model_once.fit(
-    train_once[features_once],
-    train_once[TARGET],
+features_diag = list(best_model.feature_name_)
+
+# Для сравнения каждому контракту должна соответствовать одна строка за месяц.
+for month_diag, frame_diag in [('2026-01', test), ('2026-02', oot)]:
+    assert frame_diag['contract_uid'].notna().all(), 'Есть пустые contract_uid'
+    assert frame_diag['contract_uid'].is_unique, (
+        f'{month_diag}: несколько строк на один контракт'
+    )
+    assert (
+        frame_diag['report_date'].dt.strftime('%Y-%m') == month_diag
+    ).all(), f'В выборке есть даты вне {month_diag}'
+
+common_contracts = pd.Index(test['contract_uid']).intersection(
+    pd.Index(oot['contract_uid'])
 )
 
-metrics_once = []
+cohort_rows = []
 
-for label, frame in [
-    ('train_once', train_once),
-    ('oos_once', oos_once),
-    ('январь', test),
+for month_diag, frame_diag, only_group in [
+    ('2026-01', test, 'only_january'),
+    ('2026-02', oot, 'only_february'),
 ]:
-    pred_once = model_once.predict_proba(frame[features_once])[:, 1]
+    # Один расчёт прогнозов на весь месяц.
+    pred_diag = best_model.predict_proba(frame_diag[features_diag])[:, 1]
 
-    metrics_once.append({
-        'model': 'одна строка на контракт',
-        'sample': label,
-        'n_rows': len(frame),
-        'auc': roc_auc_score(frame[TARGET], pred_once),
-    })
+    common_mask = frame_diag['contract_uid'].isin(common_contracts).to_numpy()
 
-# Исходная модель — на том же январе.
-pred_old_jan = best_model.predict_proba(test[features_once])[:, 1]
+    for group_diag, mask_diag in [
+        ('all', np.ones(len(frame_diag), dtype=bool)),
+        ('same_contracts', common_mask),
+        (only_group, ~common_mask),
+    ]:
+        y_diag = frame_diag.loc[mask_diag, TARGET]
 
-metrics_once.append({
-    'model': 'исходная',
-    'sample': 'январь',
-    'n_rows': len(test),
-    'auc': roc_auc_score(test[TARGET], pred_old_jan),
-})
+        cohort_rows.append({
+            'month': month_diag,
+            'group': group_diag,
+            'n_contracts': int(mask_diag.sum()),
+            'share_of_month': float(mask_diag.mean()),
+            'target_share': y_diag.mean(),
+            'auc': (
+                roc_auc_score(y_diag, pred_diag[mask_diag])
+                if y_diag.nunique() == 2 else np.nan
+            ),
+        })
 
-display(pd.DataFrame(metrics_once).round({'auc': 6}))
+cohort_metrics = pd.DataFrame(cohort_rows)
 
-del pred_once, pred_old_jan
-gc.collect()
+print('Качество и состав групп:')
+display(cohort_metrics.round(6))
+
+# Сравнение месяцев на всей базе и на одинаковом наборе контрактов.
+cohort_comparison = (
+    cohort_metrics[
+        cohort_metrics['group'].isin(['all', 'same_contracts'])
+    ]
+    .pivot(index='group', columns='month', values='auc')
+    .reindex(['all', 'same_contracts'])
+)
+
+cohort_comparison['delta_feb_minus_jan'] = (
+    cohort_comparison['2026-02'] - cohort_comparison['2026-01']
+)
+
+print('Изменение AUC: февраль минус январь:')
+display(cohort_comparison.round(6))
+
+del pred_diag
