@@ -1,8 +1,9 @@
-keep_cols = PRIMARY_KEY + ['year_month', TARGET] + best_features
-
-train = train[keep_cols]
-test = test[keep_cols]
-oot = oot[keep_cols]
-oos = oos[keep_cols]
-
-gc.collect()
+display(search_results[[
+    'trial',
+    'learning_rate',
+    'max_depth',
+    'num_leaves',
+    'n_estimators',
+    'best_iteration',
+    'roc_auc_test',
+]].head(20))
