@@ -1,7 +1,6 @@
-import psutil
+types_before = merged_df.dtypes.copy()
 
-mem = psutil.virtual_memory()
+merged_df.to_parquet('checkpoint/merged_df.parquet')
+merged_df = pd.read_parquet('checkpoint/merged_df.parquet')
 
-print(f"Всего RAM: {mem.total / 1024**3:.2f} ГиБ")
-print(f"Доступно RAM: {mem.available / 1024**3:.2f} ГиБ")
-print(f"Занято ядром Jupyter: {psutil.Process().memory_info().rss / 1024**3:.2f} ГиБ")
+display(types_before.compare(merged_df.dtypes))
