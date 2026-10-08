@@ -1,115 +1,222 @@
+# Вставить после обучения: test = январь, oot = февраль.
+# Используется исходная модель best_model со всеми её признаками.
+import numpy as np
 import pandas as pd
-import lightgbm as lgb
+from pandas.api.types import is_numeric_dtype
 from sklearn.metrics import roc_auc_score
+from IPython.display import display
 
-# Все признаки исходной модели.
-features_dec = list(best_model.feature_name_)
-
-assert len(features_dec) == 40, (
-    'Нужна исходная best_model с 40 признаками'
-)
-assert list(model_recent.feature_name_) == features_dec, (
-    'У модели ноября–декабря должен быть тот же список признаков'
-)
-
-# Декабрьская часть существующих train/OOS.
-train_dec = train.loc[
-    (train['report_date'] >= '2025-12-01')
-    & (train['report_date'] < '2026-01-01')
-]
-
-oos_dec = oos.loc[
-    (oos['report_date'] >= '2025-12-01')
-    & (oos['report_date'] < '2026-01-01')
-]
-
-assert not train_dec.empty and not oos_dec.empty, 'Нет декабрьских строк'
-
-params_dec = best_model.get_params().copy()
-params_dec['metric'] = 'auc'
-
-max_trees_dec = int(params_dec['n_estimators'])
-PATIENCE_DEC = 100
-
-print(f'Train декабря: {len(train_dec):,}')
-print(f'OOS декабря: {len(oos_dec):,}')
-print(f'Признаков: {len(features_dec)}; максимум деревьев: {max_trees_dec}')
-
-# Одно новое обучение. Для ранней остановки — только январь.
-model_dec = lgb.LGBMClassifier(**params_dec)
-
-model_dec.fit(
-    train_dec[features_dec],
-    train_dec[TARGET],
-    eval_set=[(test[features_dec], test[TARGET])],
-    eval_names=['jan'],
-    eval_metric='auc',
-    callbacks=[
-        lgb.early_stopping(
-            PATIENCE_DEC,
-            first_metric_only=True,
-            verbose=True,
-        ),
-        lgb.log_evaluation(500),
-    ],
+MODEL_CHECK = best_model
+ID_CHECK = "contract_uid"
+DATE_CHECK = "report_date"
+features_target_check = list(MODEL_CHECK.booster_.feature_name())
+gain_target_check = pd.Series(
+    MODEL_CHECK.booster_.feature_importance(importance_type="gain"),
+    index=features_target_check,
 )
 
-# Три модели для сравнения.
-models_dec_check = {
-    'sep_dec': best_model,
-    'nov_dec': model_recent,
-    'dec': model_dec,
-}
+cols_target_check = [ID_CHECK, DATE_CHECK, TARGET] + features_target_check
+for frame, month in [(test, "2026-01"), (oot, "2026-02")]:
+    assert frame[ID_CHECK].notna().all() and frame[ID_CHECK].is_unique, month
+    assert frame[TARGET].isin([0, 1]).all(), "Нужен заполненный таргет 0/1"
+    assert pd.to_datetime(frame[DATE_CHECK]).dt.strftime("%Y-%m").eq(month).all(), month
 
-trees_dec_check = {
-    name: int(model.best_iteration_ or model.booster_.current_iteration())
-    for name, model in models_dec_check.items()
-}
+# Сначала берём нужные столбцы: широкие исходные таблицы не копируем.
+jan_target_check = test[cols_target_check].set_index(ID_CHECK)
+feb_target_check = oot[cols_target_check].set_index(ID_CHECK)
+common_target_check = jan_target_check.index.intersection(feb_target_check.index)
+assert len(common_target_check), "Нет общих контрактов"
+jan_target_check = jan_target_check.loc[common_target_check]
+feb_target_check = feb_target_check.loc[common_target_check]
 
-print('Число деревьев для сравнения:', trees_dec_check)
+print(f"Общих контрактов: {len(common_target_check):,}; признаков: {len(features_target_check)}")
+target_summary = pd.DataFrame([
+    {"sample": name, "n_contracts": len(frame), "target_pct": 100 * frame[TARGET].mean()}
+    for name, frame in [
+        ("jan_all", test), ("feb_all", oot),
+        ("jan_common", jan_target_check), ("feb_common", feb_target_check),
+    ]
+])
+display(target_summary.round(3))
 
-if trees_dec_check['dec'] > max_trees_dec - PATIENCE_DEC:
-    print(
-        'Лучший результат близок к лимиту: после него не было полных '
-        '100 итераций для проверки остановки. '
-        'Лимит мог ограничить результат.'
+# 1. Переходы таргета и фиксированные группы январского скора.
+target_pairs = pd.DataFrame({
+    "y_jan": jan_target_check[TARGET].astype(int),
+    "y_feb": feb_target_check[TARGET].astype(int),
+})
+target_pairs["score_jan"] = MODEL_CHECK.predict_proba(jan_target_check[features_target_check])[:, 1]
+target_pairs["score_feb"] = MODEL_CHECK.predict_proba(feb_target_check[features_target_check])[:, 1]
+target_pairs["transition"] = (
+    target_pairs["y_jan"].astype(str) + " -> " + target_pairs["y_feb"].astype(str)
+)
+transition_order = ["0 -> 0", "0 -> 1", "1 -> 0", "1 -> 1"]
+target_transitions = (
+    target_pairs["transition"].value_counts().reindex(transition_order, fill_value=0)
+    .rename("n_contracts").to_frame()
+)
+target_transitions["share_all_pct"] = 100 * target_transitions["n_contracts"] / len(target_pairs)
+jan_class_counts = target_pairs["y_jan"].value_counts().reindex([0, 1], fill_value=0)
+jan_class_denominators = np.repeat(jan_class_counts.to_numpy(dtype=float), 2)
+target_transitions["share_within_jan_class_pct"] = (
+    100 * target_transitions["n_contracts"].to_numpy()
+    / np.where(jan_class_denominators > 0, jan_class_denominators, np.nan)
+)
+print("1. Переходы таргета; последняя колонка — доля внутри исходного класса января:")
+display(target_transitions.round(3))
+print(f"Таргет изменился у {100 * target_pairs.y_jan.ne(target_pairs.y_feb).mean():.2f}% контрактов")
+
+# Одинаковый январский скор не разрываем между группами.
+# Поэтому при совпадающих скорах групп может быть меньше десяти.
+target_pairs["decile_jan"] = (
+    pd.qcut(-target_pairs["score_jan"], q=10, labels=False, duplicates="drop") + 1
+    if target_pairs["score_jan"].nunique() > 1 else 1
+)
+transitions_by_decile = target_pairs.groupby("decile_jan").agg(
+    n_contracts=("y_jan", "size"),
+    target_jan_pct=("y_jan", "mean"),
+    target_feb_pct=("y_feb", "mean"),
+)
+transitions_by_decile[["target_jan_pct", "target_feb_pct"]] *= 100
+transitions_by_decile["delta_target_pp"] = (
+    transitions_by_decile["target_feb_pct"] - transitions_by_decile["target_jan_pct"]
+)
+decile_transition_counts = pd.crosstab(target_pairs["decile_jan"], target_pairs["transition"])
+transitions_by_decile = transitions_by_decile.join(
+    decile_transition_counts.reindex(columns=transition_order, fill_value=0)
+    .div(transitions_by_decile["n_contracts"], axis=0).mul(100).add_suffix("_pct")
+)
+print("Фиксированные группы: 1 = максимальный январский скор; проценты внутри группы:")
+display(transitions_by_decile.round(3))
+
+def auc_target_check(y, score):
+    return roc_auc_score(y, score) if pd.Series(y).nunique() == 2 else np.nan
+
+score_target_auc = pd.DataFrame([
+    {"score": score, "target": target, "auc": auc_target_check(target_pairs[target], target_pairs[score])}
+    for score, target in [("score_jan", "y_jan"), ("score_jan", "y_feb"), ("score_feb", "y_feb")]
+])
+print("AUC одной модели на общих контрактах:")
+display(score_target_auc.round(6))
+
+# 2. Все признаки: январские значения + январский таргет,
+# февральские значения + февральский таргет.
+def profile_target_check(bucket, y, suffix):
+    out = pd.DataFrame({"bucket": np.asarray(bucket), "y": np.asarray(y)}).groupby(
+        "bucket", sort=False, dropna=False
+    ).agg(n=("y", "size"), target_pct=("y", "mean"))
+    out["target_pct"] *= 100
+    return out.add_suffix("_" + suffix)
+
+auc_rows_target_check, profiles_target_check = [], []
+numeric_target_check = []
+known_categories_target_check = set(globals().get("categorical_features", []))
+yj_check = target_pairs["y_jan"].to_numpy()
+yf_check = target_pairs["y_feb"].to_numpy()
+
+for feature in features_target_check:
+    xj, xf = jan_target_check[feature], feb_target_check[feature]
+    numeric = (
+        is_numeric_dtype(xj.dtype) and is_numeric_dtype(xf.dtype)
+        and feature not in known_categories_target_check
     )
+    if numeric:
+        numeric_target_check.append(feature)
+        vj = xj.to_numpy(dtype=float, na_value=np.nan)
+        vf = xf.to_numpy(dtype=float, na_value=np.nan)
+        valid = np.isfinite(vj) & np.isfinite(vf)
+        aj = auc_target_check(yj_check[valid], vj[valid])
+        af = auc_target_check(yf_check[valid], vf[valid])
+        auc_rows_target_check.append({
+            "feature": feature,
+            "gain_pct": 100 * gain_target_check[feature] / max(gain_target_check.sum(), 1e-12),
+            "n_pairs": int(valid.sum()),
+            "auc_jan_own_target": aj,
+            "auc_feb_own_target": af,
+            "delta_strength": abs(af - 0.5) - abs(aj - 0.5),
+            "direction_flip": (aj - 0.5) * (af - 0.5) < 0 if np.isfinite(aj) and np.isfinite(af) else pd.NA,
+        })
+        # Границы определяем ОДИН РАЗ по январю и применяем к обоим месяцам.
+        finite_jan = vj[np.isfinite(vj)]
+        cuts = np.unique(np.quantile(finite_jan, [0.2, 0.4, 0.6, 0.8])) if len(finite_jan) else []
+        edges = np.r_[-np.inf, cuts, np.inf]
+        buckets = []
+        for values in [vj, vf]:
+            b = pd.cut(pd.Series(values).where(np.isfinite(values)), edges, precision=6)
+            buckets.append(b.cat.add_categories(["MISSING/INF"]).fillna("MISSING/INF"))
+        bucket_order = buckets[0].cat.categories
+    else:
+        # Категориальным кодам не приписываем числовой порядок.
+        buckets = [x.astype("string").fillna("<MISSING>") for x in [xj, xf]]
+        bucket_order = None
 
-# В каждой строке все три модели оцениваем на одинаковых наблюдениях.
-dec_rows = []
-
-for sample_dec, frame_dec in [
-    ('train_dec', train_dec),
-    ('oos_dec', oos_dec),
-    ('jan', test),
-    ('feb', oot),
-]:
-    X_eval_dec = frame_dec[features_dec]
-    row_dec = {
-        'sample': sample_dec,
-        'n_rows': len(frame_dec),
-    }
-
-    for name_dec, model_compare_dec in models_dec_check.items():
-        pred_compare_dec = model_compare_dec.predict_proba(
-            X_eval_dec,
-            num_iteration=trees_dec_check[name_dec],
-        )[:, 1]
-
-        row_dec['auc_' + name_dec] = roc_auc_score(
-            frame_dec[TARGET], pred_compare_dec
-        )
-
-    row_dec['delta_vs_nov_dec'] = (
-        row_dec['auc_dec'] - row_dec['auc_nov_dec']
+    p = profile_target_check(buckets[0], yj_check, "jan").join(
+        profile_target_check(buckets[1], yf_check, "feb"), how="outer"
     )
-    row_dec['delta_vs_original'] = (
-        row_dec['auc_dec'] - row_dec['auc_sep_dec']
-    )
+    if bucket_order is not None:
+        p = p.reindex(bucket_order)
+    p.index.name = "bucket"
+    p[["n_jan", "n_feb"]] = p[["n_jan", "n_feb"]].fillna(0).astype(int)
+    p["delta_target_pp"] = p["target_pct_feb"] - p["target_pct_jan"]
+    p = p.reset_index()
+    p.insert(0, "feature", feature)
+    profiles_target_check.append(p)
 
-    dec_rows.append(row_dec)
+feature_target_auc = pd.DataFrame(auc_rows_target_check)
+if not feature_target_auc.empty:
+    feature_target_auc = feature_target_auc.sort_values("delta_strength")
+feature_target_bins = pd.concat(profiles_target_check, ignore_index=True)
+print("2. Числовые признаки: таргет своего месяца, одинаковые пары без пропусков:")
+display(feature_target_auc.round(6))
+print("Все интервалы и категории сохранены в feature_target_bins. Ниже — ключевые признаки:")
+features_to_show = list(dict.fromkeys(
+    ["util_current", "util_daily_max_180d", "current_limit"]
+    + gain_target_check.nlargest(3).index.tolist()
+    + [f for f in features_target_check if f not in numeric_target_check]
+))
+for feature in features_to_show:
+    table = feature_target_bins.loc[feature_target_bins["feature"].eq(feature)].drop(columns="feature")
+    if not table.empty:
+        print(feature)
+        display(table.round(3))
 
-dec_result = pd.DataFrame(dec_rows).set_index('sample')
-display(dec_result.round(6))
+# 3. Необязательная проверка непрерывного таргета.
+# raw_data: исходная таблица с contract_uid, report_date и ЧИСЛОВОЙ ДОЛЕЙ
+# будущей средней задолженности от текущего лимита (0.25 означает 25%).
+# Сопоставляем по контракту И точной дате скоринга.
+def check_continuous_target(raw_data, value_col, threshold=0.25, band=0.05):
+    assert 0 < band < threshold
+    source = raw_data[[ID_CHECK, DATE_CHECK, value_col]].copy()
+    source[DATE_CHECK] = pd.to_datetime(source[DATE_CHECK])
+    assert not source.duplicated([ID_CHECK, DATE_CHECK]).any(), "Неуникальный контракт × дата"
+    rows, bin_tables = [], []
+    edges = [-np.inf, 0, threshold-band, threshold, threshold+band, 2*threshold, 4*threshold, np.inf]
+    for month, frame in [("jan", jan_target_check), ("feb", feb_target_check)]:
+        keys = frame[[DATE_CHECK]].reset_index()
+        keys[DATE_CHECK] = pd.to_datetime(keys[DATE_CHECK])
+        data = keys.merge(source, on=[ID_CHECK, DATE_CHECK], how="left", validate="one_to_one", indicator=True)
+        values = pd.to_numeric(data[value_col], errors="raise").astype(float).replace([np.inf, -np.inf], np.nan)
+        finite = values.dropna()
+        row = {
+            "month": month, "n_contracts": len(data),
+            "matched_keys_pct": 100 * data["_merge"].eq("both").mean(),
+            "missing_or_inf_pct": 100 * values.isna().mean(),
+            "mean": finite.mean(),
+            "near_threshold_pct": 100 * finite.between(threshold-band, threshold+band).mean(),
+            "above_threshold_pct": 100 * finite.gt(threshold).mean(),
+        }
+        row.update({f"q{q:02d}": finite.quantile(q / 100) for q in [1, 5, 25, 50, 75, 95, 99]})
+        rows.append(row)
+        bucket = pd.cut(values, edges, precision=6).cat.add_categories(["MISSING/INF"]).fillna("MISSING/INF")
+        counts = bucket.value_counts(sort=False)
+        bin_tables.append(pd.DataFrame({"n_"+month: counts, "share_"+month+"_pct": 100 * counts / len(data)}))
+    summary = pd.DataFrame(rows)
+    distribution = bin_tables[0].join(bin_tables[1], how="outer")
+    print("3. Непрерывный таргет: общие контракты; near/above — среди заполненных конечных значений:")
+    display(summary.round(4))
+    display(distribution.round(3))
+    return summary, distribution
 
-del X_eval_dec, pred_compare_dec
+# Если исходная величина доступна, выполните отдельно (подставьте таблицу и колонку):
+# continuous_target_summary, continuous_target_bins = check_continuous_target(
+#     raw_data=YOUR_SOURCE_DF, value_col="YOUR_RATIO_COLUMN"
+# )
