@@ -1,6 +1,78 @@
-types_before = merged_df.dtypes.copy()
+def select_top_features(
+    data: pd.DataFrame,
+    targets: List[str],
+    eval_set: Optional[pd.DataFrame] = None,
+    n_top: int = 100,
+    categorical_features: Optional[List[str]] = None,
+    random_state: int = 42,
+    fit_params: Optional[dict] = None,
+) -> Dict[str, List[str]]:
+    """
+    Универсальная функция для отбора наиболее значимых признаков с использованием заданной модели.
 
-merged_df.to_parquet('checkpoint/merged_df.parquet')
-merged_df = pd.read_parquet('checkpoint/merged_df.parquet')
+    Параметры:
+    ----------
+    data : pd.DataFrame
+        Входной DataFrame с признаками и целевыми переменными.
+    targets : List[str]
+        Список имен целевых переменных.
+    eval_set : Optional[pd.DataFrame], default=None
+        Дополнительный набор данных для оценки.
+    n_top : int, default=10
+        Количество лучших признаков для отбора.
+    categorical_features : Optional[List[str]], default=None
+        Список категориальных признаков.
+    random_state : int, default=42
+        Seed для воспроизводимости результатов.
+    fit_params : Optional[dict], default=None
+        Дополнительные параметры для метода fit() модели.
+        Пример: {'eval_metric': 'rmse', 'verbose': True}
 
-display(types_before.compare(merged_df.dtypes))
+    Возвращает:
+    -----------
+    Dict[str, List[str]]
+        Словарь, где ключи - имена целевых переменных,
+        а значения - списки отобранных признаков для каждой целевой переменной.
+    Model
+        Обученная модель
+    """
+    model = LGBMClassifier(n_estimators=100)
+    top_features = {}
+
+    # Инициализация словаря параметров
+    if fit_params is None:
+        fit_params = {}
+
+    for target in targets:
+        # Подготовка данных
+        X = data.drop(columns=targets)
+        y = data[target]
+
+        # Определение категориальных фичей
+        if categorical_features is None:
+            categorical_features = X.select_dtypes(
+                include=["object", "category"]
+            ).columns.tolist()
+
+        # Подготовка eval_set
+        current_fit_params = fit_params.copy()
+
+        if eval_set is not None:
+            X_valid = eval_set.drop(columns=targets)
+            y_valid = eval_set[target]
+            current_fit_params["eval_set"] = [(X_valid, y_valid)]
+
+        # Обучение модели
+        model.set_params(random_state=random_state)
+        model.fit(X, y, categorical_feature=categorical_features, **current_fit_params)
+
+        # Получение важности фичей
+        importance = model.feature_importances_
+
+        # Сохранение результатов
+        top_features[target] = pd.DataFrame(
+            {"feature": X.columns, "importance": importance}
+        ).sort_values("importance", ascending=False)
+        # .head(n_top)['feature'].tolist()
+
+    return model, top_features
