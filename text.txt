@@ -1,27 +1,8 @@
- %%time
-PRESELECTION_TOP_N = 300
+keep_cols = PRIMARY_KEY + ['year_month', TARGET] + best_features
+
+train = train[keep_cols]
+test = test[keep_cols]
+oot = oot[keep_cols]
+oos = oos[keep_cols]
 
 gc.collect()
-
-model = lgb.LGBMClassifier(
-    n_estimators=100,
-    random_state=SEED,
-    force_col_wise=True,
-    histogram_pool_size=512,  # МБ: ограничение кэша гистограмм
-)
-
-model.fit(
-    train[features],
-    train[TARGET],
-    categorical_feature=list(categorical_features),
-)
-
-selected_features_100 = {
-    TARGET: (
-        pd.DataFrame({
-            'feature': features,
-            'importance': model.feature_importances_,
-        })
-        .sort_values('importance', ascending=False)
-    )
-}
