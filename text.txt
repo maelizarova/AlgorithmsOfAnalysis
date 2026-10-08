@@ -1,59 +1,131 @@
+import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from sklearn.metrics import roc_auc_score
 
-features_check = list(best_model.feature_name_)
+TOP_N_CHECK = 20
+
+gain_check = pd.Series(
+    best_model.booster_.feature_importance(importance_type='gain'),
+    index=best_model.booster_.feature_name(),
+).sort_values(ascending=False)
+
+top_check = gain_check.head(TOP_N_CHECK).index.tolist()
 
 for data_check in (test, oot):
-    assert data_check['contract_uid'].notna().all(), 'Есть пустые contract_uid'
-    assert data_check['contract_uid'].is_unique, 'Есть повторы contract_uid внутри месяца'
+    assert data_check['contract_uid'].notna().all()
+    assert data_check['contract_uid'].is_unique
 
-# Январские скоры исходной модели.
-jan_score_check = test[['contract_uid']].copy()
-jan_score_check['score_jan'] = best_model.predict_proba(
-    test[features_check]
-)[:, 1]
+# Берём только нужные столбцы и одинаковые контракты в одинаковом порядке.
+jan_check = test[['contract_uid'] + top_check].set_index('contract_uid')
+feb_check = oot[['contract_uid', TARGET] + top_check].set_index('contract_uid')
 
-# Февральские скоры и февральский таргет.
-feb_score_check = oot[['contract_uid', TARGET]].rename(
-    columns={TARGET: 'target_feb'}
-).copy()
+ids_check = jan_check.index.intersection(feb_check.index)
+assert len(ids_check) > 0, 'Нет общих контрактов'
 
-feb_score_check['score_feb'] = best_model.predict_proba(
-    oot[features_check]
-)[:, 1]
+jan_check = jan_check.loc[ids_check]
+feb_check = feb_check.loc[ids_check]
+y_check = feb_check[TARGET]
 
-# Оставляем только контракты, присутствующие в обоих месяцах.
-paired_score_check = jan_score_check.merge(
-    feb_score_check,
-    on='contract_uid',
-    how='inner',
-    validate='one_to_one',
-)
+assert y_check.isin([0, 1]).all(), 'Нужен заполненный бинарный таргет'
 
-assert len(paired_score_check) > 0, 'Нет общих контрактов'
-assert paired_score_check['target_feb'].notna().all(), 'Есть пропуски таргета'
-assert paired_score_check['target_feb'].nunique() == 2, 'Для AUC нужны оба класса'
+change_rows_check = []
+auc_rows_check = []
+category_rows_check = []
 
-# В обоих расчётах — одни и те же контракты и один февральский таргет.
-auc_jan_score = roc_auc_score(
-    paired_score_check['target_feb'],
-    paired_score_check['score_jan'],
-)
+for feature_check in top_check:
+    xj = jan_check[feature_check]
+    xf = feb_check[feature_check]
 
-auc_feb_score = roc_auc_score(
-    paired_score_check['target_feb'],
-    paired_score_check['score_feb'],
-)
+    # Два пропуска считаем одинаковыми значениями.
+    same = xj.astype(object).eq(xf.astype(object)).fillna(False)
+    same = same | (xj.isna() & xf.isna())
 
-print(f'Общих контрактов: {len(paired_score_check):,}')
+    row_check = {
+        'feature': feature_check,
+        'gain_pct': 100 * gain_check[feature_check] / gain_check.sum(),
+        'changed_pct': 100 * (~same).mean(),
+        'missing_jan_pct': 100 * xj.isna().mean(),
+        'missing_feb_pct': 100 * xf.isna().mean(),
+        'became_missing_pct': 100 * (xj.notna() & xf.isna()).mean(),
+        'median_abs_change': np.nan,
+    }
 
-display(pd.DataFrame({
-    'признаки': ['январские', 'февральские'],
-    'таргет': ['февральский', 'февральский'],
-    'auc': [auc_jan_score, auc_feb_score],
-}).round(6))
+    if is_numeric_dtype(xj.dtype) and is_numeric_dtype(xf.dtype):
+        vj = xj.to_numpy(dtype=float, na_value=np.nan)
+        vf = xf.to_numpy(dtype=float, na_value=np.nan)
 
-print(
-    'Изменение AUC при обновлении признаков: '
-    f'{auc_feb_score - auc_jan_score:+.6f}'
-)
+        # Обе версии признака сравниваем на одних и тех же строках.
+        valid = np.isfinite(vj) & np.isfinite(vf)
+
+        row_check['median_abs_change'] = (
+            np.median(np.abs(vf[valid] - vj[valid]))
+            if valid.any() else np.nan
+        )
+
+        aj = af = np.nan
+        if y_check.loc[valid].nunique() == 2:
+            aj = roc_auc_score(y_check.loc[valid], vj[valid])
+            af = roc_auc_score(y_check.loc[valid], vf[valid])
+
+        auc_rows_check.append({
+            'feature': feature_check,
+            'n_pairs': int(valid.sum()),
+            'auc_jan_values': aj,
+            'auc_feb_values': af,
+            'delta_strength': abs(af - 0.5) - abs(aj - 0.5),
+            'direction_flip': (aj - 0.5) * (af - 0.5) < 0,
+        })
+
+    else:
+        # Для категорий: частоты и доля февральского таргета.
+        parts_check = {}
+
+        for month_check, values_check in [('jan', xj), ('feb', xf)]:
+            parts_check[month_check] = (
+                pd.DataFrame({
+                    'category': values_check.astype(object),
+                    'y': y_check,
+                })
+                .groupby('category', dropna=False, sort=False)
+                .agg(n=('y', 'size'), target_rate=('y', 'mean'))
+                .add_suffix('_' + month_check)
+            )
+
+        ct_check = parts_check['jan'].join(
+            parts_check['feb'], how='outer'
+        )
+        ct_check['_volume'] = (
+            ct_check[['n_jan', 'n_feb']].fillna(0).sum(axis=1)
+        )
+
+        # Чтобы вывод не разрастался — до 10 самых частых категорий.
+        ct_check = (
+            ct_check.nlargest(10, '_volume')
+            .drop(columns='_volume')
+            .reset_index()
+        )
+        ct_check.insert(0, 'feature', feature_check)
+        category_rows_check.append(ct_check)
+
+    change_rows_check.append(row_check)
+
+feature_changes_check = pd.DataFrame(change_rows_check)
+feature_auc_check = pd.DataFrame(auc_rows_check)
+
+print(f'Общих контрактов: {len(ids_check):,}')
+
+print('1. Изменения признаков; столбцы *_pct — проценты:')
+display(feature_changes_check.round(4))
+
+if not feature_auc_check.empty:
+    feature_auc_check = feature_auc_check.sort_values('delta_strength')
+    print('2. Связь числовых признаков с одним февральским таргетом:')
+    display(feature_auc_check.round(6))
+
+if category_rows_check:
+    feature_categories_check = pd.concat(
+        category_rows_check, ignore_index=True
+    )
+    print('3. Категории; таргет в обеих версиях февральский:')
+    display(feature_categories_check.round(4))
