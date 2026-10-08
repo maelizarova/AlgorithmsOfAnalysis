@@ -1,131 +1,93 @@
-import numpy as np
 import pandas as pd
-from pandas.api.types import is_numeric_dtype
+import lightgbm as lgb
 from sklearn.metrics import roc_auc_score
 
-TOP_N_CHECK = 20
+# 1. Определяем признаки для эксперимента.
+base_features_ablation = list(best_model.feature_name_)
 
-gain_check = pd.Series(
-    best_model.booster_.feature_importance(importance_type='gain'),
-    index=best_model.booster_.feature_name(),
-).sort_values(ascending=False)
+# changed_pct измеряется в процентах:
+# исключаем признаки, изменившиеся менее чем у 0.01% общих контрактов.
+static_candidates_ablation = set(
+    feature_changes_check.loc[
+        feature_changes_check['changed_pct'] < 0.01,
+        'feature',
+    ]
+)
 
-top_check = gain_check.head(TOP_N_CHECK).index.tolist()
+removed_features_ablation = [
+    f for f in base_features_ablation
+    if f in static_candidates_ablation
+]
 
-for data_check in (test, oot):
-    assert data_check['contract_uid'].notna().all()
-    assert data_check['contract_uid'].is_unique
+features_no_static = [
+    f for f in base_features_ablation
+    if f not in static_candidates_ablation
+]
 
-# Берём только нужные столбцы и одинаковые контракты в одинаковом порядке.
-jan_check = test[['contract_uid'] + top_check].set_index('contract_uid')
-feb_check = oot[['contract_uid', TARGET] + top_check].set_index('contract_uid')
+assert removed_features_ablation, 'Не найдены признаки для исключения'
+assert features_no_static, 'После исключения не осталось признаков'
 
-ids_check = jan_check.index.intersection(feb_check.index)
-assert len(ids_check) > 0, 'Нет общих контрактов'
+print(f'Исключаем признаков: {len(removed_features_ablation)}')
+print(f'Остаётся признаков: {len(features_no_static)}')
 
-jan_check = jan_check.loc[ids_check]
-feb_check = feb_check.loc[ids_check]
-y_check = feb_check[TARGET]
+with pd.option_context('display.max_colwidth', None):
+    display(feature_changes_check.loc[
+        feature_changes_check['feature'].isin(removed_features_ablation),
+        ['feature', 'gain_pct', 'changed_pct'],
+    ])
 
-assert y_check.isin([0, 1]).all(), 'Нужен заполненный бинарный таргет'
+# 2. Оставляем прежние параметры и число деревьев.
+params_ablation = best_model.get_params().copy()
 
-change_rows_check = []
-auc_rows_check = []
-category_rows_check = []
+n_trees_ablation = int(
+    best_model.best_iteration_
+    or best_model.booster_.current_iteration()
+)
+params_ablation['n_estimators'] = n_trees_ablation
 
-for feature_check in top_check:
-    xj = jan_check[feature_check]
-    xf = feb_check[feature_check]
+# Одна новая модель, без поиска параметров и нового early stopping.
+print(f'Обучаем одну модель: {n_trees_ablation} деревьев')
 
-    # Два пропуска считаем одинаковыми значениями.
-    same = xj.astype(object).eq(xf.astype(object)).fillna(False)
-    same = same | (xj.isna() & xf.isna())
+model_no_static = lgb.LGBMClassifier(**params_ablation)
+model_no_static.fit(
+    train[features_no_static],
+    train[TARGET],
+)
 
-    row_check = {
-        'feature': feature_check,
-        'gain_pct': 100 * gain_check[feature_check] / gain_check.sum(),
-        'changed_pct': 100 * (~same).mean(),
-        'missing_jan_pct': 100 * xj.isna().mean(),
-        'missing_feb_pct': 100 * xf.isna().mean(),
-        'became_missing_pct': 100 * (xj.notna() & xf.isna()).mean(),
-        'median_abs_change': np.nan,
-    }
+# 3. Сравниваем обе модели на одинаковых выборках.
+ablation_rows = []
 
-    if is_numeric_dtype(xj.dtype) and is_numeric_dtype(xf.dtype):
-        vj = xj.to_numpy(dtype=float, na_value=np.nan)
-        vf = xf.to_numpy(dtype=float, na_value=np.nan)
+for sample_ablation, frame_ablation in [
+    ('train', train),
+    ('oos', oos),
+    ('jan', test),
+    ('feb', oot),
+]:
+    pred_base_ablation = best_model.predict_proba(
+        frame_ablation[base_features_ablation],
+        num_iteration=n_trees_ablation,
+    )[:, 1]
 
-        # Обе версии признака сравниваем на одних и тех же строках.
-        valid = np.isfinite(vj) & np.isfinite(vf)
+    pred_new_ablation = model_no_static.predict_proba(
+        frame_ablation[features_no_static]
+    )[:, 1]
 
-        row_check['median_abs_change'] = (
-            np.median(np.abs(vf[valid] - vj[valid]))
-            if valid.any() else np.nan
-        )
-
-        aj = af = np.nan
-        if y_check.loc[valid].nunique() == 2:
-            aj = roc_auc_score(y_check.loc[valid], vj[valid])
-            af = roc_auc_score(y_check.loc[valid], vf[valid])
-
-        auc_rows_check.append({
-            'feature': feature_check,
-            'n_pairs': int(valid.sum()),
-            'auc_jan_values': aj,
-            'auc_feb_values': af,
-            'delta_strength': abs(af - 0.5) - abs(aj - 0.5),
-            'direction_flip': (aj - 0.5) * (af - 0.5) < 0,
-        })
-
-    else:
-        # Для категорий: частоты и доля февральского таргета.
-        parts_check = {}
-
-        for month_check, values_check in [('jan', xj), ('feb', xf)]:
-            parts_check[month_check] = (
-                pd.DataFrame({
-                    'category': values_check.astype(object),
-                    'y': y_check,
-                })
-                .groupby('category', dropna=False, sort=False)
-                .agg(n=('y', 'size'), target_rate=('y', 'mean'))
-                .add_suffix('_' + month_check)
-            )
-
-        ct_check = parts_check['jan'].join(
-            parts_check['feb'], how='outer'
-        )
-        ct_check['_volume'] = (
-            ct_check[['n_jan', 'n_feb']].fillna(0).sum(axis=1)
-        )
-
-        # Чтобы вывод не разрастался — до 10 самых частых категорий.
-        ct_check = (
-            ct_check.nlargest(10, '_volume')
-            .drop(columns='_volume')
-            .reset_index()
-        )
-        ct_check.insert(0, 'feature', feature_check)
-        category_rows_check.append(ct_check)
-
-    change_rows_check.append(row_check)
-
-feature_changes_check = pd.DataFrame(change_rows_check)
-feature_auc_check = pd.DataFrame(auc_rows_check)
-
-print(f'Общих контрактов: {len(ids_check):,}')
-
-print('1. Изменения признаков; столбцы *_pct — проценты:')
-display(feature_changes_check.round(4))
-
-if not feature_auc_check.empty:
-    feature_auc_check = feature_auc_check.sort_values('delta_strength')
-    print('2. Связь числовых признаков с одним февральским таргетом:')
-    display(feature_auc_check.round(6))
-
-if category_rows_check:
-    feature_categories_check = pd.concat(
-        category_rows_check, ignore_index=True
+    auc_base_ablation = roc_auc_score(
+        frame_ablation[TARGET], pred_base_ablation
     )
-    print('3. Категории; таргет в обеих версиях февральский:')
-    display(feature_categories_check.round(4))
+    auc_new_ablation = roc_auc_score(
+        frame_ablation[TARGET], pred_new_ablation
+    )
+
+    ablation_rows.append({
+        'sample': sample_ablation,
+        'n_rows': len(frame_ablation),
+        'auc_original': auc_base_ablation,
+        'auc_no_static': auc_new_ablation,
+        'delta': auc_new_ablation - auc_base_ablation,
+    })
+
+ablation_result = pd.DataFrame(ablation_rows).set_index('sample')
+display(ablation_result.round(6))
+
+del pred_base_ablation, pred_new_ablation
