@@ -1,44 +1,37 @@
-# Используем только признаки текущей модели и служебные колонки.
-features_once = list(best_model.feature_name_)
-cols_once = list(dict.fromkeys(
-    PRIMARY_KEY + ['year_month', TARGET] + features_once
-))
+model_once = lgb.LGBMClassifier(**best_model.get_params())
 
-dev_once = pd.concat(
-    [train[cols_once], oos[cols_once]],
-    ignore_index=True,
+model_once.fit(
+    train_once[features_once],
+    train_once[TARGET],
 )
 
-assert dev_once['contract_uid'].notna().all()
-assert (
-    (dev_once['report_date'] >= '2025-09-01')
-    & (dev_once['report_date'] < '2026-01-01')
-).all(), 'В train/oos есть строки вне сентября–декабря'
+metrics_once = []
 
-# Выбор строки контракта не зависит от таргета.
-dev_once = (
-    dev_once.sample(frac=1, random_state=SEED)
-    .drop_duplicates('contract_uid', keep='first')
-    .reset_index(drop=True)
-)
+for label, frame in [
+    ('train_once', train_once),
+    ('oos_once', oos_once),
+    ('январь', test),
+]:
+    pred_once = model_once.predict_proba(frame[features_once])[:, 1]
 
-# OOS: около 20%, с сохранением пропорций месяцев и классов.
-oos_once = dev_once.groupby(
-    [dev_once['report_date'].dt.to_period('M'), TARGET],
-    observed=True,
-    sort=True,
-).sample(frac=0.20, random_state=SEED)
+    metrics_once.append({
+        'model': 'одна строка на контракт',
+        'sample': label,
+        'n_rows': len(frame),
+        'auc': roc_auc_score(frame[TARGET], pred_once),
+    })
 
-train_once = dev_once.drop(index=oos_once.index)
+# Исходная модель — на том же январе.
+pred_old_jan = best_model.predict_proba(test[features_once])[:, 1]
 
-assert not train_once['contract_uid'].isin(
-    oos_once['contract_uid']
-).any()
+metrics_once.append({
+    'model': 'исходная',
+    'sample': 'январь',
+    'n_rows': len(test),
+    'auc': roc_auc_score(test[TARGET], pred_old_jan),
+})
 
-print(f'Строк было: {len(train) + len(oos):,}')
-print(f'Уникальных контрактов: {len(dev_once):,}')
-print(f'Новый train: {len(train_once):,}')
-print(f'Новый OOS: {len(oos_once):,}')
+display(pd.DataFrame(metrics_once).round({'auc': 6}))
 
-del dev_once
+del pred_once, pred_old_jan
 gc.collect()
