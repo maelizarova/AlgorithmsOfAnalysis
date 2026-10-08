@@ -2,51 +2,51 @@ import pandas as pd
 import lightgbm as lgb
 from sklearn.metrics import roc_auc_score
 
-# Все признаки исходной модели, включая ранее исключавшийся блок.
-features_recent = list(best_model.feature_name_)
-assert len(features_recent) == 40, (
-    'Проверь: best_model должна быть исходной моделью с 40 признаками'
+# Все признаки исходной модели.
+features_dec = list(best_model.feature_name_)
+
+assert len(features_dec) == 40, (
+    'Нужна исходная best_model с 40 признаками'
+)
+assert list(model_recent.feature_name_) == features_dec, (
+    'У модели ноября–декабря должен быть тот же список признаков'
 )
 
-# Ограничиваем существующие train/OOS ноябрём–декабрём.
-train_recent = train.loc[
-    (train['report_date'] >= '2025-11-01')
+# Декабрьская часть существующих train/OOS.
+train_dec = train.loc[
+    (train['report_date'] >= '2025-12-01')
     & (train['report_date'] < '2026-01-01')
 ]
 
-oos_recent = oos.loc[
-    (oos['report_date'] >= '2025-11-01')
+oos_dec = oos.loc[
+    (oos['report_date'] >= '2025-12-01')
     & (oos['report_date'] < '2026-01-01')
 ]
 
-assert not train_recent.empty and not oos_recent.empty, (
-    'Нет строк ноября–декабря'
-)
+assert not train_dec.empty and not oos_dec.empty, 'Нет декабрьских строк'
 
-# Остальные параметры берём у исходной модели.
-params_recent = best_model.get_params().copy()
-params_recent['metric'] = 'auc'
+params_dec = best_model.get_params().copy()
+params_dec['metric'] = 'auc'
 
-max_trees_recent = int(params_recent['n_estimators'])
-PATIENCE_RECENT = 100
+max_trees_dec = int(params_dec['n_estimators'])
+PATIENCE_DEC = 100
 
-print(f'Признаков: {len(features_recent)}')
-print(f'Train ноября–декабря: {len(train_recent):,}')
-print(f'OOS ноября–декабря: {len(oos_recent):,}')
-print(f'Верхний предел деревьев: {max_trees_recent}')
+print(f'Train декабря: {len(train_dec):,}')
+print(f'OOS декабря: {len(oos_dec):,}')
+print(f'Признаков: {len(features_dec)}; максимум деревьев: {max_trees_dec}')
 
-# Одно новое обучение; ранняя остановка только по январю.
-model_recent = lgb.LGBMClassifier(**params_recent)
+# Одно новое обучение. Для ранней остановки — только январь.
+model_dec = lgb.LGBMClassifier(**params_dec)
 
-model_recent.fit(
-    train_recent[features_recent],
-    train_recent[TARGET],
-    eval_set=[(test[features_recent], test[TARGET])],
+model_dec.fit(
+    train_dec[features_dec],
+    train_dec[TARGET],
+    eval_set=[(test[features_dec], test[TARGET])],
     eval_names=['jan'],
     eval_metric='auc',
     callbacks=[
         lgb.early_stopping(
-            PATIENCE_RECENT,
+            PATIENCE_DEC,
             first_metric_only=True,
             verbose=True,
         ),
@@ -54,59 +54,62 @@ model_recent.fit(
     ],
 )
 
-trees_recent = int(
-    model_recent.best_iteration_
-    or model_recent.booster_.current_iteration()
-)
-trees_original_recent = int(
-    best_model.best_iteration_
-    or best_model.booster_.current_iteration()
-)
+# Три модели для сравнения.
+models_dec_check = {
+    'sep_dec': best_model,
+    'nov_dec': model_recent,
+    'dec': model_dec,
+}
 
-print(f'Выбрано деревьев для новой модели: {trees_recent}')
+trees_dec_check = {
+    name: int(model.best_iteration_ or model.booster_.current_iteration())
+    for name, model in models_dec_check.items()
+}
 
-if trees_recent > max_trees_recent - PATIENCE_RECENT:
+print('Число деревьев для сравнения:', trees_dec_check)
+
+if trees_dec_check['dec'] > max_trees_dec - PATIENCE_DEC:
     print(
         'Лучший результат близок к лимиту: после него не было полных '
         '100 итераций для проверки остановки. '
         'Лимит мог ограничить результат.'
     )
 
-# Обе модели оцениваем на одинаковых наблюдениях.
-recent_rows = []
+# В каждой строке все три модели оцениваем на одинаковых наблюдениях.
+dec_rows = []
 
-for sample_recent, frame_recent in [
-    ('train_nov_dec', train_recent),
-    ('oos_nov_dec', oos_recent),
+for sample_dec, frame_dec in [
+    ('train_dec', train_dec),
+    ('oos_dec', oos_dec),
     ('jan', test),
     ('feb', oot),
 ]:
-    pred_original_recent = best_model.predict_proba(
-        frame_recent[features_recent],
-        num_iteration=trees_original_recent,
-    )[:, 1]
+    X_eval_dec = frame_dec[features_dec]
+    row_dec = {
+        'sample': sample_dec,
+        'n_rows': len(frame_dec),
+    }
 
-    pred_recent = model_recent.predict_proba(
-        frame_recent[features_recent],
-        num_iteration=trees_recent,
-    )[:, 1]
+    for name_dec, model_compare_dec in models_dec_check.items():
+        pred_compare_dec = model_compare_dec.predict_proba(
+            X_eval_dec,
+            num_iteration=trees_dec_check[name_dec],
+        )[:, 1]
 
-    auc_original_recent = roc_auc_score(
-        frame_recent[TARGET], pred_original_recent
+        row_dec['auc_' + name_dec] = roc_auc_score(
+            frame_dec[TARGET], pred_compare_dec
+        )
+
+    row_dec['delta_vs_nov_dec'] = (
+        row_dec['auc_dec'] - row_dec['auc_nov_dec']
     )
-    auc_recent = roc_auc_score(
-        frame_recent[TARGET], pred_recent
+    row_dec['delta_vs_original'] = (
+        row_dec['auc_dec'] - row_dec['auc_sep_dec']
     )
 
-    recent_rows.append({
-        'sample': sample_recent,
-        'n_rows': len(frame_recent),
-        'auc_original': auc_original_recent,
-        'auc_nov_dec': auc_recent,
-        'delta': auc_recent - auc_original_recent,
-    })
+    dec_rows.append(row_dec)
 
-recent_result = pd.DataFrame(recent_rows).set_index('sample')
-display(recent_result.round(6))
+dec_result = pd.DataFrame(dec_rows).set_index('sample')
+display(dec_result.round(6))
 
-del pred_original_recent, pred_recent
+del X_eval_dec, pred_compare_dec
