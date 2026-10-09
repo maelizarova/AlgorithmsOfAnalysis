@@ -1,232 +1,179 @@
-# Одна самостоятельная ячейка. Нужны исходные train, oos, test, oot,
-# best_model и TARGET. test = январь, oot = февраль.
-# Все месяцы анализируем отдельно; полную широкую таблицу не объединяем.
+# Одна ячейка после предыдущих проверок. Нужны sample_check, test, oot,
+# best_model, TARGET. Модели не переобучаются, исходные фреймы не меняются.
+# target = будущая средняя задолженность; current_limit = лимит для target_25.
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_numeric_dtype
 from sklearn.metrics import roc_auc_score
 from IPython.display import display
 
-model_monthly_check = best_model
-features_monthly_check = list(model_monthly_check.booster_.feature_name())
-parts_monthly_check = [("train", train), ("oos", oos), ("jan", test), ("feb", oot)]
-months_monthly_check = pd.period_range("2025-09", "2026-02", freq="M").astype(str).tolist()
-gain_monthly_check = pd.Series(
-    model_monthly_check.booster_.feature_importance(importance_type="gain"),
-    index=features_monthly_check,
-)
+FLIP_THRESHOLD = 0.25
+FLIP_BAND = 0.05
+FLIP_DEBT_COL = "target"
+FLIP_LIMIT_COL = "current_limit"
+FLIP_KEYS = ["contract_uid", "report_date"]
 
-# Объединяем только ключи, дату и таргет; признаки далее читаем по одному.
-meta_monthly_check = pd.concat([
-    frame[["contract_uid", "client_did", "report_date", TARGET]].assign(source=name)
-    for name, frame in parts_monthly_check
-], ignore_index=True)
-meta_monthly_check["report_date"] = pd.to_datetime(meta_monthly_check["report_date"])
-meta_monthly_check["month"] = meta_monthly_check["report_date"].dt.strftime("%Y-%m")
-assert meta_monthly_check[["contract_uid", "report_date", TARGET]].notna().all().all()
-assert meta_monthly_check[TARGET].isin([0, 1]).all(), "Нужен бинарный таргет"
-assert set(meta_monthly_check["month"]) == set(months_monthly_check), "Ожидались сентябрь–февраль"
-assert not meta_monthly_check.duplicated(["contract_uid", "month"]).any(), "Повтор контракта внутри месяца"
-assert meta_monthly_check.loc[meta_monthly_check.source.isin(["train", "oos"]), "month"].lt("2026-01").all()
-assert meta_monthly_check.loc[meta_monthly_check.source.eq("jan"), "month"].eq("2026-01").all()
-assert meta_monthly_check.loc[meta_monthly_check.source.eq("feb"), "month"].eq("2026-02").all()
-indices_monthly_check = {
-    month: meta_monthly_check.index[meta_monthly_check["month"].eq(month)].to_numpy()
-    for month in months_monthly_check
+# Копируем только ключи и две величины, а не всю таблицу с признаками.
+raw_flip_check = sample_check[FLIP_KEYS + [FLIP_DEBT_COL, FLIP_LIMIT_COL]].copy()
+raw_flip_check["report_date"] = pd.to_datetime(raw_flip_check["report_date"])
+raw_flip_check = raw_flip_check.loc[
+    raw_flip_check["report_date"].ge("2026-01-01")
+    & raw_flip_check["report_date"].lt("2026-03-01")
+].rename(columns={FLIP_DEBT_COL: "future_debt", FLIP_LIMIT_COL: "limit"})
+for col in ["future_debt", "limit"]:
+    raw_flip_check[col] = raw_flip_check[col].astype("float64")
+assert not raw_flip_check.duplicated(FLIP_KEYS).any(), "Повтор контракт × дата в sample_check"
+
+sides_flip_check = []
+for month, frame in [("2026-01", test), ("2026-02", oot)]:
+    base = frame[FLIP_KEYS + [TARGET]].copy()
+    base["report_date"] = pd.to_datetime(base["report_date"])
+    assert base["report_date"].dt.strftime("%Y-%m").eq(month).all()
+    assert base["contract_uid"].notna().all() and base["contract_uid"].is_unique
+    assert base[TARGET].isin([0, 1]).all()
+    side = base.merge(raw_flip_check, on=FLIP_KEYS, how="left", validate="one_to_one", indicator=True)
+    assert side["_merge"].eq("both").all(), f"Не все ключи найдены в sample_check: {month}"
+    sides_flip_check.append(side.drop(columns="_merge").rename(columns={TARGET: "y"}).set_index("contract_uid"))
+
+# Одинаковые контракты, исходные бинарные метки сохраняем.
+flip_pairs = sides_flip_check[0].join(sides_flip_check[1], how="inner", lsuffix="_jan", rsuffix="_feb")
+assert len(flip_pairs), "Нет общих контрактов"
+flip_pairs["transition"] = flip_pairs.y_jan.astype(int).astype(str) + " -> " + flip_pairs.y_feb.astype(int).astype(str)
+for month in ["jan", "feb"]:
+    valid = (
+        np.isfinite(flip_pairs["future_debt_" + month])
+        & np.isfinite(flip_pairs["limit_" + month])
+        & flip_pairs["limit_" + month].gt(0)
+    )
+    flip_pairs["ratio_" + month] = (
+        flip_pairs["future_debt_" + month] / flip_pairs["limit_" + month].where(valid)
+    )
+flip_pairs["valid_ratios"] = np.isfinite(flip_pairs.ratio_jan) & np.isfinite(flip_pairs.ratio_feb)
+
+features_flip_check = list(best_model.booster_.feature_name())
+for month, frame in [("jan", test), ("feb", oot)]:
+    positions = pd.Index(frame["contract_uid"]).get_indexer(flip_pairs.index)
+    assert (positions >= 0).all()
+    flip_pairs["score_" + month] = best_model.predict_proba(frame[features_flip_check].iloc[positions])[:, 1]
+
+flip_pairs["ratio_delta"] = flip_pairs.ratio_feb - flip_pairs.ratio_jan
+flip_pairs["debt_delta"] = flip_pairs.future_debt_feb - flip_pairs.future_debt_jan
+flip_pairs["limit_delta_pct"] = 100 * (flip_pairs.limit_feb / flip_pairs.limit_jan.where(flip_pairs.limit_jan > 0) - 1)
+for month in ["jan", "feb"]:
+    flip_pairs["top20_" + month] = flip_pairs["score_" + month].ge(flip_pairs["score_" + month].quantile(.8))
+
+transition_order_flip_check = ["0 -> 0", "0 -> 1", "1 -> 0", "1 -> 1"]
+flip_summary = flip_pairs.groupby("transition").agg(
+    n_contracts=("y_jan", "size"),
+    ratio_jan_median=("ratio_jan", "median"), ratio_feb_median=("ratio_feb", "median"),
+    ratio_delta_median=("ratio_delta", "median"),
+    score_jan_mean=("score_jan", "mean"), score_feb_mean=("score_feb", "mean"),
+    top20_jan_pct=("top20_jan", "mean"), top20_feb_pct=("top20_feb", "mean"),
+).reindex(transition_order_flip_check)
+flip_summary["n_contracts"] = flip_summary["n_contracts"].fillna(0).astype(int)
+flip_summary[["top20_jan_pct", "top20_feb_pct"]] *= 100
+print(f"Общих контрактов: {len(flip_pairs):,}. 1. Все переходы для сравнения:")
+display(flip_summary.round(4))
+
+# Проверяем соответствие отношения исходной бинарной метке.
+# Редкие расхождения на границе не меняем автоматически.
+rule_rows_flip_check = []
+for month in ["jan", "feb"]:
+    valid = np.isfinite(flip_pairs["ratio_" + month])
+    mismatch = flip_pairs.loc[valid, "ratio_" + month].gt(FLIP_THRESHOLD).ne(flip_pairs.loc[valid, "y_" + month])
+    rule_rows_flip_check.append({"month": month, "n_valid": int(valid.sum()),
+                                 "n_rule_mismatches": int(mismatch.sum()), "mismatch_pct": 100*mismatch.mean()})
+flip_rule_check = pd.DataFrame(rule_rows_flip_check)
+display(flip_rule_check.round(5))
+
+# 2. Подробно исследуем реальные 1 -> 0.
+flips_10_check = flip_pairs.loc[flip_pairs.transition.eq("1 -> 0")].copy()
+valid_10_check = flips_10_check.loc[flips_10_check.valid_ratios].copy()
+print(f"2. Переходов 1 -> 0: {len(flips_10_check):,}; с корректными отношениями: {len(valid_10_check):,}")
+flip_value_quantiles = valid_10_check[[
+    "ratio_jan", "ratio_feb", "ratio_delta", "future_debt_jan", "future_debt_feb", "debt_delta",
+    "limit_jan", "limit_feb", "limit_delta_pct",
+]].quantile([.1, .5, .9]).T.rename(columns={.1: "q10", .5: "median", .9: "q90"})
+display(flip_value_quantiles.round(4))
+
+near_jan_flip_check = valid_10_check.ratio_jan.between(FLIP_THRESHOLD-FLIP_BAND, FLIP_THRESHOLD+FLIP_BAND)
+near_feb_flip_check = valid_10_check.ratio_feb.between(FLIP_THRESHOLD-FLIP_BAND, FLIP_THRESHOLD+FLIP_BAND)
+conditions_flip_check = {
+    "Оба значения в диапазоне 0.20–0.30": near_jan_flip_check & near_feb_flip_check,
+    "Хотя бы одно значение в диапазоне 0.20–0.30": near_jan_flip_check | near_feb_flip_check,
+    "Январское отношение > 0.50, февральское <= 0.25": valid_10_check.ratio_jan.gt(.5) & valid_10_check.ratio_feb.le(FLIP_THRESHOLD),
+    "Будущая средняя задолженность уменьшилась": valid_10_check.debt_delta.lt(0),
+    "Лимит на дату скоринга вырос": valid_10_check.limit_feb.gt(valid_10_check.limit_jan),
 }
-y_monthly_check = meta_monthly_check[TARGET].to_numpy(dtype=int)
+flip_ratio_details = pd.DataFrame([
+    {"condition": name, "n_contracts": int(mask.sum()), "share_valid_flips_pct": 100*mask.mean()}
+    for name, mask in conditions_flip_check.items()
+]).set_index("condition")
+print("Условия могут пересекаться; проценты считаются внутри 1 -> 0 с корректными отношениями:")
+display(flip_ratio_details.round(3))
 
-def auc_monthly_check(y, score):
-    return roc_auc_score(y, score) if np.unique(y).size == 2 else np.nan
+# 3. Арифметика порога: меняем по одному компоненту отношения.
+# Это НЕ причинная оценка эффекта выдачи лимита или изменения поведения.
+# Будущие долги относятся к разным окнам дней 151–180 после дат скоринга.
+mechanism_input_flip_check = valid_10_check.loc[
+    valid_10_check.ratio_jan.gt(FLIP_THRESHOLD) & valid_10_check.ratio_feb.le(FLIP_THRESHOLD)
+].copy()
+debt_only_flip_check = (mechanism_input_flip_check.future_debt_feb / mechanism_input_flip_check.limit_jan).le(FLIP_THRESHOLD)
+limit_only_flip_check = (mechanism_input_flip_check.future_debt_jan / mechanism_input_flip_check.limit_feb).le(FLIP_THRESHOLD)
+mechanism_masks_flip_check = {
+    "Только изменения будущего долга отдельно достаточно": debt_only_flip_check & ~limit_only_flip_check,
+    "Только изменения лимита отдельно достаточно": ~debt_only_flip_check & limit_only_flip_check,
+    "Каждого изменения отдельно достаточно": debt_only_flip_check & limit_only_flip_check,
+    "Порог пересекается только при совместном изменении": ~debt_only_flip_check & ~limit_only_flip_check,
+}
+flip_mechanisms = pd.DataFrame([
+    {"mechanism": name, "n_contracts": int(mask.sum()), "share_analyzed_flips_pct": 100*mask.mean()}
+    for name, mask in mechanism_masks_flip_check.items()
+]).set_index("mechanism")
+print(f"3. Разложение пересечения порога; учтено {len(mechanism_input_flip_check):,} контрактов:")
+display(flip_mechanisms.round(3))
 
-# 1. Объём и таргет: все строки каждого месяца, включая train и OOS.
-monthly_target_summary = meta_monthly_check.groupby("month").agg(
-    n_contracts=("contract_uid", "size"),
-    n_clients=("client_did", "nunique"),
-    target_pct=(TARGET, "mean"),
-)
-monthly_target_summary["target_pct"] *= 100
-monthly_target_summary["delta_target_pp"] = monthly_target_summary["target_pct"].diff()
-print("1. Состав и доля таргета по месяцам:")
-display(monthly_target_summary.round(3))
+# 4. Как новые нули ранжируются относительно ОДНОЙ группы февральских единиц.
+# Внутри группы 1 -> 0 AUC не определён: все февральские метки равны нулю.
+# Поэтому сравниваем с общим пулом февральских положительных исходов.
+positive_flip_check = flip_pairs.y_feb.eq(1)
+n_negative_flip_check = int(flip_pairs.y_feb.eq(0).sum())
+auc_rows_flip_check = []
+def safe_auc_flip_check(y, score):
+    return roc_auc_score(y, score) if y.nunique() == 2 else np.nan
 
-# AUC модели: для сентября–декабря только исходный OOS.
-# Модель не обучаем. Предсказываем на исходных фреймах, сохраняя типы категорий.
-model_rows_monthly_check = []
-for name, frame in parts_monthly_check:
-    if name == "train":
-        continue
-    score = model_monthly_check.predict_proba(frame[features_monthly_check])[:, 1]
-    positions = np.flatnonzero(meta_monthly_check.source.eq(name).to_numpy())
-    for month in months_monthly_check:
-        mask = meta_monthly_check.iloc[positions]["month"].eq(month).to_numpy()
-        if mask.any():
-            model_rows_monthly_check.append({
-                "month": month, "sample": {"oos": "OOS", "jan": "validation", "feb": "OOT"}[name],
-                "n_rows": int(mask.sum()),
-                "auc": auc_monthly_check(y_monthly_check[positions][mask], score[mask]),
-            })
-monthly_model_auc = pd.DataFrame(model_rows_monthly_check).set_index("month").sort_index()
-print("AUC одной исходной модели: OOS → январская валидация → февраль:")
-display(monthly_model_auc.round(6))
-
-# 2. Каждый переход — на общих контрактах ДВУХ соседних месяцев.
-# Пересечение всех шести месяцев не требуется.
-pair_indices_monthly_check = []
-transition_rows_monthly_check, pair_rows_monthly_check = [], []
-for before, after in zip(months_monthly_check[:-1], months_monthly_check[1:]):
-    lookups = []
-    for month in [before, after]:
-        idx = indices_monthly_check[month]
-        lookups.append(pd.Series(idx, index=meta_monthly_check.iloc[idx]["contract_uid"]))
-    common = lookups[0].index.intersection(lookups[1].index)
-    assert len(common), f"Нет общих контрактов: {before} → {after}"
-    ia, ib = [lookup.loc[common].to_numpy() for lookup in lookups]
-    pair = f"{before} → {after}"
-    pair_indices_monthly_check.append((pair, ia, ib))
-    ya, yb = y_monthly_check[ia], y_monthly_check[ib]
-    n01 = int(((ya == 0) & (yb == 1)).sum())
-    n10 = int(((ya == 1) & (yb == 0)).sum())
-    pair_rows_monthly_check.append({
-        "pair": pair, "n_common": len(common),
-        "common_before_pct": 100 * len(common) / len(lookups[0]),
-        "common_after_pct": 100 * len(common) / len(lookups[1]),
-        "target_before_pct": 100 * ya.mean(), "target_after_pct": 100 * yb.mean(),
-        "changed_pct": 100 * (ya != yb).mean(),
-        "n_0_to_1": n01, "n_1_to_0": n10,
-        "new_negatives_pct": 100 * n10 / (yb == 0).sum() if (yb == 0).any() else np.nan,
+for transition in ["0 -> 0", "1 -> 0"]:
+    negative = flip_pairs.transition.eq(transition)
+    mask = positive_flip_check | negative
+    auc_rows_flip_check.append({
+        "negative_group": transition, "n_negative": int(negative.sum()),
+        "share_feb_negatives_pct": 100*negative.sum()/n_negative_flip_check if n_negative_flip_check else np.nan,
+        "auc_jan_score": safe_auc_flip_check(flip_pairs.loc[mask, "y_feb"], flip_pairs.loc[mask, "score_jan"]),
+        "auc_feb_score": safe_auc_flip_check(flip_pairs.loc[mask, "y_feb"], flip_pairs.loc[mask, "score_feb"]),
     })
-    for a, b in [(0, 0), (0, 1), (1, 0), (1, 1)]:
-        count = int(((ya == a) & (yb == b)).sum())
-        class_n = int((ya == a).sum())
-        transition_rows_monthly_check.append({
-            "pair": pair, "transition": f"{a} → {b}", "n_contracts": count,
-            "share_all_pct": 100 * count / len(common),
-            "share_within_before_class_pct": 100 * count / class_n if class_n else np.nan,
-        })
-monthly_transition_summary = pd.DataFrame(pair_rows_monthly_check).set_index("pair")
-monthly_target_transitions = pd.DataFrame(transition_rows_monthly_check)
-print("2. Переходы на общих контрактах. new_negatives_pct: доля бывших единиц среди нулей следующего месяца:")
-display(monthly_transition_summary[[
-    "n_common", "target_before_pct", "target_after_pct", "changed_pct",
-    "n_0_to_1", "n_1_to_0", "new_negatives_pct",
-]].round(3))
-# Подробности четырёх переходов: display(monthly_target_transitions.round(3))
+flip_negative_auc = pd.DataFrame(auc_rows_flip_check).set_index("negative_group")
+print("4. В обоих сравнениях используются все февральские единицы общих контрактов:")
+display(flip_negative_auc.round(6))
 
-# 3. Все признаки и таргет СВОЕГО месяца.
-# AUC отдельно на полном месяце и на одинаковых парах соседних месяцев.
-# Это описание связи в данных; выбранные признаки не считаются независимым тестом модели.
-auc_rows_monthly_check, paired_rows_monthly_check, bin_rows_monthly_check = [], [], []
-categories_monthly_check = set(globals().get("categorical_features", []))
-for feature in features_monthly_check:
-    numeric = feature not in categories_monthly_check and all(
-        is_numeric_dtype(frame[feature].dtype) for _, frame in parts_monthly_check
-    )
-    values = pd.concat([frame[feature] for _, frame in parts_monthly_check], ignore_index=True)
-    gain_pct = 100 * gain_monthly_check[feature] / max(gain_monthly_check.sum(), 1e-12)
-    if numeric:
-        v = values.to_numpy(dtype=float, na_value=np.nan)
-        # ОДНИ границы по сентябрю для всех шести месяцев.
-        base = v[indices_monthly_check["2025-09"]]
-        base = base[np.isfinite(base)]
-        cuts = np.unique(np.quantile(base, [0.2, 0.4, 0.6, 0.8])) if len(base) else []
-        edges = np.r_[-np.inf, cuts, np.inf]
-        for pair, ia, ib in pair_indices_monthly_check:
-            valid = np.isfinite(v[ia]) & np.isfinite(v[ib])
-            aa = auc_monthly_check(y_monthly_check[ia][valid], v[ia][valid])
-            ab = auc_monthly_check(y_monthly_check[ib][valid], v[ib][valid])
-            paired_rows_monthly_check.append({
-                "feature": feature, "pair": pair, "n_pairs": int(valid.sum()),
-                "auc_before": aa, "auc_after": ab,
-                "delta_strength": abs(ab - .5) - abs(aa - .5),
-                "direction_flip": (aa-.5)*(ab-.5) < 0 if np.isfinite(aa) and np.isfinite(ab) else pd.NA,
-            })
-    else:
-        values = values.astype("string").fillna("<MISSING>")
+auc_common_feb_flip_check = safe_auc_flip_check(flip_pairs.y_feb, flip_pairs.score_feb)
+if positive_flip_check.any() and n_negative_flip_check:
+    weighted_auc_flip_check = (
+        flip_negative_auc["auc_feb_score"] * flip_negative_auc["n_negative"]
+    ).sum() / n_negative_flip_check
+    assert np.isclose(weighted_auc_flip_check, auc_common_feb_flip_check), "Не сошлось разложение AUC"
+    print(f"Февральский AUC на всех общих контрактах: {auc_common_feb_flip_check:.6f}")
+    print(f"Взвешенная сумма двух сравнений:           {weighted_auc_flip_check:.6f}")
+    print("Это разложение февральской метрики, а не оценка причины разницы между январём и февралём.")
 
-    for month, idx in indices_monthly_check.items():
-        if numeric:
-            finite = np.isfinite(v[idx])
-            auc_rows_monthly_check.append({
-                "feature": feature, "month": month, "gain_pct": gain_pct,
-                "n_valid": int(finite.sum()), "missing_or_inf_pct": 100 * (~finite).mean(),
-                "auc": auc_monthly_check(y_monthly_check[idx][finite], v[idx][finite]),
-            })
-            bucket = pd.cut(pd.Series(v[idx]).where(finite), edges, precision=6)
-            bucket = bucket.cat.add_categories(["MISSING/INF"]).fillna("MISSING/INF")
-        else:
-            bucket = values.iloc[idx].reset_index(drop=True)
-        profile = pd.DataFrame({"bucket": bucket, "y": y_monthly_check[idx]}).groupby(
-            "bucket", observed=True, sort=False, dropna=False
-        ).agg(n_rows=("y", "size"), target_pct=("y", "mean")).reset_index()
-        profile["target_pct"] *= 100
-        profile["share_rows_pct"] = 100 * profile["n_rows"] / len(idx)
-        profile["feature"], profile["month"] = feature, month
-        bin_rows_monthly_check.append(profile)
-
-monthly_feature_auc = pd.DataFrame(auc_rows_monthly_check)
-paired_feature_auc = pd.DataFrame(paired_rows_monthly_check)
-monthly_feature_bins = pd.concat(bin_rows_monthly_check, ignore_index=True)
-monthly_feature_auc_wide = pd.DataFrame()
-if not monthly_feature_auc.empty:
-    monthly_feature_auc_wide = monthly_feature_auc.pivot(index="feature", columns="month", values="auc")
-    order = gain_monthly_check.sort_values(ascending=False).index.intersection(monthly_feature_auc_wide.index, sort=False)
-    monthly_feature_auc_wide = monthly_feature_auc_wide.reindex(order)
-print("3. AUC числовых признаков с таргетом своего месяца; все контракты месяца:")
-display(monthly_feature_auc_wide.round(6))
-print("Изменение силы связи на общих контрактах соседних месяцев (отрицательное = ослабление):")
-if not paired_feature_auc.empty:
-    display(paired_feature_auc.pivot(index="feature", columns="pair", values="delta_strength")
-            .reindex(monthly_feature_auc_wide.index).round(6))
-
-# Компактный вывод фиксированных интервалов для ключевых признаков.
-# Полные данные по всем 40 признакам, включая категории: monthly_feature_bins.
-print("Доля таргета по фиксированным интервалам; исходные численности — в monthly_feature_bins:")
-show_monthly_check = list(dict.fromkeys(
-    ["util_current", "util_daily_max_180d", "current_limit"] + gain_monthly_check.nlargest(3).index.tolist()
-))
-for feature in show_monthly_check:
-    table = monthly_feature_bins.loc[monthly_feature_bins.feature.eq(feature)]
-    if not table.empty:
-        print(feature)
-        order = table["bucket"].drop_duplicates().tolist()
-        display(table.pivot(index="bucket", columns="month", values="target_pct").reindex(order).round(3))
-
-# 4. Опционально: исходная непрерывная доля будущего среднего ОД / текущего лимита.
-# Нужна таблица с contract_uid, report_date и колонкой доли; 0.25 означает 25%.
-def check_continuous_target_monthly(raw_data, value_col, threshold=0.25, band=0.05):
-    assert 0 < band < threshold
-    source = raw_data[["contract_uid", "report_date", value_col]].copy()
-    source["report_date"] = pd.to_datetime(source["report_date"])
-    assert not source.duplicated(["contract_uid", "report_date"]).any(), "Повтор контракта × даты"
-    data = meta_monthly_check[["contract_uid", "report_date", "month"]].merge(
-        source, on=["contract_uid", "report_date"], how="left", validate="one_to_one", indicator=True,
-    )
-    data["ratio"] = pd.to_numeric(data[value_col], errors="raise").astype(float).replace([np.inf, -np.inf], np.nan)
-    edges = [-np.inf, 0, threshold-band, threshold, threshold+band, 2*threshold, 4*threshold, np.inf]
-    rows, distributions = [], []
-    for month, frame in data.groupby("month", sort=True):
-        finite = frame["ratio"].dropna()
-        row = {
-            "month": month, "n_rows": len(frame), "matched_keys_pct": 100 * frame["_merge"].eq("both").mean(),
-            "missing_or_inf_pct": 100 * frame["ratio"].isna().mean(), "mean": finite.mean(),
-            "near_threshold_pct": 100 * finite.between(threshold-band, threshold+band).mean(),
-            "above_threshold_pct": 100 * finite.gt(threshold).mean(),
-        }
-        row.update({f"q{q:02d}": finite.quantile(q/100) for q in [1, 5, 25, 50, 75, 95, 99]})
-        rows.append(row)
-        bucket = pd.cut(frame["ratio"], edges, precision=6).cat.add_categories(["MISSING/INF"]).fillna("MISSING/INF")
-        counts = bucket.value_counts(sort=False)
-        distributions.append(pd.DataFrame({"month": month, "bucket": counts.index,
-                                           "n_rows": counts.to_numpy(), "share_pct": 100*counts.to_numpy()/len(frame)}))
-    summary, distribution = pd.DataFrame(rows).set_index("month"), pd.concat(distributions, ignore_index=True)
-    print("Непрерывный таргет: все строки месяца; near/above — среди конечных заполненных значений:")
-    display(summary.round(4))
-    display(distribution.pivot(index="bucket", columns="month", values="share_pct")
-            .reindex(distribution["bucket"].drop_duplicates()).round(3))
-    return summary, distribution
-
-# Если исходная величина есть, выполните отдельно с вашей таблицей и колонкой:
-# continuous_monthly_summary, continuous_monthly_bins = check_continuous_target_monthly(
-#     raw_data=YOUR_SOURCE_DF, value_col="YOUR_RATIO_COLUMN"
-# )
+# Короткий текст для добавления в общие выводы после запуска.
+print("\nЧИСЛА ДЛЯ ОБЩЕГО ВЫВОДА:")
+print(f"Из {len(flip_pairs):,} общих контрактов {len(flips_10_check):,} перешли 1 -> 0.")
+if n_negative_flip_check:
+    print(f"Их доля среди февральских нулей: {100*len(flips_10_check)/n_negative_flip_check:.2f}%.")
+if len(valid_10_check):
+    print(f"Медиана отношения у них: {valid_10_check.ratio_jan.median():.4f} -> {valid_10_check.ratio_feb.median():.4f}.")
+    print(f"Оба значения в диапазоне 0.20–0.30: {100*(near_jan_flip_check & near_feb_flip_check).mean():.2f}%.")
+    print(f"Из отношения > 0.50 в <= 0.25 перешли {100*conditions_flip_check['Январское отношение > 0.50, февральское <= 0.25'].mean():.2f}%.")
+if len(flips_10_check):
+    print(f"В верхние 20% январского ранжирования попадали {100*flips_10_check.top20_jan.mean():.2f}% этой группы;")
+    print(f"в верхние 20% февральского ранжирования — {100*flips_10_check.top20_feb.mean():.2f}%.")
+print("Группы верхних 20% определены на общих контрактах; при совпадающих скорах могут быть чуть больше 20%.")
