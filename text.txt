@@ -1,55 +1,6 @@
-def decile_target(
-    df: pd.DataFrame,
-    score_col: str,
-    target_col: str,
-    id_col: str,
-    q: int = 10,
-    as_percent: bool = True,
-) -> pd.DataFrame:
-    """
-    Анализ таргета по децилям скора.
-    Подсчёт по строкам: одна строка должна соответствовать контракту.
+# df — датафрейм, который меняем
+# reference_df — датафрейм с нужными типами
 
-    client_all — количество контрактов.
-    ratio — доля target=1 данного дециля среди всех target=1.
-    """
-    d = df[
-        [score_col, target_col] + ([id_col] if id_col else [])
-    ].dropna().copy()
+common_columns = df.columns.intersection(reference_df.columns)
 
-    # Дециль: 1 = максимум score
-    d["decile"] = (
-        pd.qcut(-d[score_col], q=q, labels=False, duplicates="drop") + 1
-    )
-
-    # Количество строк (контрактов), а не уникальных клиентов
-    pivot = (
-        d.groupby(["decile", target_col])
-        .size()
-        .unstack(fill_value=0)
-        .reindex(columns=[0, 1], fill_value=0)
-        .rename(columns={0: "target_0", 1: "target_1"})
-        .reset_index()
-        .sort_values("decile")
-    )
-
-    # Всего контрактов в дециле
-    pivot["client_all"] = pivot["target_0"] + pivot["target_1"]
-
-    # Доля положительных контрактов дециля среди всех положительных
-    total_pos = pivot["target_1"].sum()
-    pivot["ratio"] = (
-        pivot["target_1"] / total_pos if total_pos > 0 else 0.0
-    )
-
-    if as_percent:
-        pivot["ratio"] = (
-            (pivot["ratio"] * 100).round(2).astype(str) + "%"
-        )
-
-    pivot["decile"] = pivot["decile"].astype(int)
-    pivot = pivot[
-        ["decile", "client_all", "target_0", "target_1", "ratio"]
-    ]
-    pivot.columns.name = None
-    return pivot
+df = df.astype(reference_df[common_columns].dtypes.to_dict())
