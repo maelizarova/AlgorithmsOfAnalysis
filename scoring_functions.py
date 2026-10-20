@@ -113,7 +113,7 @@ def _score_source(
     classifier_name: str,
 ) -> pd.DataFrame:
     classification_mode = config.get("classification_mode", "full")
-    if classification_mode not in ("full", "subclass_only"):
+    if classification_mode not in ("full", "product_taxonomy"):
         raise ValueError(f"Unknown classification_mode: {classification_mode!r}")
     if source_df.empty:
         return source_df.iloc[0:0].copy()
@@ -124,23 +124,21 @@ def _score_source(
 
     llm = build_llm_from_config(_build_llm_config(config))
     product_context = _read_product_context(config)
-    prompts_dir = _resolve_config_path(config, "prompts_dir", "../prompts")
-    taxonomy_issues_path = _resolve_config_path(config, "taxonomy_issues_path")
-    taxonomy_requests_path = _resolve_config_path(config, "taxonomy_requests_path")
-    if classification_mode == "subclass_only":
-        from subclass_pipeline import score_subclasses
+    if classification_mode == "product_taxonomy":
+        from product_taxonomy import score_product_taxonomy
 
-        return score_subclasses(
+        return score_product_taxonomy(
             source_df,
             llm=llm,
-            issues_path=taxonomy_issues_path,
-            requests_path=taxonomy_requests_path,
+            config=config,
             product_context=product_context,
             text_column=text_column,
-            runtime=config.get("runtime", {}),
             report_date=report_date,
             classifier_name=classifier_name,
         )
+    prompts_dir = _resolve_config_path(config, "prompts_dir", "../prompts")
+    taxonomy_issues_path = _resolve_config_path(config, "taxonomy_issues_path")
+    taxonomy_requests_path = _resolve_config_path(config, "taxonomy_requests_path")
     issues_table = taxonomy_issues_path.read_text(encoding="utf-8")
     requests_table = taxonomy_requests_path.read_text(encoding="utf-8")
     output_model = build_classification_model(taxonomy_issues_path, taxonomy_requests_path)
