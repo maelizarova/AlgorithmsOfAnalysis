@@ -1,18 +1,16 @@
--- Одноразовый скрипт: SQL Developer (F5), SQLcl или SQL*Plus.
--- Замените имена ниже. Все четыре создаваемые таблицы должны быть новыми.
+-- Одноразовый SQL-скрипт без переменных подстановки.
+-- Замените MY_SCORING_INPUT на входную таблицу (в двух местах).
+-- MY_SCORING_DEP_2F — итоговая таблица.
+-- TMP_DEP2_CONTRACTS, TMP_DEP2_MONTHLY, TMP_DEP2_FEATURES — промежуточные.
+-- Все четыре создаваемые таблицы должны быть новыми.
 -- Входная таблица: CLIENT_DID, REPORT_DATE (DATE).
-define in_table = MY_SCORING_INPUT
-define out_table = MY_SCORING_DEP_2F
-define contracts_table = TMP_DEP2_CONTRACTS
-define monthly_table = TMP_DEP2_MONTHLY
-define features_table = TMP_DEP2_FEATURES
 
 -- Сохраняет все строки входа; при отсутствии истории фичи NULL.
 -- Исходная процедура исключала ключи без месячной истории за 24 месяца.
 -- Сохранены исходные условия договоров и семантика RN / соединений ODS.
 
 -- 1. Договоры
-create table &contracts_table parallel 4 as
+create table TMP_DEP2_CONTRACTS parallel 4 as
 select /*+ parallel(4) */
            a.client_did,
            a.report_date,
@@ -23,7 +21,7 @@ select /*+ parallel(4) */
                partition by a.client_did, a.report_date, b.contract_uid
                order by b.open_dt asc
            ) rn
-    from &in_table a
+    from MY_SCORING_INPUT a
     join dm_mrk.DM_MRK_CONTRACT b
       on b.client_did = a.client_did
      and b.contract_type = 'D'
@@ -38,10 +36,10 @@ select /*+ parallel(4) */
          'Договор на текущий счет'
      );
 
-alter table &contracts_table noparallel;
+alter table TMP_DEP2_CONTRACTS noparallel;
 
 -- 2. Суммы за 6 месяцев по строкам договоров
-create table &monthly_table parallel 4 as
+create table TMP_DEP2_MONTHLY parallel 4 as
 -- Сначала сворачиваем месяцы до одной строки на строку договора.
     -- RN в GROUP BY сохраняет кратность строк исходной процедуры.
     select /*+ parallel(4) */
@@ -56,7 +54,7 @@ create table &monthly_table parallel 4 as
                then m.current_balance_sum
            end) balance_1m,
            sum(m.purchase_count) purchase_count_6m
-    from &contracts_table c
+    from TMP_DEP2_CONTRACTS c
     join dm_mrk.DM_MRK_CONTRACT_AGG_MONTHLY m
       on m.contract_uid = c.contract_uid
      and m.report_month < trunc(c.report_date, 'mm')
@@ -64,10 +62,10 @@ create table &monthly_table parallel 4 as
     group by c.client_did, c.report_date, c.contract_src_id,
              c.contract_uid, c.product_category_nm, c.rn;
 
-alter table &monthly_table noparallel;
+alter table TMP_DEP2_MONTHLY noparallel;
 
 -- 3. Две фичи по клиенту и дате
-create table &features_table parallel 4 as
+create table TMP_DEP2_FEATURES parallel 4 as
 select /*+ parallel(4) */
            c.client_did,
            c.report_date,
@@ -78,7 +76,7 @@ select /*+ parallel(4) */
            end) contract_agg_monthly_dep_card_eom_balance_aggsum_1m,
            sum(c.purchase_count_6m)
                contract_agg_monthly_dep_total_purchase_count_aggsum_6m
-    from &monthly_table c
+    from TMP_DEP2_MONTHLY c
     left join ods.ods_rtl_DEPN d
       on c.contract_src_id = d.id
      and c.rn = 1
@@ -88,32 +86,26 @@ select /*+ parallel(4) */
      and v.dml_type_cd <> 'D'
     group by c.client_did, c.report_date;
 
-alter table &features_table noparallel;
+alter table TMP_DEP2_FEATURES noparallel;
 
 -- 4. Итог с сохранением всех строк входа
-create table &out_table parallel 4 as
+create table MY_SCORING_DEP_2F parallel 4 as
 select /*+ parallel(4) */
        a.client_did,
        a.report_date,
        f.contract_agg_monthly_dep_card_eom_balance_aggsum_1m,
        f.contract_agg_monthly_dep_total_purchase_count_aggsum_6m
-from &in_table a
-left join &features_table f
+from MY_SCORING_INPUT a
+left join TMP_DEP2_FEATURES f
   on f.client_did = a.client_did
  and f.report_date = a.report_date;
 
-alter table &out_table noparallel;
+alter table MY_SCORING_DEP_2F noparallel;
 
 -- При необходимости удалить промежуточные таблицы после проверки результата:
--- drop table &features_table;
--- drop table &monthly_table;
--- drop table &contracts_table;
-
-undefine in_table
-undefine out_table
-undefine contracts_table
-undefine monthly_table
-undefine features_table
+-- drop table TMP_DEP2_FEATURES;
+-- drop table TMP_DEP2_MONTHLY;
+-- drop table TMP_DEP2_CONTRACTS;
 
 -- Проверка значений на небольшой выборке при наличии старого результата:
 -- Должны отсутствовать строки; NULL сравнивается без замены на ноль.
