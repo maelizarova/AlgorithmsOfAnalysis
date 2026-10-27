@@ -1,15 +1,3 @@
-create table MY_SCORING_CRED_2F parallel 4 as
-select /*+ parallel(4) */
-       a.client_did,
-       a.report_date,
-       contract_agg_monthly_cred_cc_debit_client_turn_aggavg_1m,
-       contract_agg_monthly_cred_cc_debit_client_turn_aggsum_1m
-from MY_SCORING_INPUT a
-join MY_SCORING_INPUT_contract_agg_monthly_cred_feat_table5 b
-  on a.client_did = b.client_did
- and a.report_date = b.report_date
-join MY_SCORING_INPUT_contract_agg_monthly_cred_feat_table6 c
-  on a.client_did = c.client_did
- and a.report_date = c.report_date;
-
-alter table MY_SCORING_CRED_2F noparallel;
+drop_table_if_exists(
+    upper(concat(in_table, '_sf_loanstype_offline_raw'))
+);
