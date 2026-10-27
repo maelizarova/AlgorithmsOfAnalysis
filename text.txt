@@ -1,6 +1,9 @@
-# df — датафрейм, который меняем
-# reference_df — датафрейм с нужными типами
-
-common_columns = df.columns.intersection(reference_df.columns)
-
-df = df.astype(reference_df[common_columns].dtypes.to_dict())
+SELECT
+    owner AS schema_name,
+    segment_name AS table_name,
+    ROUND(SUM(bytes) / 1024 / 1024, 2) AS size_mb,
+    ROUND(SUM(bytes) / 1024 / 1024 / 1024, 2) AS size_gb
+FROM all_segments
+WHERE segment_type = 'TABLE'
+GROUP BY owner, segment_name
+ORDER BY size_mb DESC;
