@@ -112,6 +112,7 @@ def _score_source(
     *,
     report_date: str,
     classifier_name: str,
+    run_logger: Any = None,
 ) -> pd.DataFrame:
     classification_mode = config.get("classification_mode", "full")
     if classification_mode not in ("full", "product_taxonomy"):
@@ -124,22 +125,26 @@ def _score_source(
         raise ValueError(f"Text column '{text_column}' is missing from source query result")
 
     if classification_mode == "product_taxonomy" and config.get("taxonomy_scope") == "product":
-        from product_taxonomy import score_product_taxonomy, taxonomy_by_product
+        from product_taxonomy import score_product_taxonomy, taxonomy_by_product, unclassified_result_row
 
+        run_logger = run_logger or logging.getLogger(__name__)
         groups = taxonomy_by_product(config)
         if "product" not in source_df.columns:
             raise ValueError("Missing source column: product")
         supported = source_df["product"].isin(groups)
-        if not supported.all():
-            logging.getLogger(__name__).warning(
-                "%s: skipped %s rows with unknown/missing product: %s",
-                classifier_name, int((~supported).sum()),
-                source_df.loc[~supported, "product"].dropna().astype(str).unique().tolist(),
+        unclassified_rows = []
+        for _, row in source_df.loc[~supported].iterrows():
+            description = "Продукт отсутствует в справочнике или не задан"
+            run_logger.warning(
+                "%s: претензия %s, продукт=%r — подтип не назначен: %s",
+                classifier_name, row.get("claim_num", "не указан"), row["product"], description,
             )
-        if not supported.any():
-            return pd.DataFrame(columns=RESULT_COLUMNS)
-        llm = build_llm_from_config(_build_llm_config(config))
-        results = []
+            unclassified_rows.append(unclassified_result_row(
+                row, report_date=report_date, classifier_name=classifier_name, description=description,
+            ))
+        diagnostics = dict(classified=0, no_labels=0, no_response=0, invalid_answer=0)
+        llm = build_llm_from_config(_build_llm_config(config)) if supported.any() else None
+        results = [pd.DataFrame(unclassified_rows, columns=RESULT_COLUMNS)] if unclassified_rows else []
         for product, items in groups.items():
             data = source_df.loc[source_df["product"] == product]
             if data.empty:
@@ -150,8 +155,19 @@ def _score_source(
                 product_context=_read_product_context(product_config),
                 text_column=text_column, report_date=report_date,
                 classifier_name=classifier_name, catalog_items=items,
+                run_logger=run_logger, diagnostics=diagnostics,
             ))
-        return pd.concat(results, ignore_index=True)
+        result = pd.concat(results, ignore_index=True) if results else pd.DataFrame(columns=RESULT_COLUMNS)
+        run_logger.info(
+            "Итоги %s: входных обращений=%s, с подтипами из справочника=%s, "
+            "без назначенного подтипа=%s, модель не выбрала подтип=%s, "
+            "без ответа LLM после повторов=%s, некорректных ответов=%s, "
+            "неизвестный или пустой продукт=%s, строк результата=%s",
+            classifier_name, len(source_df), diagnostics["classified"],
+            len(source_df) - diagnostics["classified"], diagnostics["no_labels"],
+            diagnostics["no_response"], diagnostics["invalid_answer"], int((~supported).sum()), len(result),
+        )
+        return result
 
     llm = build_llm_from_config(_build_llm_config(config))
     product_context = _read_product_context(config)
@@ -332,6 +348,7 @@ def scoring(
         filtered_df,
         report_date=report_date,
         classifier_name=classifier_name,
+        run_logger=logger,
     )
     logger.info("Скоринг %s готов, строк результата: %s", classifier_name, len(result_df))
     return {
@@ -382,6 +399,7 @@ def run_classifier_scoring(
         source_df,
         report_date=report_date,
         classifier_name=classifier_name,
+        run_logger=logger,
     )
     row_count = _write_result(config, result_df)
     logger.info("Wrote %s rows for classifier %s", row_count, classifier_name)
