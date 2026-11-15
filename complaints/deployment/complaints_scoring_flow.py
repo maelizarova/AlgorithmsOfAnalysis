@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import glob
 import json
+import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
 
 from prefect import flow, get_run_logger
 from prefect.task_runners import ConcurrentTaskRunner
@@ -23,19 +26,23 @@ RETRY_DELAY_SECONDS = 60
 
 
 @flow(
-    name="complaints_classification_daily",
+    name="clf_complaints_0826_v1",
     retries=RETRIES,
     retry_delay_seconds=RETRY_DELAY_SECONDS,
     task_runner=ConcurrentTaskRunner(max_workers=MAX_WORKERS),
 )
-def run_all_classifiers(
+def clf_complaints_0826_v1(
     report_date: str | None = None,
     lookback_days: int = 1,
     config_glob: str = "configs/*.json",
 ) -> list[int]:
     resolved_report_date = report_date or (date.today() - timedelta(days=1)).isoformat()
     start_date, end_date = compute_report_window(resolved_report_date, lookback_days=lookback_days)
-    config_paths = sorted(glob.glob(config_glob))
+
+    package_dir = Path(__file__).resolve().parent
+    pattern = config_glob if Path(config_glob).is_absolute() else str(package_dir / config_glob)
+    config_paths = sorted(glob.glob(pattern))
+
     logger = get_run_logger()
     logger.info(
         "Запускаю классификаторы претензий: %s. Окно данных: [%s, %s)",
@@ -45,27 +52,26 @@ def run_all_classifiers(
     )
 
     if not config_paths:
-        logger.warning("Не найдены конфиги по шаблону %s", config_glob)
+        logger.warning("Не найдены конфиги по шаблону %s", pattern)
         return []
 
-    settings_path = Path(config_paths[0]).resolve().parent.parent / "settings.json"
-    deployment_dir = str(settings_path.parent)
+    settings_path = package_dir / "settings.json"
     with open(settings_path, encoding="utf-8") as f:
         settings = json.load(f)
 
-    # clear day -> one Oracle extract -> per classifier: filter+score -> to_sql
+    classifier_names = {path: _peek_classifier_name(path) for path in config_paths}
     cleared = clear_report_date.submit(settings, resolved_report_date)
     source_future = reading_data.submit(
         settings,
         start_date,
         end_date,
-        deployment_dir,
+        str(package_dir),
         wait_for=[cleared],
     )
 
     write_futures = []
     for config_path in config_paths:
-        classifier_name = _peek_classifier_name(config_path)
+        classifier_name = classifier_names[config_path]
         score_future = scoring.submit(
             source_future,
             config_path,
@@ -84,7 +90,12 @@ def run_all_classifiers(
 
 def _peek_classifier_name(config_path: str) -> str:
     with open(config_path, encoding="utf-8") as f:
-        return json.load(f)["classifier_name"]
+        config = json.load(f)
+    if config.get("classification_mode") == "product_taxonomy" and config.get("taxonomy_scope") == "product":
+        from product_taxonomy import taxonomy_by_product
+
+        taxonomy_by_product(config)
+    return config["classifier_name"]
 
 
 def _merge_settings(settings: dict, classifier_config: dict) -> dict:
@@ -99,4 +110,4 @@ def _merge_settings(settings: dict, classifier_config: dict) -> dict:
 
 
 if __name__ == "__main__":
-    run_all_classifiers()
+    clf_complaints_0826_v1()
