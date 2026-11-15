@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,7 @@ from llm_pipeline import (
     run_judge,
     run_stage1_classification,
 )
-from utils.result_builder import build_result_frame, filter_source_data
+from utils.result_builder import RESULT_COLUMNS, build_result_frame, filter_source_data
 from utils.sql_writer import ClassificationSQLWriter, delete_report_date_rows
 
 
@@ -29,8 +30,20 @@ TASK_RETRY_DELAY_SECONDS = 60
 
 
 def create_oracle_engine(config: dict[str, Any]):
+    """Подключение к Oracle для чтения данных Siebel через analytics/space."""
     password = Secret.load(config.get("oracle_password_secret_block", "pass-space")).get()
     return oracle.create_engine_space(config.get("oracle_username", "analytics"), password)
+
+
+def create_oracle_write_engine(config: dict[str, Any]):
+    """Подключение к Oracle для записи и удаления результатов в CDW через sb_analytics."""
+    password = Secret.load(
+        config.get("oracle_write_password_secret_block", "pass-sb-analytics")
+    ).get()
+    return oracle.create_engine_cdw(
+        config.get("oracle_write_username", "sb_analytics"),
+        password,
+    )
 
 
 def read_source_data(engine, query_path: Path, start_date: str, end_date: str) -> pd.DataFrame:
@@ -81,7 +94,7 @@ def _read_and_filter(
     start_date: str,
     end_date: str,
 ) -> pd.DataFrame:
-    """Single-classifier path: read SQL + filter (notebook / ComplaintsClassifier)."""
+    """Чтение SQL и фильтрация для одного классификатора в ноутбуке или ComplaintsClassifier."""
     engine = create_oracle_engine(config)
     query_path = _resolve_config_path(config, "query_path", "../queries/get_data.sql")
     source_df = read_source_data(engine, query_path, start_date, end_date)
@@ -100,6 +113,9 @@ def _score_source(
     report_date: str,
     classifier_name: str,
 ) -> pd.DataFrame:
+    classification_mode = config.get("classification_mode", "full")
+    if classification_mode not in ("full", "product_taxonomy"):
+        raise ValueError(f"Unknown classification_mode: {classification_mode!r}")
     if source_df.empty:
         return source_df.iloc[0:0].copy()
 
@@ -107,8 +123,50 @@ def _score_source(
     if text_column not in source_df.columns:
         raise ValueError(f"Text column '{text_column}' is missing from source query result")
 
+    if classification_mode == "product_taxonomy" and config.get("taxonomy_scope") == "product":
+        from product_taxonomy import score_product_taxonomy, taxonomy_by_product
+
+        groups = taxonomy_by_product(config)
+        if "product" not in source_df.columns:
+            raise ValueError("Missing source column: product")
+        supported = source_df["product"].isin(groups)
+        if not supported.all():
+            logging.getLogger(__name__).warning(
+                "%s: skipped %s rows with unknown/missing product: %s",
+                classifier_name, int((~supported).sum()),
+                source_df.loc[~supported, "product"].dropna().astype(str).unique().tolist(),
+            )
+        if not supported.any():
+            return pd.DataFrame(columns=RESULT_COLUMNS)
+        llm = build_llm_from_config(_build_llm_config(config))
+        results = []
+        for product, items in groups.items():
+            data = source_df.loc[source_df["product"] == product]
+            if data.empty:
+                continue
+            product_config = {**config, "product": product}
+            results.append(score_product_taxonomy(
+                data, llm=llm, config=product_config,
+                product_context=_read_product_context(product_config),
+                text_column=text_column, report_date=report_date,
+                classifier_name=classifier_name, catalog_items=items,
+            ))
+        return pd.concat(results, ignore_index=True)
+
     llm = build_llm_from_config(_build_llm_config(config))
     product_context = _read_product_context(config)
+    if classification_mode == "product_taxonomy":
+        from product_taxonomy import score_product_taxonomy
+
+        return score_product_taxonomy(
+            source_df,
+            llm=llm,
+            config=config,
+            product_context=product_context,
+            text_column=text_column,
+            report_date=report_date,
+            classifier_name=classifier_name,
+        )
     prompts_dir = _resolve_config_path(config, "prompts_dir", "../prompts")
     taxonomy_issues_path = _resolve_config_path(config, "taxonomy_issues_path")
     taxonomy_requests_path = _resolve_config_path(config, "taxonomy_requests_path")
@@ -179,7 +237,7 @@ def _score_source(
 def _write_result(config: dict[str, Any], result_df: pd.DataFrame) -> int:
     if result_df.empty:
         return 0
-    engine = create_oracle_engine(config)
+    engine = create_oracle_write_engine(config)
     output_table = config.get("output_table", "ema_complaints_classification")
     ClassificationSQLWriter(result_df, output_table).write_data(engine)
     return len(result_df)
@@ -193,8 +251,13 @@ def _write_result(config: dict[str, Any], result_df: pd.DataFrame) -> int:
 def clear_report_date(settings: dict[str, Any], report_date: str) -> str:
     logger = get_run_logger()
     output_table = settings.get("output_table", "ema_complaints_classification")
-    engine = create_oracle_engine(settings)
-    logger.info("Удаляю строки за report_date=%s из %s", report_date, output_table)
+    engine = create_oracle_write_engine(settings)
+    logger.info(
+        "Удаляю строки за report_date=%s из %s (write DB: %s)",
+        report_date,
+        output_table,
+        settings.get("oracle_write_username", "sb_analytics"),
+    )
     delete_report_date_rows(engine, output_table, report_date)
     return report_date
 
@@ -210,7 +273,7 @@ def reading_data(
     end_date: str,
     deployment_dir: str,
 ) -> pd.DataFrame:
-    """One shared Oracle extract for the day; classifiers filter later."""
+    """Общая выгрузка из Oracle за отчётное окно с последующей фильтрацией в классификаторах."""
     logger = get_run_logger()
     source_df = _read_source_window(
         settings,
@@ -301,7 +364,7 @@ def run_classifier_scoring(
     start_date: str,
     end_date: str,
 ) -> int:
-    """Synchronous path (notebook / ComplaintsClassifier), без Prefect tasks."""
+    """Синхронный запуск в ноутбуке или ComplaintsClassifier без задач Prefect."""
     logger = get_run_logger()
     classifier_name = config["classifier_name"]
     logger.info(
