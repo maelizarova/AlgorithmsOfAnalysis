@@ -13,6 +13,7 @@ from llm_pipeline import _batch_with_backoff, _make_str_enum
 from utils.result_builder import RESULT_COLUMNS
 
 logger = logging.getLogger(__name__)
+UNCLASSIFIED_ID = "unclassified"
 
 CLASSIFY_PROMPT = """Ты — аналитик обращений банка. Выбери подклассы обращения.
 Продукт: {product}
@@ -60,7 +61,16 @@ CATALOG_CLASSIFY_PROMPT = """Ты — аналитик обращений бан
 Не разделяй проблемы и запросы. Верни labels с entry_id выбранной записи
 и description — кратким обоснованием по тексту обращения.
 Если подходящей записи нет или текст служебный и не содержит сути,
-верни пустой labels. Не выдумывай содержание или новые подтипы.
+верни labels с одной меткой entry_id="unclassified" и description с причиной,
+почему обращение не классифицировано. Не выдумывай содержание или новые подтипы.
+Если текст содержит только «Во вложении», «См. вложение», «Входящий документ…»,
+«Входной документ…», номер документа или шаблон без описания самой проблемы,
+верни одну метку entry_id="unclassified" и укажи, что в тексте отсутствует суть жалобы.
+Содержимое вложений тебе не передано.
+Не восстанавливай суть жалобы по названию продукта, номеру документа или справочнику.
+Если вместе со ссылкой на вложение описана проблема, классифицируй изложенную проблему.
+Массив labels должен содержать хотя бы одну метку. Не совмещай unclassified
+с метками подтипов из справочника.
 Текст обращения:
 {text}
 """
@@ -71,6 +81,10 @@ CATALOG_JUDGE_PROMPT = """Проверь назначенные подтипы �
 Действующий справочник этого продукта:
 {taxonomy}
 Для каждой метки проверь соответствие текста описанию конкретной записи.
+Если текст содержит только отсылку к вложению, «Входящий документ…»,
+«Входной документ…», номер или служебный шаблон без сути жалобы,
+верни ok: false для всех меток. Содержимое вложений тебе не передано.
+Если вместе со ссылкой на вложение описана проблема, проверяй метки по её описанию.
 Верни verdicts с entry_id проверяемой записи и ok: true или false.
 Каждый входной entry_id должен встретиться ровно один раз.
 Текст обращения:
@@ -164,9 +178,9 @@ def taxonomy_by_product(config: dict) -> dict[str, list[dict[str, str]]]:
 
 
 def build_catalog_model(items: list[dict[str, str]]) -> type[BaseModel]:
-    enum = _make_str_enum("CatalogEntryEnum", [item["entry_id"] for item in items])
+    enum = _make_str_enum("CatalogEntryEnum", [item["entry_id"] for item in items] + [UNCLASSIFIED_ID])
     label = create_model("CatalogLabel", entry_id=(enum, ...), description=(str, ...))
-    return create_model("CatalogAnswer", labels=(list[label], Field(default_factory=list, max_length=10)))
+    return create_model("CatalogAnswer", labels=(list[label], Field(..., min_length=1, max_length=10)))
 
 
 def build_subclass_model(items: list[dict[str, str]]) -> type[BaseModel]:
@@ -187,12 +201,42 @@ def _parse(answer: Any, model: type[BaseModel]) -> dict:
         return {}
 
 
+def unclassified_result_row(
+    source_row: pd.Series, *, report_date: str, classifier_name: str, description: str,
+) -> dict:
+    """Сохранить обращение и причину, по которой ему не назначен подтип."""
+    return {
+        "claim_num": source_row.get("claim_num", ""),
+        "created": source_row.get("created"),
+        "report_date": pd.to_datetime(report_date),
+        "product": source_row.get("product"),
+        "theme": source_row.get("theme"),
+        "category": source_row.get("category"),
+        "classifier_name": classifier_name,
+        "type": "subclass",
+        "class": None,
+        "sub_class": None,
+        "description": description,
+        "eval": False,
+    }
+
+
 def score_product_taxonomy(
     source_df: pd.DataFrame, *, llm: Any, config: dict, product_context: str,
     text_column: str, report_date: str, classifier_name: str,
     catalog_items: list[dict[str, str]] | None = None,
+    run_logger: Any = None,
+    diagnostics: dict[str, int] | None = None,
 ) -> pd.DataFrame:
     catalog_mode = catalog_items is not None
+    run_logger = run_logger or logger
+    if diagnostics is None:
+        diagnostics = dict(classified=0, no_labels=0, no_response=0, invalid_answer=0)
+    skip_reasons = {
+        "no_labels": "модель не выбрала ни одного подтипа",
+        "no_response": "после повторов не получен ответ LLM (сбой вызова или разбора ответа)",
+        "invalid_answer": "ответ не прошёл проверку формата, допустимых ID или лимита 10 меток",
+    }
     groups = {"": catalog_items} if catalog_mode else taxonomy_by_theme(config)
     required = {"product", text_column} if catalog_mode else {"product", "theme", text_column}
     missing = required - set(source_df.columns)
@@ -248,10 +292,20 @@ def score_product_taxonomy(
             batch = data.iloc[start:start + batch_size]
             texts = [str(value) for value in batch[text_column].fillna("")]
             answers = _batch_with_backoff(chain, [{"text": value} for value in texts], **options)
-            parsed = [_parse(answer, model).get("labels", []) for answer in answers]
+            parsed_answers = [_parse(answer, model) for answer in answers]
+            parsed = [answer.get("labels", []) for answer in parsed_answers]
             # One result per selected subclass, even if an endpoint repeats a label.
             labels = [list({label[label_key]: label for label in group}.values()) for group in parsed]
-            active = [i for i, group in enumerate(labels) if group]
+            if catalog_mode:
+                for i, group in enumerate(labels):
+                    classified = [label for label in group if label["entry_id"] != UNCLASSIFIED_ID]
+                    labels[i] = classified or group
+                active = [
+                    i for i, group in enumerate(labels)
+                    if group and group[0]["entry_id"] != UNCLASSIFIED_ID
+                ]
+            else:
+                active = [i for i, group in enumerate(labels) if group]
             judge_answers = _batch_with_backoff(judge, [
                 {"text": texts[i], "labels": json.dumps(labels[i], ensure_ascii=False)}
                 for i in active
@@ -261,6 +315,33 @@ def score_product_taxonomy(
                 for i, answer in zip(active, judge_answers)
             }
             for i, (_, source_row) in enumerate(batch.iterrows()):
+                if catalog_mode:
+                    reason = None
+                    if answers[i] is None:
+                        reason = "no_response"
+                    elif not parsed_answers[i]:
+                        reason = "invalid_answer"
+                    elif not labels[i]:
+                        reason = "no_labels"
+                    elif labels[i][0]["entry_id"] == UNCLASSIFIED_ID:
+                        reason = "no_labels"
+                    if reason is None:
+                        diagnostics["classified"] += 1
+                    else:
+                        diagnostics[reason] += 1
+                        description = skip_reasons[reason]
+                        if reason == "no_labels" and labels[i]:
+                            description = labels[i][0]["description"].strip() or description
+                        run_logger.warning(
+                            "%s: претензия %s, продукт=%r — подтип не назначен: %s",
+                            classifier_name, source_row.get("claim_num", "не указан"),
+                            source_row["product"], description,
+                        )
+                        rows.append(unclassified_result_row(
+                            source_row, report_date=report_date,
+                            classifier_name=classifier_name, description=description,
+                        ))
+                        continue
                 checks = verdicts.get(i, [])
                 for j, label in enumerate(labels[i]):
                     check = checks[j] if j < len(checks) else {}
