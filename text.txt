@@ -1,182 +1,42 @@
-import numpy as np
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import FunctionTransformer
-from sqlalchemy import text
-from datetime import timedelta
-from pathlib import Path
-
-from prefect import task, flow, Task, get_run_logger
-from prefect.blocks.system import Secret
-from prefect.blocks.notifications import CustomWebhookNotificationBlock
-from prefect.tasks import task_input_hash
-from prefect.variables import Variable
-
-import sys
-
-from toolbox import oracle
-from toolbox.prefect.notification import (
-    make_email_flow_notifier,
-    make_email_task_notifier,
-)
-
-
-from model_repository import ModelRepository
-from model_repository.dao import OracleDAO
-from model_repository.storage import MinioClient
-
-# Параметры модели
-MODEL_NAME = "clf_ptb_clip_0926_v4"  # Название модели
-TABLSE_LAST_SCORE = "MODEL_CLF_PTB_CLIP_1026"  # Таблица
-
-# Prefect Parameters
-RETRIES = 0  # Число перезапусков
-RETRY_DELAY_SECONDS = 900  # Задержка после аварийного запуска, сек
-CACHE_EXPIRATION = timedelta(hours=4)  # Сколько времени хранится кэш
-PERSIST_RESULT = True  # Хранить ли результат выполнения задачи
-
-webHookNotification = CustomWebhookNotificationBlock.load("mail-to-analytics")
-
-# notifications
-on_task_failure = make_email_task_notifier(webHookNotification)
-on_flow_failure = make_email_flow_notifier(webHookNotification)
-
-# Prefect Variables coroutine
-secret_sb_dirkaim = (await Secret.load("pass-sb-dirkaim")).get()
-LOGIN_CDW = secret_sb_dirkaim["login"]
-PASSWORD_CDW = secret_sb_dirkaim["password"]
-
-S3_KWARGS = (await Secret.load("s3-retail")).get()  # Креды для подключения к S3
-
-IN_TABLE = "ema_sample_clip_2210"
-OUT_TABLE = Variable.get("out_table")
-procedure_params = Variable.get("collect_feat_config")  # Конфигурация процедур
-
-secret_cdw = await Secret.load("pass-sb-analytics")
-PASSWORD_CDW_OUT = secret_cdw.get()
-engine_out = oracle.create_engine_cdw(username="sb_analytics", password=PASSWORD_CDW_OUT)
-
-# Инициализация ModelRepository
-engine = oracle.create_engine_cdw(username=LOGIN_CDW, password=PASSWORD_CDW)
-dao = OracleDAO(engine)
-storage = MinioClient(**S3_KWARGS)
-
-# Инициализируем класс ModelRepository
-repo = ModelRepository(storage=storage, dao=dao)
-
-# Чтение SQL запросов
-with open("queries/get_features.sql", "r") as f:
-    query = f.read()
-
-# Параметры task & flow
-task_kwargs = {
-    "retries": None,
-    "retry_delay_seconds": None,
-    "persist_result": True,
-    "cache_key_fn": task_input_hash,
-    "cache_expiration": None,
-    "cache_policy": None,
-    "on_failure": [on_task_failure],
-    "refresh_cache": True,
-    "tags": ["scoring"],
-}
-
-flow_kwargs = {
-    "task_runner": None,
-    "retries": RETRIES,
-    "retry_delay_seconds": RETRY_DELAY_SECONDS,
-    "on_failure": [on_flow_failure],
-}
-
-
-# Data preprocessing functions
-def convertToCategory(X, columns):
-    """Преобразование данных в category"""
-    X = X.astype({col: "category" for col in columns})
-    return X
-
-
-def convertToDouble(X, columns, dtype=np.float64):
-    """Преобразование данных в float"""
-    X = X.astype({col: dtype for col in columns})
-    return X
-
-
-# Load model
-model, meta = repo.get(MODEL_NAME)
-
-# Create Pipeline
-all_features = model.feature_name_
-categorical_features = [
-]
-
-numeric_features = [f for f in all_features if f not in categorical_features]
-
-steps = [
-    FunctionTransformer(
-        func=convertToCategory, kw_args={"columns": categorical_features}
-    ),
-    FunctionTransformer(func=convertToDouble, kw_args={"columns": numeric_features}),
-    model,
-]
-pipeline = make_pipeline(*steps)
-
-
-@task(**task_kwargs)
-def execute(engine, query):
-    with engine.connect() as conn:
-        conn.execute(query)
-
-
-@task(**task_kwargs)
-def score(pipeline, data, features):
-    df = data[["client_did", "report_date"]].drop_duplicates().reset_index(drop=True)
-    df["model_name"] = MODEL_NAME
-    df["score"] = pipeline.predict_proba(data[features])[:, 1]
-    return df
-
-
-@task(**task_kwargs)
-def to_sql(data, engine, table_name):
-    oracle.write(data, engine, table_name, batch_size=100_000, if_exists="append")
-
-
-generator = Task(fn=oracle.read_batch, name="reading_data", **task_kwargs)
-
-
-@flow(name="clf_ptb_clip_0926", **flow_kwargs)
-def clf_ptb_clip_0926():
-    logger = get_run_logger()
-
-    # 1. TRUNCATE таблицы с актуальными скорами
-    sql_query1 = text(f"TRUNCATE TABLE {TABLSE_LAST_SCORE}")
-    execute.with_options(name="truncate table")(engine_out, sql_query1)
-
-    # 2. Чтение данных
-    get_data = generator(query, engine, batch_size=1_000_000)
-    for enum, df in enumerate(get_data):
-        logger.info(f"Батч {enum} - чтение данных")
-        # 2.1 Скоринг
-        logger.info(f"Батч {enum} - скоринг")
-        scored_batch = score.with_options(name=f"scoring_batch-{enum}")(
-            pipeline, df, all_features
-        )
-        logger.info(f"Батч {enum} - Запись в БД")
-
-        # 2.2 Запись данных в таблицу
-        to_sql.with_options(name=f"to_sql_batch-{enum}")(
-            scored_batch, engine_out, TABLSE_LAST_SCORE
-        )
-        logger.info(f"Батч {enum} - обработка завершена")
-        # break # для отладки
-
-    # 3. Обновление версионной таблицы
-    # sql_query2 = text(f"call KDY_UPDATE_COMMON_MDL_SCORE('{TABLSE_LAST_SCORE}')")
-    # execute.with_options(name="update common_mdl_score")(engine, sql_query2)
-    return None
-
-
-if __name__ == "__main__":
-    clf_ptb_clip_0926()
-
+SELECT /*+parallel(4)*/  distinct
+in_tbl.client_did,
+in_tbl.report_date,
+in_tbl.new_limit,
+in_tbl.old_limit,
+application_approved_channel_type_by_branch_report_dt_diff_open_dt_aggmin,
+application_product_by_consumer_div_crif_open_dt_aggsum_d720,
+contract_agg_monthly_cred_cc_debit_client_turn_aggavg_1m,
+contract_agg_monthly_cred_cc_debit_client_turn_aggsum_1m,
+contract_agg_monthly_cred_cc_interest_share_1m,
+contract_agg_monthly_cred_cc_total_paid_interest_aggsum_1m,
+contract_agg_monthly_cred_total_interest_aggavg_6m,
+contract_agg_monthly_cred_total_interest_aggsum_1m,
+contract_agg_monthly_cred_total_paid_interest_aggsum_6m,
+dbo_dpasp_trans_sbp_amt_aggsum_m1_to_m3,
+half_posting_sbp_trx_out_sum_aggavg_m6,
+sf_loanstype_offline_cc_creditcostrate_active_aggmin,
+sf_loanstype_offline_cc_next_pmt_interest_total_aggavg,
+sf_loanstype_offline_cc_next_pmt_principal_3yopen_aggavg,
+sf_loanstype_offline_cc_ttldelq30_total_aggavg,
+sf_loanstype_offline_int_outstanding_3yopen_aggavg,
+sf_loanstype_offline_pil_creditcostrate_active_aggavg,
+transaction_ratio_cnt_trans_5m_to_5m
+FROM ema_sample_clip_2210 in_tbl
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_1 c1
+	 on c1.client_did = in_tbl.client_did AND in_tbl.report_date = c1.report_date
+LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_2 c
+	 on c.client_did = in_tbl.client_did AND in_tbl.report_date = c.report_date
+LEFT JOIN DAILY_SCORING_OUT_half_posting h
+	 on h.client_did = in_tbl.client_did AND in_tbl.report_date = h.report_date
+LEFT JOIN DAILY_SCORING_OUT_sf_loanstype_offline_main sm
+	 on sm.client_did = in_tbl.client_did AND in_tbl.report_date = sm.report_date
+LEFT JOIN DAILY_SCORING_OUT_sf_loanstype_offline_delq sd
+	 on sd.client_did = in_tbl.client_did AND in_tbl.report_date = sd.report_date
+LEFT JOIN DAILY_SCORING_OUT_dpasp_trx tr
+	 on tr.client_did = in_tbl.client_did AND in_tbl.report_date = tr.report_date
+LEFT JOIN DAILY_SCORING_OUT_transaction_2 t1
+	 on t1.client_did = in_tbl.client_did AND in_tbl.report_date = t1.report_date
+LEFT JOIN DAILY_SCORING_OUT_application a
+	 on a.client_did = in_tbl.client_did AND in_tbl.report_date = a.report_date
 
 
