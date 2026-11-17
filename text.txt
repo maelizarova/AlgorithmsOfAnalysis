@@ -1,76 +1,203 @@
+import numpy as np
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import FunctionTransformer
+from sqlalchemy import text
+from datetime import timedelta
 from pathlib import Path
-import json
-import pandas as pd
 
-excel_path = Path("описания.xlsx")
-json_path = Path("новый_справочник.json")
+from prefect import task, flow, Task, get_run_logger
+from prefect.blocks.system import Secret
+from prefect.blocks.notifications import CustomWebhookNotificationBlock
+from prefect.tasks import task_input_hash
+from prefect.variables import Variable
 
-# Первый лист, заголовки в первой строке.
-df = pd.read_excel(
-    excel_path, sheet_name=0, dtype=str, keep_default_na=False
+import sys
+
+# os.chdir('../') # Для отладки
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+from toolbox import oracle
+from toolbox.prefect.notification import (
+    make_email_flow_notifier,
+    make_email_task_notifier,
 )
-df.columns = df.columns.astype(str).str.strip().str.lstrip("\ufeff")
 
-# Названия колонок из твоего исходного файла.
-columns = {
-    "product": "product",
-    "theme": "theme",
-    "category": "subclass",
-    "short_description": "description",
+
+from model_repository import ModelRepository
+from model_repository.dao import OracleDAO
+from model_repository.storage import MinioClient
+
+# Параметры модели
+MODEL_NAME = "clf_dep_outflow_0226_v1"  # Название модели
+TABLSE_LAST_SCORE = "MODEL_CLF_DEP_OUTFLOW_0226_V1"  # Таблица
+
+# Prefect Parameters
+RETRIES = 0  # Число перезапусков
+RETRY_DELAY_SECONDS = 900  # Задержка после аварийного запуска, сек
+CACHE_EXPIRATION = timedelta(hours=4)  # Сколько времени хранится кэш
+PERSIST_RESULT = True  # Хранить ли результат выполнения задачи
+
+# Prefect Variables coroutine
+DIRKAIM_CREDS = Secret.load("pass-sb-dirkaim").get()
+LOGIN_CDW = DIRKAIM_CREDS["login"]
+PASSWORD_CDW = DIRKAIM_CREDS["password"]
+S3_KWARGS = (Secret.load("s3-retail")).get()  # Креды для подключения к S3
+IN_TABLE = Variable.get("in_table")
+OUT_TABLE = Variable.get("out_table")
+procedure_params = Variable.get("collect_feat_config")  # Конфигурация процедур
+webHookNotification = CustomWebhookNotificationBlock.load("mail-to-analytics")
+
+# notifications
+on_task_failure = make_email_task_notifier(webHookNotification)
+on_flow_failure = make_email_flow_notifier(webHookNotification)
+
+# Инициализация ModelRepository
+engine = oracle.create_engine_cdw(username=LOGIN_CDW, password=PASSWORD_CDW)
+dao = OracleDAO(engine)
+storage = MinioClient(**S3_KWARGS)
+
+# Инициализируем класс ModelRepository
+repo = ModelRepository(storage=storage, dao=dao)
+
+with open("clf_dep_outflow_0226/queries/create_sample.sql", "r") as f:
+    query_sample = f.read()
+
+with open("clf_dep_outflow_0226/queries/get_features.sql", "r") as f:
+    query_feat = f.read()
+
+
+# Параметры task & flow
+task_kwargs = {
+    "retries": None,
+    "retry_delay_seconds": None,
+    "persist_result": True,
+    "cache_key_fn": task_input_hash,
+    "cache_expiration": None,
+    "cache_policy": None,
+    "on_failure": [on_task_failure],
+    "refresh_cache": True,
+    "tags": ["scoring"],
 }
 
-missing = set(columns) - set(df.columns)
-if missing:
-    raise ValueError(f"В Excel отсутствуют колонки: {sorted(missing)}")
+flow_kwargs = {
+    "task_runner": None,
+    "retries": RETRIES,
+    "retry_delay_seconds": RETRY_DELAY_SECONDS,
+    "on_failure": [on_flow_failure],
+}
 
-taxonomy = []
-seen = set()
 
-for excel_row, (_, row) in enumerate(df.iterrows(), start=2):
-    if not any(str(value).strip() for value in row):
-        continue
+# Data preprocessing functions
+def convertToCategory(X, columns):
+    """Преобразование данных в category"""
+    X = X.astype({col: "category" for col in columns})
+    return X
 
-    item = {
-        target: str(row[source]).strip()
-        for source, target in columns.items()
-    }
 
-    for field, value in item.items():
-        if not value:
-            raise ValueError(f"Строка {excel_row}: пустое поле {field}")
+def convertToDouble(X, columns, dtype=np.float64):
+    """Преобразование данных в float"""
+    X = X.astype({col: dtype for col in columns})
+    return X
 
-    key = tuple(
-        " ".join(item[field].split())
-        for field in ("product", "theme", "subclass")
+
+# Load model
+model, meta = repo.get(MODEL_NAME)
+
+# Create Pipeline
+all_features = model.feature_name_
+
+steps = [
+    FunctionTransformer(func=convertToDouble, kw_args={"columns": all_features}),
+    model,
+]
+pipeline = make_pipeline(*steps)
+
+
+@task(**task_kwargs)
+def exec_driver_sql(engine, query):
+    with engine.begin() as conn:
+        conn.exec_driver_sql(query)
+
+
+@task(**task_kwargs)
+def execute(engine, query):
+    with engine.connect() as conn:
+        conn.execute(query)
+
+
+@task(**task_kwargs)
+def score(pipeline, data, features):
+    df = data[["client_did", "report_date"]].drop_duplicates().reset_index(drop=True)
+    df["model_name"] = MODEL_NAME
+    df["score"] = pipeline.predict_proba(data[features])[:, 1]
+    return df
+
+
+@task(**task_kwargs)
+def to_sql(data, engine, table_name):
+    oracle.write(data, engine, table_name, batch_size=100_000, if_exists="append")
+
+
+@task(**task_kwargs)
+def check_sample_not_empty(engine, table_name):
+    sql = text(f"select count(*) from {table_name}")
+    with engine.connect() as conn:
+        cnt = conn.execute(sql).scalar()
+    return cnt > 0
+
+
+generator = Task(fn=oracle.read_batch, name="reading_data", **task_kwargs)
+
+
+@flow(name="clf_dep_outflow_0226_v1", **flow_kwargs)
+def clf_dep_outflow_0226_v1():
+    logger = get_run_logger()
+
+    logger.info("0) Создаем сэмпл")
+    exec_driver_sql.with_options(name="create_sample")(engine, query_sample)
+
+    logger.info("0.1) Проверяем, что сэмпл не пустой")
+    has_sample = check_sample_not_empty.with_options(name="check_sample")(
+        engine, "nao_dep_segm_for_scor_final"
     )
-    if key in seen:
-        raise ValueError(f"Строка {excel_row}: повтор записи {key}")
-    seen.add(key)
 
-    item["keywords"] = str(row.get("keywords", "")).strip()
+    if not has_sample:
+        logger.warning("Сэмпл пустой - данных для скоринга нет")
+        return None
 
-    claims_used = str(row.get("claims_used", "")).strip()
-    if claims_used:
-        item["claims_used"] = int(claims_used)
+    logger.info("1) Собираем фичи")
+    exec_driver_sql.with_options(name="get_features")(engine, query_feat)
 
-    taxonomy.append(item)
+    logger.info("2) TRUNCATE таблицы с актуальными скорами")
+    sql_query1 = text(f"TRUNCATE TABLE {TABLSE_LAST_SCORE}")
+    execute.with_options(name="truncate table")(engine, sql_query1)
 
-if not taxonomy:
-    raise ValueError("В Excel нет заполненных записей")
+    logger.info("3) Чтение фичей")
+    query_get = """select /*+parallel(8)*/ * from nao_dep_outflow_feat_7d
+                       where report_date = trunc(sysdate)-1"""
 
-config = {
-    "classifier_name": "subclass_catalog",
-    "classification_mode": "product_taxonomy",
-    "taxonomy_scope": "product",
-    "product": None,
-    "text_column": "description_claim",
-    "query_path": "../queries/get_data.sql",
-    "taxonomy": taxonomy,
-}
+    get_data = generator(query_get, engine, batch_size=1_000_000)
 
-# Режим x разрешает только создание нового файла.
-with json_path.open("x", encoding="utf-8") as file:
-    json.dump(config, file, ensure_ascii=False, indent=2)
+    for enum, df in enumerate(get_data):
+        logger.info(f"Батч {enum} - чтение данных")
+        # 2.1 Скоринг
+        logger.info(f"Батч {enum} - скоринг")
+        scored_batch = score.with_options(name=f"scoring_batch-{enum}")(
+            pipeline, df, all_features
+        )
+        logger.info(f"Батч {enum} - Запись в БД")
 
-print(f"Создан файл: {json_path.resolve()}")
-print(f"Записей: {len(taxonomy)}")
+        # 2.2 Запись данных в таблицу
+        to_sql.with_options(name=f"to_sql_batch-{enum}")(
+            scored_batch, engine, TABLSE_LAST_SCORE
+        )
+        logger.info(f"Батч {enum} - обработка завершена")
+        # break # для отладки
+
+    # 3. Обновление версионной таблицы
+    sql_query2 = text(f"call KDY_UPDATE_COMMON_MDL_SCORE('{TABLSE_LAST_SCORE}')")
+    execute.with_options(name="update common_mdl_score")(engine, sql_query2)
+
+
+if __name__ == "__main__":
+    clf_dep_outflow_0226_v1()
