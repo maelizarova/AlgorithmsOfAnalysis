@@ -1,42 +1,55 @@
-SELECT /*+parallel(4)*/  distinct
-in_tbl.client_did,
-in_tbl.report_date,
-in_tbl.new_limit,
-in_tbl.old_limit,
-application_approved_channel_type_by_branch_report_dt_diff_open_dt_aggmin,
-application_product_by_consumer_div_crif_open_dt_aggsum_d720,
-contract_agg_monthly_cred_cc_debit_client_turn_aggavg_1m,
-contract_agg_monthly_cred_cc_debit_client_turn_aggsum_1m,
-contract_agg_monthly_cred_cc_interest_share_1m,
-contract_agg_monthly_cred_cc_total_paid_interest_aggsum_1m,
-contract_agg_monthly_cred_total_interest_aggavg_6m,
-contract_agg_monthly_cred_total_interest_aggsum_1m,
-contract_agg_monthly_cred_total_paid_interest_aggsum_6m,
-dbo_dpasp_trans_sbp_amt_aggsum_m1_to_m3,
-half_posting_sbp_trx_out_sum_aggavg_m6,
-sf_loanstype_offline_cc_creditcostrate_active_aggmin,
-sf_loanstype_offline_cc_next_pmt_interest_total_aggavg,
-sf_loanstype_offline_cc_next_pmt_principal_3yopen_aggavg,
-sf_loanstype_offline_cc_ttldelq30_total_aggavg,
-sf_loanstype_offline_int_outstanding_3yopen_aggavg,
-sf_loanstype_offline_pil_creditcostrate_active_aggavg,
-transaction_ratio_cnt_trans_5m_to_5m
-FROM ema_sample_clip_2210 in_tbl
-LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_1 c1
-	 on c1.client_did = in_tbl.client_did AND in_tbl.report_date = c1.report_date
-LEFT JOIN DAILY_SCORING_OUT_contract_agg_monthly_cred_2 c
-	 on c.client_did = in_tbl.client_did AND in_tbl.report_date = c.report_date
-LEFT JOIN DAILY_SCORING_OUT_half_posting h
-	 on h.client_did = in_tbl.client_did AND in_tbl.report_date = h.report_date
-LEFT JOIN DAILY_SCORING_OUT_sf_loanstype_offline_main sm
-	 on sm.client_did = in_tbl.client_did AND in_tbl.report_date = sm.report_date
-LEFT JOIN DAILY_SCORING_OUT_sf_loanstype_offline_delq sd
-	 on sd.client_did = in_tbl.client_did AND in_tbl.report_date = sd.report_date
-LEFT JOIN DAILY_SCORING_OUT_dpasp_trx tr
-	 on tr.client_did = in_tbl.client_did AND in_tbl.report_date = tr.report_date
-LEFT JOIN DAILY_SCORING_OUT_transaction_2 t1
-	 on t1.client_did = in_tbl.client_did AND in_tbl.report_date = t1.report_date
-LEFT JOIN DAILY_SCORING_OUT_application a
-	 on a.client_did = in_tbl.client_did AND in_tbl.report_date = a.report_date
+DECLARE
+    PROCEDURE drop_table_if_exists(table_name IN VARCHAR2) IS
+    BEGIN
+        EXECUTE IMMEDIATE 'DROP TABLE ' || table_name;
+    EXCEPTION
+        WHEN OTHERS THEN
+            IF SQLCODE = -942 THEN
+                NULL;
+            ELSE
+                RAISE;
+            END IF;
+    END drop_table_if_exists;
 
+BEGIN
+    drop_table_if_exists('ema_sample_CLF_PTB_CLIP_0926_V4_DEBT');
 
+    execute immediate
+    'create table ema_sample_CLF_PTB_CLIP_0926_V4_DEBT as
+    select a.*,
+           case when c.CURRENT_DEBT_AMT > 0 then 1 else 0 end CURRENT_DEBT_AMT_FLG
+    from (
+        select *
+        from (
+            select q.client_did,
+                   q.contract_id as contract_src_id,
+                   q.cur_cc_mpay*20 as old_limit,
+                   r.limit as new_limit,
+                   r.pdn,
+                   r.decision_code,
+                   r.decision_date,
+                   trunc(sysdate) - 1 as report_date,
+                   row_number() over (
+                       partition by q.client_did
+                       order by r.decision_date desc, dbms_random.value()
+                   ) rn
+            from integro.int_cvmrtm_request@cvm q
+            join integro.int_rtmcvm_result@cvm r on r.request_id = q.request_id
+            where 1=1
+                and q.in_product_type = ''CLIP''
+                and q.int_create_date >= trunc(sysdate) - 1
+                and q.int_create_date < trunc(sysdate)
+                and nvl(q.int_status, ''A'') <> ''ERROR''
+                and q.campaign_code <> ''FICO_TEST''
+        )
+        where rn = 1
+            and decision_code = ''ACCEPT''
+            and pdn <= 0.8
+            and new_limit > old_limit
+    ) a
+    left join DM_MRK.DM_MRK_CONTRACT c
+        on a.client_did = c.client_did
+        and a.contract_src_id = c.CONTRACT_SRC_ID
+        and trunc(a.report_date) between c.EFFECTIVE_FROM_DT and c.EFFECTIVE_TO_DT
+        and c.contract_type = ''C''';
+END;
