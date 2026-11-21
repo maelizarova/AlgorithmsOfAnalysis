@@ -1,11 +1,213 @@
-create table MODEL_CLF_PTB_CLIP_0926_V4_DEBT (
-    model_name VARCHAR2(255),
-    client_did VARCHAR2(255),
-    request_id VARCHAR2(255),
-    report_date DATE,
-    score NUMBER(18,16),
-    CURRENT_DEBT_AMT_FLG NUMBER(1,0),
-    rank NUMBER(3,0)
-);
+import numpy as np
+import pandas as pd
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import FunctionTransformer
+from sqlalchemy import text
+from datetime import timedelta
+from pathlib import Path
 
-grant SELECT on MODEL_CLF_PTB_CLIP_0926_V4_DEBT to public;
+from prefect import task, flow, Task, get_run_logger
+from prefect.blocks.system import Secret
+from prefect.blocks.notifications import CustomWebhookNotificationBlock
+from prefect.tasks import task_input_hash
+
+from toolbox import oracle
+from toolbox.prefect.notification import (
+    make_email_flow_notifier,
+    make_email_task_notifier,
+)
+
+from model_repository import ModelRepository
+from model_repository.dao import OracleDAO
+from model_repository.storage import MinioClient
+
+# Параметры модели
+MODEL_NAME = "clf_ptb_clip_0926_v4"  # Название модели
+TABLSE_LAST_SCORE = "MODEL_CLF_PTB_CLIP_0926_V4_DEBT"  # Таблица истории
+
+# Prefect Parameters
+RETRIES = 0  # Число перезапусков
+RETRY_DELAY_SECONDS = 900  # Задержка после аварийного запуска, сек
+CACHE_EXPIRATION = timedelta(hours=4)  # Сколько времени хранится кэш
+PERSIST_RESULT = True  # Хранить ли результат выполнения задачи
+
+webHookNotification = CustomWebhookNotificationBlock.load("mail-to-analytics")
+
+# notifications
+on_task_failure = make_email_task_notifier(webHookNotification)
+on_flow_failure = make_email_flow_notifier(webHookNotification)
+
+# Prefect Variables
+secret_sb_dirkaim = Secret.load("pass-sb-dirkaim").get()
+LOGIN_CDW = secret_sb_dirkaim["login"]
+PASSWORD_CDW = secret_sb_dirkaim["password"]
+S3_KWARGS = Secret.load("s3-retail").get()
+
+IN_TABLE = "ema_sample_CLF_PTB_CLIP_0926_V4_DEBT"
+
+secret_cdw = Secret.load("pass-sb-analytics")
+PASSWORD_CDW_OUT = secret_cdw.get()
+engine_out = oracle.create_engine_cdw(username="sb_analytics", password=PASSWORD_CDW_OUT)
+
+# Инициализация ModelRepository
+engine = oracle.create_engine_cdw(username=LOGIN_CDW, password=PASSWORD_CDW)
+dao = OracleDAO(engine)
+storage = MinioClient(**S3_KWARGS)
+repo = ModelRepository(storage=storage, dao=dao)
+
+# Чтение SQL запросов
+with open(Path(__file__).parent / "queries/create_sample.sql", "r", encoding="utf-8") as f:
+    query_sample = f.read()
+
+with open(Path(__file__).parent / "queries/get_features.sql", "r", encoding="utf-8") as f:
+    query = f.read()
+
+# Параметры task & flow
+task_kwargs = {
+    "retries": None,
+    "retry_delay_seconds": None,
+    "persist_result": True,
+    "cache_key_fn": task_input_hash,
+    "cache_expiration": None,
+    "cache_policy": None,
+    "on_failure": [on_task_failure],
+    "refresh_cache": True,
+    "tags": ["scoring"],
+}
+
+flow_kwargs = {
+    "task_runner": None,
+    "retries": RETRIES,
+    "retry_delay_seconds": RETRY_DELAY_SECONDS,
+    "on_failure": [on_flow_failure],
+}
+
+
+# Data preprocessing functions
+def convertToCategory(X, columns):
+    """Преобразование данных в category"""
+    X = X.astype({col: "category" for col in columns})
+    return X
+
+
+def convertToDouble(X, columns, dtype=np.float64):
+    """Преобразование данных в float"""
+    X = X.astype({col: dtype for col in columns})
+    return X
+
+
+# Load model
+model, meta = repo.get(MODEL_NAME)
+
+# Create Pipeline
+all_features = model.feature_name_
+categorical_features = []
+numeric_features = [f for f in all_features if f not in categorical_features]
+
+steps = [
+    FunctionTransformer(
+        func=convertToCategory, kw_args={"columns": categorical_features}
+    ),
+    FunctionTransformer(func=convertToDouble, kw_args={"columns": numeric_features}),
+    model,
+]
+pipeline = make_pipeline(*steps)
+
+
+@task(**task_kwargs)
+def exec_driver_sql(engine, query):
+    with engine.begin() as conn:
+        conn.exec_driver_sql(query)
+
+
+@task(**task_kwargs)
+def execute(engine, query):
+    with engine.begin() as conn:
+        conn.execute(query)
+
+
+@task(**task_kwargs)
+def score(pipeline, data, features):
+    df = data[["client_did", "request_id", "report_date", "current_debt_amt_flg"]].copy().reset_index(drop=True)
+    df["model_name"] = MODEL_NAME
+    df["score"] = pipeline.predict_proba(data[features])[:, 1]
+    return df
+
+
+@task(**task_kwargs)
+def rank_scores(data):
+    df = data.copy()
+    df["rank"] = np.nan
+    indices = df[df["current_debt_amt_flg"] == 1].sort_values(
+        "score", ascending=False, kind="stable"
+    ).index
+    # Аналог NTILE(100): остаток распределяется по первым группам.
+    bucket_sizes = np.full(100, len(indices) // 100)
+    bucket_sizes[: len(indices) % 100] += 1
+    df.loc[indices, "rank"] = np.repeat(np.arange(1, 101), bucket_sizes)
+    return df
+
+
+@task(**task_kwargs)
+def to_sql(data, engine, table_name):
+    oracle.write(data, engine, table_name, batch_size=100_000, if_exists="append")
+
+
+@task(**task_kwargs)
+def check_sample_not_empty(engine, table_name):
+    sql = text(f"select count(*) from {table_name}")
+    with engine.connect() as conn:
+        cnt = conn.execute(sql).scalar()
+    return cnt > 0
+
+
+generator = Task(fn=oracle.read_batch, name="reading_data", **task_kwargs)
+
+
+@flow(name="clf_ptb_clip_0926", **flow_kwargs)
+def clf_ptb_clip_0926():
+    logger = get_run_logger()
+
+    # 0. Создание выборки
+    logger.info("0) Создаем сэмпл за T-1")
+    exec_driver_sql.with_options(name="create_sample")(engine, query_sample)
+
+    has_sample = check_sample_not_empty.with_options(name="check_sample")(engine, IN_TABLE)
+    if not has_sample:
+        logger.warning("Сэмпл пустой - данных для скоринга нет")
+        return None
+
+    with engine.connect() as conn:
+        report_date = conn.execute(text(f"select min(report_date) from {IN_TABLE}")).scalar()
+
+    # 1. Чтение готовых признаков и скоринг
+    get_data = generator(query, engine, batch_size=1_000_000)
+    scored_batches = []
+    for enum, df in enumerate(get_data):
+        logger.info(f"Батч {enum} - чтение данных")
+        logger.info(f"Батч {enum} - скоринг")
+        scored_batch = score.with_options(name=f"scoring_batch-{enum}")(
+            pipeline, df, all_features
+        )
+        scored_batches.append(scored_batch)
+        logger.info(f"Батч {enum} - обработка завершена")
+
+    # 2. Ранги среди клиентов с задолженностью по всем батчам за дату
+    logger.info("Расчет рангов в Python")
+    scored_batch = pd.concat(scored_batches, ignore_index=True)
+    scored_batch = rank_scores.with_options(name="rank scores")(scored_batch)
+
+    # 3. Запись готовых скоров с рангами, сохраняя историю других дат
+    sql_query1 = text(
+        f"delete from {TABLSE_LAST_SCORE} "
+        "where model_name = :model_name and report_date = :report_date"
+    ).bindparams(model_name=MODEL_NAME, report_date=report_date)
+    execute.with_options(name="delete scores for report_date")(engine_out, sql_query1)
+
+    logger.info("Запись скоров с рангами в БД")
+    to_sql.with_options(name="to_sql")(scored_batch, engine_out, TABLSE_LAST_SCORE)
+    return None
+
+
+if __name__ == "__main__":
+    clf_ptb_clip_0926()
